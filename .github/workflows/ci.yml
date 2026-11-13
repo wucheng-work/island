@@ -40,8 +40,17 @@ jobs:
       - name: Existing Windows scene check
         shell: pwsh
         run: |
-          & target\release\poni.exe --selftest selftest-out
-          if ($LASTEXITCODE -ne 0) { throw "Windows scene check failed" }
+          # GUI 程序必须等待进程退出，再读取它自身的结果。
+          $scene = Start-Process -FilePath target\release\poni.exe -ArgumentList '--selftest', 'selftest-out' -PassThru
+          $null = $scene.Handle
+          if (-not $scene.WaitForExit(180000)) {
+            $scene.Kill()
+            throw "Windows scene check timed out after 180 seconds"
+          }
+          Get-Content selftest-out\home\cache\poni.log -Tail 80 -ErrorAction SilentlyContinue
+          Write-Host "Windows scene check exit code: $($scene.ExitCode)"
+          if ($scene.ExitCode -ne 0) { throw "Windows scene check failed with exit code $($scene.ExitCode)" }
+          if (-not (Test-Path selftest-out\report.json)) { throw "Windows scene check did not write its report" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
