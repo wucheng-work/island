@@ -1,0 +1,16 @@
+name: Legacy Mac release (disabled)
+
+# Retained as a manual notice only. Island does not publish to upstream services.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "This inherited workflow is disabled. No website, Store, metrics branch or release is changed."
+          echo "Use ci.yml for checks and release.yml for an explicitly authorized Island release."

@@ -1,0 +1,36 @@
+/target
+/dist
+*.log
+.DS_Store
+/selftest-out
+/.claude/
+/design-review
+/after
+/ci-artifacts
+/_site
+
+# 本地构建、安装包和诊断产物不进入源码历史。
+/build/
+/work/
+/outputs/
+/mac-renders*/
+/smoke*/
+/selftest-*/
+/.icon-venv/
+/.venv/
+__pycache__/
+*.pyc
+*.dmg
+*.zip
+*.p12
+*.pfx
+*.p8
+*.key
+*.keychain*
+*.pem
+.env
+.env.*
+!.env.example
+# 只保存公钥；发布私钥永远留在仓库外或GitHub Secrets。
+/release/private/
+/release/latest.json

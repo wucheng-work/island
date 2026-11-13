@@ -1,0 +1,3 @@
+# Island update feed public keys. Private key stays outside this repository.
+# Format: first 16 lowercase hex SHA-256 digits of the 65-byte P-256 point, then that point in hex.
+22aa5c7ca68c37f1 04f9573d589880f773ab60b93a7eab1b166acac9b3b2784a1eb1a58eb72cb7328e6bb4bff09b2994d95e36411e8e9e9720294d456e14619d37605af1f2c4919fb7

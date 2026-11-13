@@ -1,0 +1,75 @@
+name: Island checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Shared logic and version checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check the single project version
+        run: python3 tools/release.py check
+      - name: Existing shared tests
+        run: cargo test --locked -p poni-core -p studio-diorama
+
+  windows:
+    name: Windows compile and existing tests
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --locked --workspace --all-targets
+      - run: cargo test --locked --workspace
+      - run: cargo build --locked --release -p poni
+      - name: Existing Windows scene check
+        shell: pwsh
+        run: |
+          & target\release\poni.exe --selftest selftest-out
+          if ($LASTEXITCODE -ne 0) { throw "Windows scene check failed" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-check-results
+          path: selftest-out
+          if-no-files-found: warn
+
+  mac:
+    name: Mac compile, existing tests and previews
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --locked --workspace --all-targets
+      - run: cargo test --locked --workspace
+      - run: cargo build --locked --release -p poni
+      - name: Existing offscreen scenes
+        run: |
+          target/release/poni --render previews --theme pill
+          target/release/poni --render previews-narrow --theme pill --width 480
+          target/release/poni --render previews-codex --theme pill --codex
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-check-previews
+          path: |
+            previews
+            previews-narrow
+            previews-codex
+          if-no-files-found: warn

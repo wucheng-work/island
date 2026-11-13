@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Island For Mac.app's Info.plist. tools/make_mac_app.sh fills in @VERSION@ from Cargo.toml. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh-Hans</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>zh-Hans</string>
+	</array>
+	<key>CFBundleDisplayName</key>
+	<string>Island For Mac</string>
+	<key>CFBundleName</key>
+	<string>Island For Mac</string>
+	<key>CFBundleExecutable</key>
+	<string>poni</string>
+	<key>CFBundleIconFile</key>
+	<string>IslandForMac</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.oyenza.poni</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<!-- Quick Look reads this description too; use the same project version. -->
+	<key>CFBundleGetInfoString</key>
+	<string>版本 @VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<!-- The display link and the notch APIs the island uses need macOS 14 Sonoma. -->
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<!-- A menu bar app: no Dock icon, no menu bar of its own. -->
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<!-- Shown when Island For Mac first asks Music or Spotify what's playing. -->
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Island For Mac 需要读取音乐播放器的播放状态，以显示歌词并提供播放、暂停和切歌按钮。</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Island For Mac 仅在打开“今天”页面时使用当前位置查询天气；你也可以手动选择城市。</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Island For Mac 仅在打开“今天”页面时使用当前位置查询天气；你也可以手动选择城市。</string>
+</dict>
+</plist>

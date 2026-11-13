@@ -1,0 +1,25 @@
+# 统一源码换行；系统二进制资源不得转换。
+* text=auto
+*.rs text eol=lf
+*.toml text eol=lf
+*.lock text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.ps1 text eol=crlf
+*.nsi text eol=crlf
+*.iss text eol=crlf
+*.png binary
+*.ico binary
+*.icns binary
+*.aiff binary
+*.wav binary
+*.ttf binary
+*.woff2 binary
+# 已有哈希资源和录制样本必须逐字节保留，优先于上面的文本规则。
+addons/** -text
+site/places/** -text
+crates/poni-core/tests/fixtures/ytdlp/** -text

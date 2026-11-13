@@ -1,0 +1,1622 @@
+//! The Settings window's content: every setting Island For Mac has, in a
+//! sidebar of sections (General, Appearance, Island, Music and lyrics,
+//! Pop-ups, Tabs and Focus), called
+//! Advanced settings. The last row of the island's Settings page (behind
+//! the gear) and the menu's Advanced settings… open it, in a window of its
+//! own: on Windows a borderless one (`settings_host.rs`), on the Mac a real
+//! window with the system's title bar (`mac/settings_host.rs`). Both draw
+//! this [`View`].
+//!
+//! It draws with the island's widgets ([`Ui`], the Settings page's switch
+//! and picker) on the same [`AppState`], and changes settings the way the
+//! island's pages do: `Command::SaveSettings` after a change, which the app
+//! applies as a menu change is. Each section is a list of [`Block`]s, most
+//! of them groups of rows ([`Item`]: a label, a dim line under it, and a
+//! switch, a picker, a stepper or a button), laid out from the top; a click
+//! comes back as an [`Act`] on the row's [`Key`] ([`apply`]).
+//!
+//! It follows the system's light or dark mode: the window's own surfaces in
+//! [`Surfaces`], and everything on them through the Glass look of that mode,
+//! which turns the island's white ink dark on the light window.
+
+use crate::commands::Command;
+use crate::gfx::{Canvas, Image, ImageData, TextStyle, Weight};
+use crate::icons::Icon;
+use crate::ui::picker_width;
+#[cfg(test)]
+use crate::pages::PageKind;
+use crate::state::AppState;
+use crate::ui::{wid, wid_n, CursorKind, Hit, Input, MouseButton, PillStyle, Ui, PILL_GAP, PILL_SMALL};
+#[cfg(not(target_os = "macos"))]
+use crate::version::VERSION;
+use poni_core::geom::{palette, Color, Point, Rect};
+use poni_core::settings::Theme;
+#[cfg(test)]
+use poni_core::settings::IdleStyle;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use poni_core::design::{control, radius, space};
+
+/// The card, in DIPs. Windows' window gives it room for its shadow and is
+/// less tall on a short screen (the content scrolls).
+pub const CARD_W: f32 = 840.0;
+pub const CARD_H: f32 = 580.0;
+/// Its corners when the window draws its own (Windows).
+const RADIUS: f32 = radius::WINDOW;
+const SIDEBAR_W: f32 = 220.0;
+/// The content column: its left and right padding, and where it starts.
+const PAD: f32 = 28.0;
+const TITLE_Y: f32 = 22.0;
+const TITLE_H: f32 = 30.0;
+const CONTENT_Y: f32 = 70.0;
+/// Sidebar rows.
+const NAV_Y: f32 = 64.0;
+const NAV_H: f32 = 32.0;
+const NAV_GAP: f32 = 2.0;
+const NAV_TILE: f32 = 22.0;
+/// Rows: one line, or a label over a dim line.
+const ROW_H: f32 = control::ROW;
+const ROW_H_SUB: f32 = control::ROW_DETAIL;
+const ROW_PAD: f32 = 14.0;
+const GROUP_TITLE_H: f32 = 24.0;
+const GROUP_GAP: f32 = 18.0;
+const GROUP_R: f32 = radius::CONTROL;
+const SWITCH_W: f32 = 30.0;
+const SWITCH_H: f32 = 18.0;
+const PICKER_H: f32 = 26.0;
+/// The picker's and the switch's insides, as the island's Settings page has them.
+const SEG_INSET: f32 = 2.0;
+const SEG_PAD: f32 = 11.0;
+const KNOB_INSET: f32 = 2.0;
+const STEP_BTN: f32 = 26.0;
+const STEP_VALUE_W: f32 = 84.0;
+/// The Appearance section's theme cards: three to a row, each a column of
+/// the content wide, so the rows end where the groups under them do.
+const THEME_COLS: usize = 3;
+const THEME_CARD_H: f32 = 154.0;
+const THEME_PREVIEW_H: f32 = 74.0;
+const THEME_GAP: f32 = space::MD;
+/// A card's line of words wraps at this measure, not at the card's width:
+/// here the longer lines break into two fuller ones, where the whole width
+/// leaves one word alone on the second.
+const THEME_LINE_W: f32 = 108.0;
+/// On the cards' little screens, Pill's capsule floats this far below the
+/// top edge.
+const THEME_FLOAT: f32 = 7.0;
+/// Diorama's picture floats nearer the edge: it is drawn at its own size,
+/// pixel for pixel, and is taller than the little capsules beside it.
+const DIORAMA_FLOAT: f32 = 3.0;
+/// The Diorama card shows the theme's own picture as it rests on the real
+/// screen: this moment of it, a morning at the 10:08 the other cards' clocks
+/// say, the glass ball on the house.
+const DIORAMA_MOMENT: studio_diorama::Moment =
+    studio_diorama::Moment { minute: 608.0, sunrise: 360.0, sunset: 1080.0, day: 9817, lens: 0.0, clock: Some(studio_diorama::Clock { hour: 10, minute: 8, h24: true }), badge: None };
+/// A wheel notch scrolls this far.
+pub const WHEEL_STEP: f32 = 48.0;
+
+/// The window's own surfaces, painted as they are; text and widgets on
+/// them go through the look of the same mode.
+#[derive(Clone, Copy, Debug)]
+pub struct Surfaces {
+    pub ground: Color,
+    sidebar: Color,
+    group: Color,
+    group_hover: Color,
+    group_press: Color,
+}
+
+const DARK: Surfaces = Surfaces { ground: Color::hex(0x1C1C1E), sidebar: Color::hex(0x161618), group: Color::hex(0x252527), group_hover: Color::hex(0x2D2D30), group_press: Color::hex(0x343437) };
+const LIGHT: Surfaces = Surfaces { ground: Color::hex(0xF5F5F7), sidebar: Color::hex(0xECECEE), group: Color::hex(0xFFFFFF), group_hover: Color::hex(0xF4F4F6), group_press: Color::hex(0xE9E9ED) };
+
+pub fn surfaces(light: bool) -> Surfaces {
+    if light {
+        LIGHT
+    } else {
+        DARK
+    }
+}
+
+/// Lines and edges, in the look's ink.
+const RULE: Color = Color::white(0.08);
+const EDGE: Color = Color::white(0.10);
+/// Behind the theme cards' little screens.
+const WALLPAPER: Color = Color::hex(0x3B4A7A);
+
+const THEMES: [(Theme, &str, &str); 5] = [
+    (Theme::Classic, "Classic", "A black island at the top edge"),
+    (Theme::Oyen, "Oyen", "Oyen lives in the island"),
+    (Theme::Glass, "Glass", "Frosted glass over your screen"),
+    (Theme::Pill, "Pill", "Floats just below the top edge"),
+    (Theme::Diorama, "Diorama", "A little place that keeps your day"),
+];
+use crate::settings_model::{apply, blocks, sections, Act, Block, Ctl, Item, Key, Section};
+#[cfg(test)]
+use crate::settings_model::{offset_text, start_pages, step_min};
+
+// ---------------------------------------------------------------- the view
+
+/// Where the content goes in the window that shows it.
+#[derive(Clone, Copy, Debug)]
+pub struct Frame {
+    /// The card: what the window shows of the content (DIPs).
+    pub card: Rect,
+    /// The window draws its own shadow, edge and close button (Windows' is
+    /// borderless); the Mac's window has the system's.
+    pub own_chrome: bool,
+    /// Room at the top of the sidebar for the Mac's window buttons.
+    pub top: f32,
+    /// Everything lands where it's going at once: the system asks for less
+    /// motion, or a picture is taken.
+    pub still: bool,
+}
+
+/// What a frame of the window asked for.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Painted {
+    #[cfg(windows)]
+    pub focus: Option<bool>,
+    /// A click changed something: draw it again (after the app ran the
+    /// commands it pushed).
+    pub again: bool,
+    /// The close button was clicked.
+    pub close: bool,
+    /// Something still glides: draw the next frame at the display's rate.
+    pub moving: bool,
+}
+
+/// The content and its input, whichever window shows it.
+pub struct View {
+    pub input: Input,
+    hits: Vec<Hit>,
+    pub section: Section,
+    scroll: Scroll,
+    motion: Motion,
+    /// Something it shows changed: draw it again.
+    pub dirty: bool,
+    /// Something glided in the last frame: the window keeps drawing frames.
+    pub moving: bool,
+}
+
+/// `a` and `b` together.
+fn span(a: Rect, b: Rect) -> Rect {
+    let (x0, y0) = (a.x.min(b.x), a.y.min(b.y));
+    Rect::new(x0, y0, a.right().max(b.right()) - x0, a.bottom().max(b.bottom()) - y0)
+}
+
+/// How far the content is scrolled (DIPs): where it is, where it's going
+/// (a wheel glides there; a trackpad goes there at once, under the
+/// fingers).
+#[derive(Default)]
+struct Scroll {
+    at: f32,
+    to: f32,
+    /// A trackpad's points since the last frame.
+    pending: f32,
+    #[cfg(any(windows, target_os = "macos"))]
+    mail_editor: Option<crate::mail::MailEditor>,
+}
+
+impl View {
+    pub fn new(section: Section) -> Self {
+        View { input: Input::default(), hits: Vec::new(), section, scroll: Scroll::default(), motion: Motion::default(), dirty: true, moving: false }
+    }
+
+    /// Show `section`, from outside the window (it opens on it): no glide,
+    /// it's there at once.
+    pub fn show_section(&mut self, section: Section) {
+        if section != self.section {
+            self.section = section;
+            self.scroll = Scroll::default();
+            self.input.focused = None;
+            self.motion.leave_section();
+        }
+        self.motion.snap_next = true;
+        self.dirty = true;
+    }
+
+    /// The hit under `p` in the last frame.
+    pub fn hit_at(&self, p: Point) -> Option<Hit> {
+        self.hits.iter().rev().find(|h| h.rect.contains(p)).copied()
+    }
+
+    /// Where the widget `id` was in the last frame (the self-test's film).
+    #[cfg(any(windows, test))]
+    pub fn hit_rect(&self, id: u64) -> Option<Rect> {
+        self.hits.iter().find(|h| h.id == id).map(|h| h.rect)
+    }
+
+    /// The pointer's cursor over `p`.
+    pub fn cursor_at(&self, p: Point) -> CursorKind {
+        self.hit_at(p).map_or(CursorKind::Arrow, |h| h.cursor)
+    }
+
+    /// The pointer moved to `p`. True when what's under it changed (or a
+    /// press is held): the window is drawn again only then.
+    pub fn hover(&mut self, p: Point) -> bool {
+        let was = self.input.mouse.and_then(|m| self.hit_at(m)).map(|h| h.id);
+        let entered = self.input.mouse.is_none();
+        self.input.mouse = Some(p);
+        entered || self.input.down || was != self.hit_at(p).map(|h| h.id)
+    }
+
+    /// The pointer left the window.
+    pub fn leave(&mut self) {
+        self.input.mouse = None;
+    }
+
+    pub fn press(&mut self, p: Point) {
+        self.input.mouse = Some(p);
+        self.input.down = true;
+        self.input.just_pressed = true;
+        self.input.press_pos = Some(p);
+        self.input.pressed_id = self.hit_at(p).map(|h| h.id);
+    }
+
+    /// The button came up at `p`: a click when it's still on what it went
+    /// down on (it shows on the next frame).
+    pub fn release(&mut self, p: Point) {
+        self.input.mouse = Some(p);
+        if let (Some(pid), Some(h)) = (self.input.pressed_id, self.hit_at(p).map(|h| h.id)) {
+            if pid == h {
+                self.input.clicked = Some((h, MouseButton::Left));
+            }
+        }
+        if self.input.down {
+            self.input.released = self.input.pressed_id.map(|id| (id, p));
+        }
+        self.input.down = false;
+        self.input.pressed_id = None;
+    }
+
+    /// A mouse wheel: whole notches, the content glides.
+    pub fn wheel(&mut self, p: Point, notches: f32) {
+        self.input.mouse = Some(p);
+        self.input.wheel += notches;
+    }
+
+    /// What the next frame of a glide must redraw (DIPs): only what still
+    /// moves. None = nothing moves, or the whole window must be drawn.
+    pub fn next_clip(&self) -> Option<Rect> {
+        self.motion.next.filter(|_| self.moving && !self.dirty)
+    }
+
+    /// A trackpad: `points` (+ = up), the content follows the fingers.
+    pub fn scroll_by(&mut self, p: Point, points: f32) {
+        self.input.mouse = Some(p);
+        self.scroll.pending += points;
+    }
+
+    /// Draw the window on `c` for `st`, light or dark.
+    pub fn draw(&mut self, c: &mut Canvas, st: &mut AppState, now: f64, frame: Frame, light: bool) -> Painted {
+        self.dirty = false;
+        self.motion.begin(now, frame.still);
+        let mut out = Painted::default();
+        let mut hits = std::mem::take(&mut self.hits);
+        hits.clear();
+        {
+            let mut ui = Ui::new(c, &mut self.input, &mut hits, now);
+            match draw(&mut ui, st, self.section, frame, light, &mut self.scroll, &mut self.motion) {
+                Some(Nav::Section(s)) => {
+                    self.section = s;
+                    self.scroll = Scroll::default();
+                    self.motion.leave_section();
+                    out.again = true;
+                }
+                Some(Nav::Close) => out.close = true,
+                None => {}
+            }
+            #[cfg(windows)]
+            { out.focus = ui.focus_request(); }
+            out.again |= ui.repaint_requested();
+        }
+        self.dirty = out.again;
+        self.hits = hits;
+        self.input.end_frame();
+        out.moving = self.motion.moving;
+        self.moving = out.moving;
+        out
+    }
+}
+
+impl Drop for View {
+    /// The window closes: the Diorama card's picture goes with it, so
+    /// nothing of the window stays at rest.
+    fn drop(&mut self) {
+        let _ = DIORAMA_KEPT.try_with(|kept| kept.try_borrow_mut().map(|mut k| k.take()));
+    }
+}
+
+// ---------------------------------------------------------------- motion
+
+/// How fast a value glides: a critically damped spring of this many
+/// radians a second, so it never overshoots and has all but arrived after
+/// about 4.5 / pace seconds.
+/// Hover and press washes: about a tenth of a second.
+const WASH: f32 = 46.0;
+/// A switch's knob and colour.
+const SWITCHING: f32 = 24.0;
+/// A highlight going to another row or choice.
+const SLIDE: f32 = 24.0;
+/// The content after a mouse wheel.
+const SCROLLING: f32 = 22.0;
+/// A motion's first step out of rest: about one refresh (144 Hz's is 1/144,
+/// 60 Hz's 1/60), however long the window was still.
+const FIRST_STEP: f32 = 1.0 / 120.0;
+
+/// Values that glide to where they're going, a step a frame at the
+/// display's own rate (120 Hz on ProMotion, 144 Hz on a 144 Hz screen),
+/// and stop there. Only answers to the person move: a value first asked
+/// for starts where it's going, so the window opens complete.
+#[derive(Default)]
+struct Motion {
+    /// Each value, its speed, and whether it is the section's content's,
+    /// by key.
+    vals: HashMap<u64, (f32, f32, bool)>,
+    /// Values asked for from now on (this frame) are the section's content's.
+    content: bool,
+    /// Seconds since the last frame, at most a thirtieth: a long pause
+    /// doesn't jump.
+    dt: f32,
+    last: f64,
+    /// Something hasn't arrived yet.
+    moving: bool,
+    /// This frame, everything lands at once.
+    snap: bool,
+    /// So does the next one (a section opened from outside).
+    snap_next: bool,
+    /// Where what still moves will be drawn on the next frame (from where
+    /// it is to where it's going): a frame of a glide redraws only that.
+    next: Option<Rect>,
+}
+
+impl Motion {
+    fn begin(&mut self, now: f64, still: bool) {
+        // Out of rest, a motion starts with one refresh's step, not the whole
+        // time since the last frame (a jump on its first frame).
+        let dt = if self.moving { (now - self.last) as f32 } else { FIRST_STEP };
+        self.dt = dt.clamp(0.0, 1.0 / 30.0);
+        self.last = now;
+        self.moving = false;
+        self.snap = still || std::mem::take(&mut self.snap_next);
+        self.next = None;
+        self.content = false;
+    }
+
+    /// Another section opens: its rows start where they're going, not where
+    /// the last section's rows in their place were (a switch would slide).
+    fn leave_section(&mut self) {
+        self.vals.retain(|_, v| !v.2);
+    }
+
+    /// Something in `r` still moves: the next frame redraws it.
+    fn cover(&mut self, r: Rect) {
+        self.next = Some(match self.next {
+            Some(n) => {
+                let (x0, y0) = (n.x.min(r.x), n.y.min(r.y));
+                Rect::new(x0, y0, n.right().max(r.right()) - x0, n.bottom().max(r.bottom()) - y0)
+            }
+            None => r,
+        });
+    }
+
+    /// `key`'s value this frame on its way to `target` at `pace`; within
+    /// `near` it has arrived.
+    fn glide(&mut self, key: u64, target: f32, pace: f32, near: f32) -> f32 {
+        let content = self.content;
+        let e = self.vals.entry(key).or_insert((target, 0.0, content));
+        let (x, v, _) = *e;
+        if self.snap || ((x - target).abs() < near && v.abs() < near * pace) {
+            *e = (target, 0.0, content);
+            return target;
+        }
+        self.moving = true;
+        if self.dt <= 0.0 {
+            return x;
+        }
+        let (t, d) = (self.dt, x - target);
+        let k = (-pace * t).exp();
+        let nd = (d + (v + pace * d) * t) * k;
+        let nv = (v - pace * (v + pace * d) * t) * k;
+        *e = (target + nd, nv, content);
+        target + nd
+    }
+
+    /// A 0..1 value (an opacity, a switch's way across): within 0.4 % it
+    /// has arrived.
+    fn fade(&mut self, key: u64, target: f32, pace: f32) -> f32 {
+        self.glide(key, target, pace, 0.004)
+    }
+
+    /// A position or a size, in DIPs: within a third of one it has arrived
+    /// (under a pixel at any scale), so no frames go to a tail nobody sees.
+    fn slide(&mut self, key: u64, target: f32, pace: f32) -> f32 {
+        self.glide(key, target, pace, 0.3)
+    }
+
+    /// Put `key` at `value` now (a trackpad's scroll).
+    fn jump(&mut self, key: u64, value: f32) {
+        self.vals.insert(key, (value, 0.0, self.content));
+    }
+}
+
+/// A key for one of a widget's moving values.
+fn mkey(id: u64, what: u64) -> u64 {
+    id.wrapping_mul(0x9E3779B97F4A7C15) ^ what
+}
+
+const K_WASH: u64 = 1;
+const K_ON: u64 = 2;
+const K_X: u64 = 3;
+const K_W: u64 = 4;
+const K_Y: u64 = 5;
+const K_LIT: u64 = 6;
+
+// ---------------------------------------------------------------- drawing
+
+/// Where a click in the window's frame goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Nav {
+    Section(Section),
+    Close,
+}
+
+/// The whole window: the card, the sidebar and the section. Returns the
+/// section picked in the sidebar, or the close button.
+fn draw(ui: &mut Ui, st: &mut AppState, section: Section, frame: Frame, light: bool, sc: &mut Scroll, m: &mut Motion) -> Option<Nav> {
+    #[cfg(any(windows, target_os = "macos"))]
+    {
+        st.mail.editor_rect = None;
+        st.mail.editor_clip = None;
+    }
+    let card = frame.card;
+    let sf = surfaces(light);
+    // Windows' borderless window: its own shadow and rounded corners.
+    let radius = if frame.own_chrome { RADIUS } else { 0.0 };
+    ui.c.unthemed(|c| {
+        if frame.own_chrome {
+            let shadow = Color::black(if light { 0.30 } else { 0.55 });
+            c.rrect_shadow(card.offset(0.0, 4.0), RADIUS, shadow, &crate::pill::shape::SHADOW_RAMP);
+        }
+        c.fill_rrect(card, radius, sf.ground);
+    });
+    // The sidebar: the card's left part in its own shade, rounded only where
+    // the card is. Nothing of it reaches past its edge, so no clip is needed
+    // (a glide's frame elsewhere doesn't draw it).
+    let side = Rect::new(card.x, card.y, SIDEBAR_W, card.h);
+    ui.c.unthemed(|c| {
+        c.fill_rrect(side, radius, sf.sidebar);
+        if radius > 0.0 {
+            c.fill_rect(Rect::new(side.right() - radius, side.y, radius, side.h), sf.sidebar);
+        }
+    });
+    let px = 1.0 / ui.c.scale().max(0.5);
+    ui.c.fill_rect(Rect::new(side.right() - px, side.y, px, side.h), RULE);
+    if frame.own_chrome {
+        ui.c.stroke_rrect(card.inset(px / 2.0, px / 2.0), RADIUS, EDGE, px);
+    }
+
+    let picked = draw_sidebar(ui, st, side, section, frame.top, m);
+    let content = Rect::new(side.right() + PAD, card.y, card.right() - side.right() - 2.0 * PAD, card.h);
+    ui.c.text(section.title(), Rect::new(content.x, card.y + TITLE_Y, content.w - 40.0, TITLE_H), &TextStyle::new(20.0).weight(Weight::Semibold));
+    let close = frame.own_chrome && draw_close(ui, card, m);
+
+    let warning_h = if st.save_errors.any() {
+        let (retry, discard) = crate::ui::save_warning(ui, &st.save_errors, Rect::new(content.x, card.y + CONTENT_Y, content.w, 46.0));
+        if retry { st.cmd(Command::RetrySave); }
+        if discard { st.cmd(Command::QuitWithoutSaving); }
+        56.0
+    } else {
+        0.0
+    };
+    let view = Rect::new(content.x - PAD / 2.0, card.y + CONTENT_Y + warning_h, content.w + PAD, card.bottom() - CONTENT_Y - warning_h - card.y - 1.0);
+    // From here on, the section's own: its scroll and rows, whose values go
+    // when another section opens.
+    m.content = true;
+    // Scrolling: a wheel glides to where it points, a trackpad follows the fingers.
+    // 使用当前布局的高度，收起账户或关闭表单时立即限制滚动范围。
+    let content_blocks = blocks(section, st);
+    let content_h: f32 = content_blocks.iter().map(|b| block_h(st, b) + GROUP_GAP).sum();
+    let max_scroll = (content_h - view.h + 16.0).max(0.0);
+    let wheel = ui.wheel_in(view);
+    if wheel != 0.0 {
+        sc.to -= wheel * WHEEL_STEP;
+    }
+    let skey = mkey(wid("settingswin.scroll"), K_Y);
+    if sc.pending != 0.0 {
+        sc.to = (sc.to - sc.pending).clamp(0.0, max_scroll);
+        sc.pending = 0.0;
+        m.jump(skey, sc.to);
+    }
+    #[cfg(any(windows, target_os = "macos"))]
+    if section == Section::Mail && sc.mail_editor != st.mail.editor {
+        sc.mail_editor = st.mail.editor.clone();
+        if sc.mail_editor.is_some() {
+            // 只在打开或切换表单时让编辑区完整入屏，之后尊重用户滚动。
+            let mut top = 0.0;
+            for block in &content_blocks {
+                let editor_top = match block {
+                    Block::MailAccount { title, items, editor_after: Some(index) } => Some(top + title.map_or(0.0, |_| GROUP_TITLE_H) + items.iter().take(index + 1).map(row_h).sum::<f32>()),
+                    _ => None,
+                };
+                if let Some(editor_top) = editor_top {
+                    let bottom = editor_top + crate::mail_accounts::FORM_H;
+                    if bottom > sc.to + view.h - 12.0 {
+                        sc.to = bottom - view.h + 12.0;
+                    }
+                    if editor_top < sc.to + 12.0 {
+                        sc.to = editor_top - 12.0;
+                    }
+                    sc.to = sc.to.clamp(0.0, max_scroll);
+                    m.jump(skey, sc.to);
+                    break;
+                }
+                top += block_h(st, block) + GROUP_GAP;
+            }
+        }
+    }
+    sc.to = sc.to.clamp(0.0, max_scroll);
+    sc.at = m.slide(skey, sc.to, SCROLLING);
+    if sc.at != sc.to {
+        // The whole content moves, and the edge it scrolls under.
+        m.cover(view.inset(0.0, -2.0));
+    }
+    ui.c.clip(view);
+    let mut y = view.y - sc.at;
+    let x = content.x;
+    for (bi, b) in content_blocks.iter().enumerate() {
+        y = draw_block(ui, st, b, bi, Rect::new(x, y, content.w, 0.0), view, &sf, m);
+    }
+    ui.c.unclip();
+    #[cfg(any(windows, target_os = "macos"))]
+    if section == Section::Mail && ui.input.clicked.is_some() && content_blocks != blocks(section, st) {
+        // 展开、收起或切换控件后，行序号可能复用；旧动画不能套在新布局上。
+        m.leave_section();
+        m.snap_next = true;
+        ui.request_repaint();
+    }
+    // The edge the content scrolls under.
+    if sc.at > 0.5 {
+        ui.c.fill_rect(Rect::new(view.x, view.y, view.w, px), RULE);
+    }
+    if close {
+        return Some(Nav::Close);
+    }
+    picked.filter(|p| *p != section).map(Nav::Section)
+}
+
+/// The close button at the card's top right (Windows). True when clicked.
+fn draw_close(ui: &mut Ui, card: Rect, m: &mut Motion) -> bool {
+    let r = Rect::new(card.right() - 14.0 - 28.0, card.y + 14.0, 28.0, 28.0);
+    let id = wid("settingswin.close");
+    let resp = ui.button(id, r);
+    let to = if resp.pressed {
+        0.8
+    } else if resp.hovered {
+        0.6
+    } else {
+        0.0
+    };
+    let a = m.fade(mkey(id, K_WASH), to, WASH);
+    if a != to {
+        m.cover(r);
+    }
+    if a > 0.0 {
+        ui.c.fill_rrect(r, 8.0, palette::RED.with_alpha(a));
+    }
+    let t = (a / 0.6).min(1.0);
+    let x = Rect::from_center(r.center(), 14.0, 14.0);
+    ui.c.icon(Icon::Close, x, palette::TEXT_DIM.mul_alpha(1.0 - t));
+    if t > 0.0 {
+        ui.c.icon(Icon::Close, x, palette::ON_ACCENT.mul_alpha(t));
+    }
+    resp.clicked
+}
+
+/// The sidebar: the app's tile and the window's name, then a row per section.
+/// The highlight glides to the section picked.
+/// `top`: room for the Mac's window buttons.
+fn draw_sidebar(ui: &mut Ui, st: &mut AppState, side: Rect, section: Section, top: f32, m: &mut Motion) -> Option<Section> {
+    let icon_c = Point::new(side.x + 20.0 + 12.0, side.y + top + 32.0);
+    crate::oyen::app_icon(ui.c, icon_c, 24.0);
+    ui.c.text("Advanced settings", Rect::new(icon_c.x + 20.0, side.y + top + 20.0, side.w - 60.0, 24.0), &TextStyle::headline());
+    let list = sections(st);
+    let row_y = |i: usize| side.y + top + NAV_Y + i as f32 * (NAV_H + NAV_GAP);
+    // The highlight, under the rows.
+    let sel_key = mkey(wid("settingswin.nav.sel"), K_Y);
+    if let Some(i) = list.iter().position(|s| *s == section) {
+        let to = row_y(i);
+        let y = m.slide(sel_key, to, SLIDE);
+        let r = Rect::new(side.x + 10.0, y, side.w - 20.0, NAV_H);
+        if y != to {
+            m.cover(span(r, Rect::new(r.x, to, r.w, r.h)));
+        }
+        ui.c.fill_rrect(r, 10.0, st.accent.with_alpha(0.15));
+        
+    }
+    let mut picked = None;
+    for (i, s) in list.iter().enumerate() {
+        let r = Rect::new(side.x + 10.0, row_y(i), side.w - 20.0, NAV_H);
+        let id = wid_n("settingswin.nav", i as u64);
+        let resp = ui.button(id, r);
+        if resp.clicked {
+            picked = Some(*s);
+        }
+        let on = *s == section;
+        let to = if on {
+            0.0
+        } else if resp.pressed {
+            0.09
+        } else if resp.hovered {
+            0.05
+        } else {
+            0.0
+        };
+        let wash = m.fade(mkey(id, K_WASH), to, WASH);
+        if wash != to {
+            m.cover(r);
+        }
+        if wash > 0.0 {
+            ui.c.fill_rrect(r, 8.0, Color::white(wash));
+        }
+        let tile = Rect::new(r.x + 8.0, r.center().y - NAV_TILE / 2.0, NAV_TILE, NAV_TILE);
+        // 颜色只表达选中状态，避免每个入口的独立色块争夺注意力。
+        let (fill, edge, glyph) = if on {
+            (st.accent, st.accent.with_alpha(0.65), palette::ON_ACCENT)
+        } else {
+            (Color::white(0.045), Color::white(0.09), palette::TEXT_DIM)
+        };
+        ui.c.fill_rrect(tile, 6.0, fill);
+        ui.c.stroke_rrect(tile, 6.0, edge, 1.0);
+        ui.c.icon(s.icon(), Rect::from_center(tile.center(), 14.0, 14.0), glyph);
+        let tx = tile.right() + 10.0;
+        let style = TextStyle::body().weight(if on { Weight::Semibold } else { Weight::Regular }).color(if on { palette::TEXT } else { Color::white(0.82) });
+        ui.c.text(s.title(), Rect::new(tx, r.y, (r.right() - tx - 6.0).max(0.0), r.h), &style);
+    }
+    picked
+}
+
+/// Where `r` meets the scrolled view (None = not on screen): widgets take
+/// the pointer only there.
+fn visible(r: Rect, view: Rect) -> Option<Rect> {
+    let x0 = r.x.max(view.x);
+    let y0 = r.y.max(view.y);
+    let x1 = r.right().min(view.right());
+    let y1 = r.bottom().min(view.bottom());
+    (x1 > x0 && y1 > y0).then(|| Rect::new(x0, y0, x1 - x0, y1 - y0))
+}
+
+fn row_h(it: &Item) -> f32 {
+    if it.error {
+        80.0
+    } else if it.sub.is_some() {
+        ROW_H_SUB
+    } else {
+        ROW_H
+    }
+}
+
+/// How tall a block is drawn.
+fn block_h(st: &AppState, b: &Block) -> f32 {
+    match b {
+        Block::Group(title, items) => title.map_or(0.0, |_| GROUP_TITLE_H) + items.iter().map(row_h).sum::<f32>(),
+        #[cfg(any(windows, target_os = "macos"))]
+        Block::MailAccount { title, items, editor_after } => title.map_or(0.0, |_| GROUP_TITLE_H) + items.iter().map(row_h).sum::<f32>() + editor_after.map_or(0.0, |_| crate::mail_accounts::FORM_H),
+        Block::Version => {
+            if st.update.offer.is_some() {
+                112.0
+            } else {
+                72.0
+            }
+        }
+        Block::Themes => GROUP_TITLE_H + theme_cards_h(),
+    }
+}
+
+/// A group's card.
+fn fill_group(ui: &mut Ui, r: Rect, color: Color) {
+    ui.c.unthemed(|c| c.fill_rrect(r, GROUP_R, color));
+    
+}
+
+/// Draw block `b` (the `bi`-th) from `at`'s top left, `at.w` wide; returns
+/// where the next one starts.
+#[allow(clippy::too_many_arguments)]
+fn draw_block(ui: &mut Ui, st: &mut AppState, b: &Block, bi: usize, at: Rect, view: Rect, sf: &Surfaces, m: &mut Motion) -> f32 {
+    let h = block_h(st, b);
+    let r = Rect::new(at.x, at.y, at.w, h);
+    let next = r.bottom() + GROUP_GAP;
+    if visible(r.inset(-4.0, -4.0), view).is_none() {
+        return next;
+    }
+    match b {
+        Block::Group(title, items) => draw_group(ui, st, *title, items, None, bi, r, view, sf, m),
+        #[cfg(any(windows, target_os = "macos"))]
+        Block::MailAccount { title, items, editor_after } => draw_group(ui, st, *title, items, *editor_after, bi, r, view, sf, m),
+        Block::Version => draw_version(ui, st, r, view, sf),
+        Block::Themes => draw_themes(ui, st, r, view, sf, m),
+    }
+    next
+}
+
+/// 同一张卡片绘制全部行；编辑表单紧跟账户信息行，展开时不再拆成独立卡片。
+#[allow(clippy::too_many_arguments)]
+fn draw_group(ui: &mut Ui, st: &mut AppState, title: Option<&str>, items: &[Item], editor_after: Option<usize>, bi: usize, r: Rect, view: Rect, sf: &Surfaces, m: &mut Motion) {
+    let mut y = r.y;
+    if let Some(t) = title {
+        ui.c.text(t, Rect::new(r.x + 2.0, y, r.w, GROUP_TITLE_H - 6.0), &TextStyle::footnote().weight(Weight::Semibold).color(palette::TEXT_DIM));
+        y += GROUP_TITLE_H;
+    }
+    let card = Rect::new(r.x, y, r.w, r.bottom() - y);
+    fill_group(ui, card, sf.group);
+    let accent = st.accent;
+    let px = 1.0 / ui.c.scale().max(0.5);
+    for (i, it) in items.iter().enumerate() {
+        let rh = row_h(it);
+        let row = Rect::new(card.x, y, card.w, rh);
+        if i > 0 {
+            ui.c.fill_rect(Rect::new(row.x + ROW_PAD, row.y, row.w - 2.0 * ROW_PAD, px), RULE);
+        }
+        if let Some(act) = draw_row(ui, it, (bi, i), row, view, accent, (i == 0, i + 1 == items.len()), m) {
+            apply(st, it.key, act);
+        }
+        y += rh;
+        #[cfg(any(windows, target_os = "macos"))]
+        if editor_after == Some(i) {
+            st.mail.editor_rect = Some(Rect::new(card.x, y, card.w, crate::mail_accounts::FORM_H));
+            st.mail.editor_clip = Some(view);
+            y += crate::mail_accounts::FORM_H;
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = editor_after;
+}
+
+/// One row: its label (and dim line), and its control. Returns what a
+/// click did. `ends`: the row is the card's first, its last.
+#[allow(clippy::too_many_arguments)]
+fn draw_row(ui: &mut Ui, it: &Item, at: (usize, usize), row: Rect, view: Rect, accent: Color, ends: (bool, bool), m: &mut Motion) -> Option<Act> {
+    let id = |what: &str| wid_n(&format!("settingswin.{what}.{}", at.0), at.1 as u64);
+    let shown = visible(row, view);
+    let whole = shown.is_some_and(|v| v.h >= row.h - 0.5);
+    let inner = row.inset(ROW_PAD, 0.0);
+    if it.error {
+        ui.c.fill_rrect(row.inset(6.0, 5.0), radius::CONTROL, palette::RED.with_alpha(0.09));
+        ui.c.fill_rrect(Rect::new(row.x + 6.0, row.y + 12.0, 3.0, row.h - 24.0), 1.5, palette::RED);
+    }
+    let mut act = None;
+    let button_icon = match it.key {
+        #[cfg(any(windows, target_os = "macos"))]
+        Key::MailDetails(_) => Some(Icon::Trash),
+        #[cfg(any(windows, target_os = "macos"))]
+        Key::MailAdd => Some(Icon::Plus),
+        #[cfg(any(windows, target_os = "macos"))]
+        Key::MailEdit(_) => Some(Icon::Gear),
+        #[cfg(target_os = "macos")]
+        Key::MailAuthorize(_) => Some(Icon::CheckCircle),
+        #[cfg(any(windows, target_os = "macos"))]
+        Key::MailRefresh(_) => Some(Icon::Reset),
+        _ => Some(Icon::Open),
+    };
+    // The control's room at the right end.
+    let ctl_w = match &it.ctl {
+        Ctl::Switch(_) => SWITCH_W,
+        Ctl::Choice(names, _) => picker_width(ui, names),
+        Ctl::Stepper(_) => 2.0 * STEP_BTN + STEP_VALUE_W,
+        Ctl::Button(label) => ui.pill_width(label, button_icon.is_some(), true),
+    };
+    let ctl_x = inner.right() - ctl_w;
+    match &it.ctl {
+        Ctl::Switch(on) => {
+            // The whole row toggles, as on the island's Settings page.
+            let rid = id("row");
+            let resp = match (on, shown) {
+                (Some(_), Some(hit)) => ui.button(rid, hit),
+                _ => Default::default(),
+            };
+            let to = if resp.pressed {
+                0.07
+            } else if resp.hovered {
+                0.04
+            } else {
+                0.0
+            };
+            let wash = m.fade(mkey(rid, K_WASH), to, WASH);
+            if wash != to {
+                m.cover(row);
+            }
+            if wash > 0.0 {
+                fill_row(ui, row, Color::white(wash), ends);
+            }
+            if resp.clicked {
+                act = Some(Act::Toggle);
+            }
+            // The knob slides and the track takes the colour as it goes.
+            let to = if *on == Some(true) { 1.0 } else { 0.0 };
+            let k = m.fade(mkey(rid, K_ON), to, SWITCHING);
+            let sw = Rect::new(ctl_x, row.center().y - SWITCH_H / 2.0, SWITCH_W, SWITCH_H);
+            if k != to {
+                m.cover(sw.inset(-1.0, -1.0));
+            }
+            let alpha = if on.is_some() { 1.0 } else { 0.5 };
+            ui.c.with_alpha(alpha, |c| draw_switch_at(c, sw, k, accent));
+        }
+        Ctl::Choice(names, sel) => {
+            let y = row.center().y - PICKER_H / 2.0;
+            if let Some(i) = picker_glide(ui, m, &format!("settingswin.pick.{}.{}", at.0, at.1), ctl_x, y, names, *sel, whole) {
+                act = Some(Act::Pick(i));
+            }
+        }
+        Ctl::Stepper(value) => {
+            let cy = row.center().y;
+            let minus = Rect::new(ctl_x, cy - STEP_BTN / 2.0, STEP_BTN, STEP_BTN);
+            let plus = Rect::new(inner.right() - STEP_BTN, cy - STEP_BTN / 2.0, STEP_BTN, STEP_BTN);
+            for (r, icon, d, what) in [(minus, Icon::Minus, -1, "minus"), (plus, Icon::Plus, 1, "plus")] {
+                let bid = id(what);
+                let resp = match visible(r, view) {
+                    Some(hit) => ui.button(bid, hit),
+                    None => Default::default(),
+                };
+                let to = if resp.pressed {
+                    1.0
+                } else if resp.hovered {
+                    0.5
+                } else {
+                    0.0
+                };
+                let lit = m.fade(mkey(bid, K_WASH), to, WASH);
+                if lit != to {
+                    m.cover(r.inset(-1.0, -1.0));
+                }
+                let fill = if lit <= 0.5 { Color::lerp(palette::SURFACE, palette::SURFACE_HOVER, lit * 2.0) } else { Color::lerp(palette::SURFACE_HOVER, palette::SURFACE_PRESSED, lit * 2.0 - 1.0) };
+                ui.c.fill_circle(r.center(), STEP_BTN / 2.0, fill);
+                ui.c.icon(icon, Rect::from_center(r.center(), 12.0, 12.0), palette::TEXT);
+                if resp.clicked {
+                    act = Some(Act::Step(d));
+                }
+            }
+            let vr = Rect::new(minus.right(), row.y, plus.x - minus.right(), row.h);
+            ui.c.text(value, vr, &TextStyle::body().weight(Weight::Semibold).tabular().center());
+        }
+        Ctl::Button(label) => {
+            #[cfg(any(windows, target_os = "macos"))]
+            if matches!(it.key, Key::MailDetails(_)) {
+                // 先登记整行，再绘制按钮，让按钮保留自己的命中区域；一次点击只返回一个动作。
+                let rid = id("row");
+                let response = shown.map(|hit| ui.button(rid, hit)).unwrap_or_default();
+                let target = if response.pressed { 0.07 } else if response.hovered { 0.04 } else { 0.0 };
+                let wash = m.fade(mkey(rid, K_WASH), target, WASH);
+                if wash != target {
+                    m.cover(row);
+                }
+                if wash > 0.0 {
+                    fill_row(ui, row, Color::white(wash), ends);
+                }
+                if response.clicked {
+                    act = Some(Act::Toggle);
+                }
+            }
+            let r = Rect::new(ctl_x, row.center().y - PILL_SMALL / 2.0, ctl_w, PILL_SMALL);
+            let clicked = match visible(r, view).filter(|v| v.h >= r.h - 0.5) {
+                Some(_) => ui.pill(id("button"), r, label, button_icon, PillStyle::Utility).clicked,
+                None => {
+                    let mut none = Input::default();
+                    let mut no_hits = Vec::new();
+                    let mut ghost = Ui::new(&mut *ui.c, &mut none, &mut no_hits, 0.0);
+                    ghost.pill(0, r, label, button_icon, PillStyle::Utility);
+                    false
+                }
+            };
+            if clicked {
+                act = Some(Act::Press);
+            }
+        }
+    }
+    // The label, and the dim line under it.
+    let text_right = if let Some((label, color)) = &it.status {
+        let status = Rect::new(ctl_x - 90.0, row.center().y - 12.0, 78.0, 24.0);
+        ui.c.fill_rrect(status, 12.0, color.with_alpha(0.10));
+        ui.c.fill_circle(Point::new(status.x + 10.0, status.center().y), 2.5, *color);
+        ui.c.text(label, Rect::new(status.x + 20.0, status.y, status.w - 24.0, status.h), &TextStyle::footnote().weight(Weight::Semibold).color(*color));
+        status.x - 12.0
+    } else {
+        ctl_x - 16.0
+    };
+    let tw = (text_right - inner.x).max(0.0);
+    if it.error {
+        ui.c.icon(Icon::Warning, Rect::new(inner.x + 2.0, row.y + 13.0, 17.0, 17.0), palette::RED);
+        let text_x = inner.x + 27.0;
+        let width = (text_right - text_x).max(0.0);
+        ui.c.text(&it.label, Rect::new(text_x, row.y + 10.0, width, 21.0), &TextStyle::body().weight(Weight::Semibold).color(palette::RED));
+        if let Some(message) = &it.sub {
+            ui.c.text(message, Rect::new(text_x, row.y + 35.0, width, 34.0), &TextStyle::footnote().color(palette::RED).wrap().top());
+        }
+        return act;
+    }
+    match &it.sub {
+        Some(sub) => {
+            let cy = row.center().y;
+            ui.c.text(&it.label, Rect::new(inner.x, cy - 19.0, tw, 19.0), &TextStyle::body());
+            ui.c.text(sub, Rect::new(inner.x, cy + 1.0, tw, 17.0), &TextStyle::footnote().color(palette::TEXT_DIM));
+        }
+        None => ui.c.text(&it.label, Rect::new(inner.x, row.y, tw, row.h), &TextStyle::body()),
+    }
+    act
+}
+
+/// A switch `k` of the way on (0 off, 1 on): the knob slides across and
+/// the track takes the accent as it goes (the island's switch, in motion).
+fn draw_switch_at(c: &mut Canvas, r: Rect, k: f32, accent: Color) {
+    let k = k.clamp(0.0, 1.0);
+    c.fill_rrect(r, r.h / 2.0, palette::TRACK.mul_alpha(1.0 - k));
+    if k > 0.0 {
+        c.fill_rrect(r, r.h / 2.0, accent.mul_alpha(k));
+    }
+    c.stroke_rrect(r, r.h / 2.0, Color::white(0.16).mul_alpha(1.0 - k), 1.0);
+    let d = r.h - 2.0 * KNOB_INSET;
+    let x0 = r.x + KNOB_INSET + d / 2.0;
+    let x1 = r.right() - KNOB_INSET - d / 2.0;
+    c.fill_circle(Point::new(x0 + (x1 - x0) * k, r.center().y + 0.7), d / 2.0, Color::black(0.18));
+    c.fill_circle(Point::new(x0 + (x1 - x0) * k, r.center().y), d / 2.0, palette::ON_ACCENT);
+}
+
+/// The island's picker (choices side by side in a track, the chosen one
+/// lifted) with the lift gliding to the choice picked. `live`: it takes
+/// clicks (not while partly scrolled away). Returns the choice clicked.
+#[allow(clippy::too_many_arguments)]
+fn picker_glide(ui: &mut Ui, m: &mut Motion, id: &str, x: f32, y: f32, names: &[&str], sel: Option<usize>, live: bool) -> Option<usize> {
+    let st = TextStyle::footnote().weight(Weight::Semibold);
+    let h = PICKER_H;
+    let inner_h = h - 2.0 * SEG_INSET;
+    let mut cx = x + SEG_INSET;
+    let cells: Vec<Rect> = names
+        .iter()
+        .map(|n| {
+            let w = (2.0 * SEG_PAD + ui.c.measure(n, &st, 300.0).0).ceil();
+            let cell = Rect::new(cx, y + SEG_INSET, w, inner_h);
+            cx += w;
+            cell
+        })
+        .collect();
+    ui.c.fill_rrect(Rect::new(x, y, cx + SEG_INSET - x, h), h / 2.0, Color::white(0.045));
+    let base = wid(id);
+    // The lift, under the names.
+    let track = Rect::new(x, y, cx + SEG_INSET - x, h);
+    if let Some(cell) = sel.and_then(|s| cells.get(s)) {
+        let lx = m.slide(mkey(base, K_X), cell.x - x, SLIDE);
+        let lw = m.slide(mkey(base, K_W), cell.w, SLIDE);
+        if lx != cell.x - x || lw != cell.w {
+            m.cover(track);
+        }
+        let selected = Rect::new(x + lx, cell.y, lw, inner_h);
+        ui.c.fill_rrect(selected, inner_h / 2.0, palette::BLUE.with_alpha(0.15));
+        ui.c.stroke_rrect(selected, inner_h / 2.0, palette::BLUE.with_alpha(0.20), 1.0);
+    }
+    let mut picked = None;
+    for (i, (name, cell)) in names.iter().zip(&cells).enumerate() {
+        let cid = wid_n(id, i as u64);
+        let chosen = sel == Some(i);
+        let resp = if live && !chosen { ui.button(cid, Rect::new(cell.x, y, cell.w, h)) } else { Default::default() };
+        if resp.clicked {
+            picked = Some(i);
+        }
+        let to = if resp.pressed {
+            0.10
+        } else if resp.hovered {
+            0.06
+        } else {
+            0.0
+        };
+        let wash = m.fade(mkey(cid, K_WASH), to, WASH);
+        if wash > 0.0 {
+            ui.c.fill_rrect(*cell, inner_h / 2.0, Color::white(wash));
+        }
+        let lit_to = if chosen || resp.hovered || resp.pressed { 1.0 } else { 0.0 };
+        let lit = m.fade(mkey(cid, K_LIT), lit_to, WASH);
+        if wash != to || lit != lit_to {
+            m.cover(*cell);
+        }
+        ui.c.text(name, *cell, &st.color(Color::lerp(palette::TEXT_DIM, palette::TEXT, lit)).center());
+    }
+    picked
+}
+
+/// A row's hover wash, rounded where the row meets the card's corners.
+fn fill_row(ui: &mut Ui, row: Rect, c: Color, (first, last): (bool, bool)) {
+    if !(first || last) {
+        ui.c.fill_rect(row, c);
+        return;
+    }
+    ui.c.clip(row);
+    let top = if first { row.y } else { row.y - GROUP_R };
+    let bottom = if last { row.bottom() } else { row.bottom() + GROUP_R };
+    ui.c.fill_rrect(Rect::new(row.x, top, row.w, bottom - top), GROUP_R, c);
+    ui.c.unclip();
+}
+
+/// The version card: the app's tile, "Island For Mac" and this version, and
+/// Check now; with a later version out, what it brings and how to get it
+/// (the island's Update sheet does the same).
+fn draw_version(ui: &mut Ui, st: &mut AppState, r: Rect, view: Rect, sf: &Surfaces) {
+    fill_group(ui, r, sf.group);
+    let head = Rect::new(r.x + ROW_PAD, r.y, r.w - 2.0 * ROW_PAD, 72.0);
+    let cy = head.center().y;
+    crate::oyen::app_icon(ui.c, Point::new(head.x + 20.0, cy), 40.0);
+    let tx = head.x + 54.0;
+    let clickable = visible(r, view).is_some_and(|v| v.h >= r.h - 0.5);
+    let check = clickable.then(|| crate::pages::settings::check_slot(ui, st, head)).flatten();
+    let right = check.map_or(head.right(), |b| b.x - 12.0);
+    let title_y = if cfg!(target_os = "macos") { cy - 11.0 } else { cy - 20.0 };
+    ui.c.text(if cfg!(windows) { "Island For Windows" } else { "Island For Mac" }, Rect::new(tx, title_y, (right - tx).max(0.0), 22.0), &TextStyle::headline());
+    #[cfg(not(target_os = "macos"))]
+    ui.c.text(&format!("Version {VERSION}"), Rect::new(tx, cy + 2.0, (right - tx).max(0.0), 17.0), &TextStyle::footnote().color(palette::TEXT_DIM));
+    if let Some(b) = check {
+        crate::pages::settings::draw_check(ui, st, b);
+    }
+    let Some(rel) = st.update.offer.clone() else { return };
+    let px = 1.0 / ui.c.scale().max(0.5);
+    let row = Rect::new(head.x, head.bottom(), head.w, r.bottom() - head.bottom());
+    ui.c.fill_rect(Rect::new(row.x, row.y, row.w, px), RULE);
+    let accent = st.accent;
+    // 更新入口重新核对签名并询问用户；不再提供下次启动自动安装。
+    let mut buttons: Vec<(&str, Command, PillStyle)> = Vec::new();
+    if st.update.ready {
+        buttons.push(("Install now", Command::Update, PillStyle::Primary(accent)));
+    } else {
+        buttons.push(("Download", Command::Update, PillStyle::Primary(accent)));
+    }
+    buttons.push(("What's new", Command::OpenUrl(rel.notes.clone()), PillStyle::Utility));
+    let mut x = row.right();
+    let by = row.center().y - PILL_SMALL / 2.0;
+    let mut picked = None;
+    for (i, (label, cmd, style)) in buttons.into_iter().enumerate().rev() {
+        let w = ui.pill_width(label, false, true);
+        x -= w;
+        let b = Rect::new(x, by, w, PILL_SMALL);
+        x -= PILL_GAP;
+        let clicked = if clickable {
+            ui.pill(wid_n("settingswin.update", i as u64), b, label, None, style).clicked
+        } else {
+            let mut none = Input::default();
+            let mut no_hits = Vec::new();
+            Ui::new(&mut *ui.c, &mut none, &mut no_hits, 0.0).pill(0, b, label, None, style);
+            false
+        };
+        if clicked {
+            picked = Some(cmd);
+        }
+    }
+    let tw = (x - 12.0 - row.x).max(0.0);
+    let cy = row.center().y;
+    #[cfg(target_os = "macos")]
+    ui.c.text("Update available", Rect::new(row.x, cy - 19.0, tw, 19.0), &TextStyle::body().weight(Weight::Semibold));
+    #[cfg(not(target_os = "macos"))]
+    crate::activities::text_with_dim(ui, "Update available", &rel.version, Rect::new(row.x, cy - 19.0, tw, 19.0), TextStyle::body().weight(Weight::Semibold));
+    ui.c.text(&rel.headline, Rect::new(row.x, cy + 1.0, tw, 17.0), &TextStyle::footnote().color(palette::TEXT_DIM));
+    if let Some(c) = picked {
+        st.cmd(c);
+    }
+}
+
+/// How tall the theme cards are together: as many rows as they fill.
+fn theme_cards_h() -> f32 {
+    let rows = THEMES.len().div_ceil(THEME_COLS) as f32;
+    rows * THEME_CARD_H + (rows - 1.0).max(0.0) * THEME_GAP
+}
+
+/// The `i`-th theme's card in the block `r` (under its caption): rows of
+/// [`THEME_COLS`] from the left, the last row as far as the themes go.
+fn theme_card(r: Rect, i: usize) -> Rect {
+    let cols = THEME_COLS as f32;
+    let w = ((r.w - (cols - 1.0) * THEME_GAP) / cols).floor();
+    let (row, col) = ((i / THEME_COLS) as f32, (i % THEME_COLS) as f32);
+    Rect::new(r.x + col * (w + THEME_GAP), r.y + GROUP_TITLE_H + row * (THEME_CARD_H + THEME_GAP), w, THEME_CARD_H)
+}
+
+/// The themes, a card each, three to a row: a small screen with the island
+/// on it as the theme draws it, the name and a line. The ring and the tick
+/// fade to the theme picked.
+fn draw_themes(ui: &mut Ui, st: &mut AppState, r: Rect, view: Rect, sf: &Surfaces, m: &mut Motion) {
+    ui.c.text("Theme", Rect::new(r.x + 2.0, r.y, r.w, GROUP_TITLE_H - 6.0), &TextStyle::footnote().weight(Weight::Semibold).color(palette::TEXT_DIM));
+    let accent = st.accent;
+    let mut picked = None;
+    for (i, (theme, name, line)) in THEMES.iter().enumerate() {
+        let c = theme_card(r, i);
+        let id = wid_n("settingswin.theme", i as u64);
+        let resp = match visible(c, view) {
+            Some(hit) => ui.button(id, hit),
+            None => Default::default(),
+        };
+        let on = st.settings.theme == *theme;
+        fill_group(ui, c, sf.group);
+        let lit_to = if resp.pressed {
+            1.0
+        } else if resp.hovered {
+            0.6
+        } else {
+            0.0
+        };
+        let lit = m.fade(mkey(id, K_WASH), lit_to, WASH);
+        if lit > 0.0 {
+            let over = if lit > 0.6 { sf.group_press } else { sf.group_hover };
+            ui.c.unthemed(|cv| cv.fill_rrect(c, GROUP_R, over.mul_alpha((lit / 0.6).min(1.0))));
+        }
+        let ring_to = if on { 1.0 } else { 0.0 };
+        let ring = m.fade(mkey(id, K_ON), ring_to, SWITCHING);
+        if lit != lit_to || ring != ring_to {
+            m.cover(c.inset(-2.0, -2.0));
+        }
+        if ring > 0.0 {
+            ui.c.stroke_rrect(c.inset(1.0, 1.0), GROUP_R - 1.0, accent.mul_alpha(ring), 2.0);
+        }
+        let screen = Rect::new(c.x + 10.0, c.y + 10.0, c.w - 20.0, THEME_PREVIEW_H);
+        ui.c.unthemed(|cv| draw_theme_preview(cv, *theme, screen));
+        let tx = c.x + 12.0;
+        let ty = screen.bottom() + 10.0;
+        let tw = c.w - 24.0 - if on { 20.0 } else { 0.0 };
+        ui.c.text(name, Rect::new(tx, ty, tw, 19.0), &TextStyle::body().weight(Weight::Semibold));
+        ui.c.text(line, Rect::new(tx, ty + 20.0, (c.w - 24.0).min(THEME_LINE_W), 34.0), &TextStyle::footnote().color(palette::TEXT_DIM).wrap().top());
+        if ring > 0.0 {
+            let dot = Point::new(c.right() - 20.0, ty + 9.5);
+            ui.c.with_alpha(ring, |cv| {
+                cv.fill_circle(dot, 8.0, accent);
+                cv.icon(Icon::Check, Rect::from_center(dot, 10.0, 10.0), palette::ON_ACCENT);
+            });
+        }
+        if resp.clicked {
+            picked = Some(*theme);
+        }
+    }
+    if let Some(t) = picked.filter(|t| *t != st.settings.theme) {
+        st.settings.theme = t;
+        st.cmd(Command::SaveSettings);
+    }
+}
+
+thread_local! {
+    /// The Diorama card's picture and the scale (pixels per DIP) it was
+    /// painted for: painted when the card first shows, kept while the
+    /// window is open ([`View`]'s drop lets it go).
+    static DIORAMA_KEPT: RefCell<Option<(f32, Image)>> = const { RefCell::new(None) };
+}
+
+/// The Diorama card's picture for a canvas of `scale` pixels per DIP: the
+/// theme's resting pill at [`DIORAMA_MOMENT`], at its own size (a smaller
+/// copy would smear its pixels and the time in its sky).
+fn diorama_picture(scale: f32) -> studio_diorama::Picture {
+    let (w, h) = (studio_diorama::width(DIORAMA_MOMENT.clock, DIORAMA_MOMENT.badge), studio_diorama::H);
+    studio_diorama::render(&DIORAMA_MOMENT, &studio_diorama::View { w, h, rest_w: w, rest_h: h, scale })
+}
+
+/// That picture as an image, painted once for a scale and kept. With it
+/// comes the painting it took the place of (the window moved to a screen of
+/// another scale), for the canvas to let go of.
+fn diorama_image(scale: f32) -> (Image, Option<Image>) {
+    DIORAMA_KEPT.with(|kept| {
+        let mut kept = kept.borrow_mut();
+        if let Some((_, image)) = kept.as_ref().filter(|(s, _)| *s == scale) {
+            return (image.clone(), None);
+        }
+        let p = diorama_picture(scale);
+        let image = ImageData::new(p.w, p.h, p.bgra);
+        let old = kept.replace((scale, image.clone())).map(|(_, old)| old);
+        (image, old)
+    })
+}
+
+/// Where the Diorama card's picture goes on its little `screen`: centred,
+/// floating [`DIORAMA_FLOAT`] below the top edge, on whole pixels and
+/// exactly as large as its `px` pixels are at `scale`. So it is drawn pixel
+/// for pixel: `Canvas::image` fills its rect, and a rect of another shape
+/// would crop the picture.
+fn diorama_spot(screen: Rect, px: (u32, u32), scale: f32) -> Rect {
+    let s = scale.max(0.25);
+    let snap = |v: f32| (v * s).round() / s;
+    let (w, h) = (px.0 as f32 / s, px.1 as f32 / s);
+    Rect::new(snap(screen.center().x - w / 2.0), snap(screen.y + DIORAMA_FLOAT), w, h)
+}
+
+/// A theme's island on a small screen: hanging from its top edge, glass,
+/// with Oyen's eyes, floating below it, or floating there as Diorama's
+/// picture. Drawn as it is, in either mode.
+fn draw_theme_preview(c: &mut Canvas, theme: Theme, screen: Rect) {
+    c.clip(screen);
+    c.fill_rrect(screen, 7.0, WALLPAPER);
+    c.fill_rrect(Rect::new(screen.x, screen.y + screen.h * 0.55, screen.w, screen.h), 7.0, Color::hex(0x56679C));
+    let cx = screen.center().x;
+    let clock = TextStyle::caption().weight(Weight::Semibold).tabular().center();
+    match theme {
+        Theme::Classic | Theme::Oyen | Theme::Glass => {
+            let body = Rect::new(cx - 34.0, screen.y, 68.0, 20.0);
+            let (fill, border) = match theme {
+                Theme::Glass => (Color::white(0.30), Some(Color::white(0.45))),
+                _ => (palette::ISLAND, None),
+            };
+            c.notch(body, 9.0, 5.0, fill, border);
+            if theme == Theme::Oyen {
+                // Oyen's eyes peek over the island's edge.
+                for dx in [-6.0, 6.0] {
+                    c.fill_rrect(Rect::from_center(Point::new(cx + dx, body.center().y), 5.0, 8.0), 2.5, palette::ORANGE);
+                }
+            } else {
+                c.text("10:08", body, &clock.color(palette::TEXT));
+            }
+        }
+        Theme::Pill => {
+            let body = Rect::new(cx - 36.0, screen.y + THEME_FLOAT, 72.0, 20.0);
+            c.fill_rrect(body.offset(0.0, 2.0), 10.0, Color::black(0.25));
+            c.fill_rrect(body, 10.0, palette::ISLAND);
+            c.text("10:08", body, &clock.color(palette::TEXT));
+        }
+        Theme::Diorama => {
+            // The picture itself, with the time in its sky.
+            let scale = c.scale();
+            let (image, old) = diorama_image(scale);
+            if let Some(old) = old {
+                c.forget_image(&old);
+            }
+            let body = diorama_spot(screen, (image.width, image.height), scale);
+            c.fill_rrect(body.offset(0.0, 2.0), body.h / 2.0, Color::black(0.25));
+            c.image_exact(&image, body, body.h / 2.0);
+        }
+    }
+    c.unclip();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use poni_core::settings::Settings;
+    use poni_core::store::Store;
+
+    fn state() -> AppState {
+        AppState::new(Settings::default(), Store::default())
+    }
+
+    fn rows(section: Section, st: &AppState) -> Vec<Item> {
+        blocks(section, st)
+            .into_iter()
+            .flat_map(|b| match b {
+                Block::Group(_, items) => items,
+                _ => Vec::new(),
+            })
+            .collect()
+    }
+
+    fn row(section: Section, st: &AppState, key: Key) -> Option<Item> {
+        rows(section, st).into_iter().find(|i| i.key == key)
+    }
+
+    #[test]
+    fn every_setting_the_window_has_saves_through_the_app() {
+        let mut st = state();
+        for s in Section::ALL {
+            for it in rows(s, &st) {
+                st.cmds.clear();
+                let act = match it.ctl {
+                    Ctl::Switch(_) => Act::Toggle,
+                    Ctl::Choice(..) => Act::Pick(0),
+                    Ctl::Stepper(_) => Act::Step(1),
+                    Ctl::Button(_) => Act::Press,
+                };
+                apply(&mut st, it.key, act);
+                let saved = st.cmds.iter().any(|c| matches!(c, Command::SaveSettings));
+                let opens = st.cmds.iter().any(|c| matches!(c, Command::OpenPath(_) | Command::OpenUrl(_)));
+                match it.key {
+                    // Start with Windows waits for its reading; the buttons open things.
+                    Key::Autostart => assert!(st.cmds.is_empty()),
+                    Key::DataFolder => assert!(opens, "{:?}", it.key),
+                    #[cfg(any(windows, target_os = "macos"))]
+                    Key::LyricsColor => assert!(st.cmds.iter().any(|c| matches!(c, Command::ChooseLyricsColor))),
+                    #[cfg(windows)]
+                    Key::ChooseFont => assert!(st.cmds.iter().any(|c| matches!(c, Command::ChooseFont))),
+                    #[cfg(windows)]
+                    Key::ChooseSound(module) => assert!(st.cmds.iter().any(|c| matches!(c, Command::ChooseSound(selected) if *selected == module))),
+                    #[cfg(target_os = "macos")]
+                    Key::AlertTone(module) => assert_eq!(st.cmds, vec![Command::ChooseAlertTone(module)]),
+                    #[cfg(any(windows, target_os = "macos"))]
+                    Key::MailAdd => assert!(st.cmds.iter().any(|c| matches!(c, Command::Mail(crate::mail::MailAction::EditAccount(None))))),
+                    #[cfg(any(windows, target_os = "macos"))]
+                    Key::CodexGuide => assert!(st.cmds.iter().any(|c| matches!(c, Command::CodexGuide))),
+                    _ => assert!(saved, "{:?} didn't save", it.key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn steppers_stay_in_range() {
+        let mut st = state();
+        for _ in 0..100 {
+            apply(&mut st, Key::Width, Act::Step(1));
+            apply(&mut st, Key::FocusMin, Act::Step(1));
+            apply(&mut st, Key::LongEvery, Act::Step(1));
+            apply(&mut st, Key::LyricsOffset, Act::Step(1));
+        }
+        let s = &st.settings;
+        assert_eq!((s.expanded_width, s.pomodoro.focus_min, s.pomodoro.long_every, s.lyrics_offset_ms), (900.0, 180, 12, -5000));
+        for _ in 0..100 {
+            apply(&mut st, Key::Width, Act::Step(-1));
+            apply(&mut st, Key::FocusMin, Act::Step(-1));
+        }
+        let s = &st.settings;
+        assert_eq!((s.expanded_width, s.pomodoro.focus_min), (480.0, 1));
+        // Minutes go by five, and by one below five.
+        assert_eq!((step_min(25, -1, 1, 180), step_min(5, -1, 1, 180), step_min(3, 1, 1, 180), step_min(5, 1, 1, 180)), (20, 4, 4, 10));
+    }
+
+    #[test]
+    fn delays_show_the_nearest_choice() {
+        let mut st = state();
+        let pick = |st: &AppState, k| match row(Section::Island, st, k).map(|i| i.ctl) {
+            Some(Ctl::Choice(_, sel)) => sel,
+            _ => None,
+        };
+        assert_eq!((pick(&st, Key::HoverDelay), pick(&st, Key::CloseDelay)), (Some(1), Some(0)));
+        st.settings.hover_delay_ms = 2000;
+        assert_eq!(pick(&st, Key::HoverDelay), Some(2));
+        apply(&mut st, Key::HoverDelay, Act::Pick(0));
+        assert_eq!(st.settings.hover_delay_ms, 120);
+        // A pick past the list changes nothing.
+        st.cmds.clear();
+        apply(&mut st, Key::CloseDelay, Act::Pick(9));
+        assert!(st.cmds.is_empty());
+    }
+
+    #[test]
+    fn tabs_flip_and_the_start_page_cycles_through_the_tabs() {
+        let mut st = state();
+        apply(&mut st, Key::Tab(PageKind::Shelf), Act::Toggle);
+        assert!(st.tab_hidden(PageKind::Shelf));
+        apply(&mut st, Key::Tab(PageKind::Shelf), Act::Toggle);
+        assert!(!st.tab_hidden(PageKind::Shelf));
+        // Opens on shows only while the island doesn't open where it was left.
+        assert!(row(Section::Tabs, &st, Key::StartPage).is_none());
+        apply(&mut st, Key::RememberPage, Act::Toggle);
+        assert!(row(Section::Tabs, &st, Key::StartPage).is_some());
+        let pages = start_pages(&st);
+        apply(&mut st, Key::StartPage, Act::Step(1));
+        assert_eq!(st.settings.start_page, pages[1].key());
+        apply(&mut st, Key::StartPage, Act::Step(-1));
+        apply(&mut st, Key::StartPage, Act::Step(-1));
+        assert_eq!(st.settings.start_page, pages[pages.len() - 1].key());
+        assert!(!pages.contains(&PageKind::Settings));
+    }
+
+    #[test]
+    fn notifications_switches_off_under_tabs_only_where_the_copy_can_read_them() {
+        let mut st = state();
+        let listed = |st: &AppState| row(Section::Tabs, st, Key::Tab(PageKind::Notifications)).is_some();
+        assert!(!listed(&st), "the download has no Notifications");
+        st.notify_can = true;
+        assert!(listed(&st) && st.notifications_on(), "on from the start in the Store copy");
+        apply(&mut st, Key::Tab(PageKind::Notifications), Act::Toggle);
+        assert!(!st.notifications_on() && st.cmds.iter().any(|c| matches!(c, Command::SaveSettings)));
+        apply(&mut st, Key::Tab(PageKind::Notifications), Act::Toggle);
+        assert!(st.notifications_on());
+    }
+
+    #[test]
+    fn idle_looks_follow_the_theme() {
+        let mut st = state();
+        let looks = |st: &AppState| match row(Section::Appearance, st, Key::IdleLook).map(|i| i.ctl) {
+            Some(Ctl::Choice(names, _)) => names,
+            _ => Vec::new(),
+        };
+        assert!(!looks(&st).contains(&"Status"));
+        st.settings.theme = Theme::Pill;
+        assert!(looks(&st).contains(&"Status"));
+        st.settings.theme = Theme::Oyen;
+        assert!(looks(&st).contains(&"Oyen"));
+        // Diorama rests as its picture: with the time, alone, or hidden. It
+        // draws its clock for a status bar picked in Pill, and the picture
+        // alone for eyes picked elsewhere.
+        st.settings.theme = Theme::Diorama;
+        st.settings.idle_style = IdleStyle::Status;
+        assert_eq!(looks(&st), ["Clock", "Minimal", "Hidden"]);
+        assert_eq!(row(Section::Appearance, &st, Key::IdleLook).map(|i| i.ctl), Some(Ctl::Choice(looks(&st), Some(0))));
+        st.settings.idle_style = IdleStyle::Eyes;
+        assert_eq!(row(Section::Appearance, &st, Key::IdleLook).map(|i| i.ctl), Some(Ctl::Choice(looks(&st), Some(1))));
+        // A pick there is one of its three.
+        apply(&mut st, Key::IdleLook, Act::Pick(2));
+        assert_eq!(st.settings.idle_style, IdleStyle::Hidden);
+        apply(&mut st, Key::IdleLook, Act::Pick(1));
+        assert_eq!(st.settings.idle_style, IdleStyle::Minimal);
+        st.cmds.clear();
+        apply(&mut st, Key::IdleLook, Act::Pick(3));
+        assert!(st.cmds.is_empty() && st.settings.idle_style == IdleStyle::Minimal);
+    }
+
+    /// Where a theme comes in the pickers. No `_` arm: a theme added to the
+    /// enum stops this compiling until it has a place, and then the test
+    /// below asks for its card.
+    fn place(t: Theme) -> usize {
+        match t {
+            Theme::Classic => 0,
+            Theme::Oyen => 1,
+            Theme::Glass => 2,
+            Theme::Pill => 3,
+            Theme::Diorama => 4,
+        }
+    }
+
+    #[test]
+    fn every_theme_has_a_card_in_the_pickers_order() {
+        assert_eq!(THEMES.map(|t| t.1), ["Classic", "Oyen", "Glass", "Pill", "Diorama"]);
+        for (i, (theme, name, line)) in THEMES.iter().enumerate() {
+            assert_eq!(place(*theme), i, "{name}");
+            assert!(!line.is_empty(), "{name} says what it is");
+        }
+    }
+
+    #[test]
+    fn the_theme_cards_sit_three_to_a_row_as_wide_as_the_content() {
+        // The content column: the card less the sidebar and the padding.
+        let r = Rect::new(SIDEBAR_W + PAD, CONTENT_Y, CARD_W - SIDEBAR_W - 2.0 * PAD, block_h(&state(), &Block::Themes));
+        let cards: Vec<Rect> = (0..THEMES.len()).map(|i| theme_card(r, i)).collect();
+        // Five themes: three, then two, the same size.
+        assert_eq!(cards.iter().filter(|c| c.y == cards[0].y).count(), 3);
+        assert_eq!(cards.iter().filter(|c| c.y == cards[3].y).count(), 2);
+        assert_eq!(r.h, GROUP_TITLE_H + 2.0 * THEME_CARD_H + THEME_GAP);
+        for (i, c) in cards.iter().enumerate() {
+            assert_eq!((c.w, c.h), (180.0, THEME_CARD_H), "card {i}");
+            assert!(c.x >= r.x && c.right() <= r.right() && c.y >= r.y + GROUP_TITLE_H && c.bottom() <= r.bottom(), "card {i} leaves the block: {c:?}");
+            for (j, d) in cards[..i].iter().enumerate() {
+                let apart = c.x >= d.right() + THEME_GAP || d.x >= c.right() + THEME_GAP || c.y >= d.bottom() + THEME_GAP || d.y >= c.bottom() + THEME_GAP;
+                assert!(apart, "cards {j} and {i} touch");
+            }
+        }
+        // A row ends where the groups under the cards do, and the second
+        // starts under the first.
+        assert_eq!((cards[0].x, cards[2].right(), cards[3].x), (r.x, r.right(), r.x));
+        // Every card's line keeps its measure, and its little screen has
+        // room for the widest island drawn on it with air either side.
+        assert!(cards[0].w - 24.0 >= THEME_LINE_W);
+        assert!(cards[0].w - 20.0 >= studio_diorama::width(DIORAMA_MOMENT.clock, DIORAMA_MOMENT.badge) + 2.0 * 16.0);
+    }
+
+    #[test]
+    fn appearance_fits_the_window_at_its_full_height_without_scrolling() {
+        let mut st = state();
+        // In every theme: Pill's fifth idle look is one more choice in its
+        // row, not one more row.
+        for (theme, _, _) in THEMES {
+            st.settings.theme = theme;
+            let content: f32 = blocks(Section::Appearance, &st).iter().map(|b| block_h(&st, b) + GROUP_GAP).sum();
+            // What the card shows under its title, less the room the scroll
+            // keeps under the last block.
+            assert!(content + 16.0 <= CARD_H - CONTENT_Y - 1.0, "{theme:?}: {content}");
+        }
+    }
+
+    #[test]
+    fn the_diorama_card_shows_the_themes_picture_whole_at_its_own_size() {
+        let screen = Rect::new(282.0, 104.0, 160.0, THEME_PREVIEW_H);
+        for scale in [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0] {
+            let p = diorama_picture(scale);
+            // The resting pill's own size, 100 x 38 DIP, to the pixel.
+            assert_eq!(p.w as f32, 100.0 * scale, "{scale}");
+            assert!((p.h as f32 - studio_diorama::H * scale).abs() <= 0.5, "{scale}: {} px tall", p.h);
+            assert_eq!(p.bgra.len(), (p.w * p.h * 4) as usize, "{scale}");
+            // Its place has the picture's own shape (so nothing of it is
+            // cropped or stretched) on whole pixels, inside the screen.
+            let at = diorama_spot(screen, (p.w, p.h), scale);
+            assert_eq!(((at.w * scale).round(), (at.h * scale).round()), (p.w as f32, p.h as f32), "{scale}: {at:?}");
+            assert!((at.w / at.h - p.w as f32 / p.h as f32).abs() < 1e-4, "{scale}: {at:?}");
+            for v in [at.x, at.y] {
+                assert!((v * scale - (v * scale).round()).abs() < 1e-3, "{scale}: {at:?}");
+            }
+            assert!((at.center().x - screen.center().x).abs() <= 0.5 / scale + 1e-3, "{scale}: {at:?}");
+            assert!((at.y - (screen.y + DIORAMA_FLOAT)).abs() <= 0.5 / scale + 1e-3 && at.bottom() + 2.0 < screen.bottom(), "{scale}: {at:?}");
+            // Room beside it on the card's screen, as beside Pill's capsule.
+            assert!(at.x - screen.x >= 16.0 && screen.right() - at.right() >= 16.0, "{scale}: {at:?}");
+        }
+        // A morning: the sun is up and the glass ball rests on the house.
+        assert!(!DIORAMA_MOMENT.night() && DIORAMA_MOMENT.lens == DIORAMA_MOMENT.rest_lens());
+        assert_eq!(DIORAMA_MOMENT.clock.map(|c| (c.hour, c.minute)), Some((10, 8)));
+        assert_eq!(DIORAMA_MOMENT.minute, 10.0 * 60.0 + 8.0);
+    }
+
+    #[test]
+    fn the_diorama_cards_picture_is_painted_once_and_goes_with_the_window() {
+        let view = View::new(Section::Appearance);
+        let (first, replaced) = diorama_image(2.0);
+        assert!(replaced.is_none());
+        assert_eq!((first.width, first.height), (200, 76));
+        // Drawn again, it is the same painting.
+        let (again, replaced) = diorama_image(2.0);
+        assert!(std::sync::Arc::ptr_eq(&first, &again) && replaced.is_none());
+        // On a screen of another scale it is painted for that one, and the
+        // canvas gets the old painting to let go of.
+        let (small, replaced) = diorama_image(1.0);
+        assert_eq!((small.width, small.height), (100, 38));
+        assert!(replaced.is_some_and(|old| std::sync::Arc::ptr_eq(&old, &first)));
+        // The window closes: nothing of it is kept.
+        drop(view);
+        assert!(DIORAMA_KEPT.with(|kept| kept.borrow().is_none()));
+    }
+
+    #[test]
+    fn motion_glides_without_overshoot_and_stops() {
+        let mut m = Motion::default();
+        // Asked for the first time, a value starts where it's going: the
+        // window opens complete.
+        m.begin(1.0, false);
+        assert_eq!(m.slide(7, 100.0, SLIDE), 100.0);
+        assert!(!m.moving);
+        // Sent elsewhere, it moves a little every frame at 144 Hz, never
+        // past where it's going, and stops there.
+        let (mut t, mut last, mut frames) = (1.0, 100.0f32, 0);
+        loop {
+            t += 1.0 / 144.0;
+            m.begin(t, false);
+            let x = m.slide(7, 0.0, SLIDE);
+            assert!(x <= last + 1e-4 && x >= 0.0, "frame {frames}: {x} after {last}");
+            last = x;
+            frames += 1;
+            if !m.moving {
+                break;
+            }
+            assert!(frames < 144, "still moving after a second");
+        }
+        assert_eq!(last, 0.0);
+        // About a third of a second, then no more frames.
+        assert!((30..60).contains(&frames), "{frames} frames");
+        m.begin(t + 1.0 / 144.0, false);
+        assert_eq!(m.slide(7, 0.0, SLIDE), 0.0);
+        assert!(!m.moving);
+        // A switch's knob arrives sooner; a hover wash sooner still.
+        let count = |pace: f32| {
+            let mut m = Motion::default();
+            m.begin(1.0, false);
+            m.fade(1, 0.0, pace);
+            let (mut t, mut n) = (1.0, 0);
+            loop {
+                t += 1.0 / 144.0;
+                m.begin(t, false);
+                m.fade(1, 1.0, pace);
+                n += 1;
+                if !m.moving || n > 300 {
+                    return n;
+                }
+            }
+        };
+        assert!(count(WASH) < count(SWITCHING) && count(SWITCHING) <= 48, "wash {} switch {}", count(WASH), count(SWITCHING));
+        // Less motion (or a picture): everything lands at once.
+        m.begin(t + 1.0, true);
+        assert_eq!(m.slide(7, 50.0, SLIDE), 50.0);
+        assert!(!m.moving);
+        // Out of rest, the first step is about one refresh, however long the
+        // window was still: no jump as it starts.
+        let mut m = Motion::default();
+        m.begin(1.0, false);
+        m.slide(9, 0.0, SLIDE);
+        m.begin(10.0, false);
+        let first = m.slide(9, 100.0, SLIDE);
+        assert!(first > 0.0 && first < 3.0, "first step {first}");
+        // A long pause on the way doesn't jump either: a step is at most a 30th of a second.
+        m.begin(20.0, false);
+        let next = m.slide(9, 100.0, SLIDE);
+        assert!(next < 40.0, "{first} then {next}");
+        // Another section opens: the switch in a row's place starts as it is
+        // (no slide from the last section's), while the sidebar's highlight
+        // glides on.
+        let mut m = Motion::default();
+        m.begin(1.0, false);
+        m.slide(1, 0.0, SLIDE);
+        m.content = true;
+        m.fade(2, 1.0, SWITCHING);
+        m.begin(1.0 + 1.0 / 144.0, false);
+        m.leave_section();
+        let highlight = m.slide(1, 100.0, SLIDE);
+        m.content = true;
+        assert_eq!(m.fade(2, 0.0, SWITCHING), 0.0);
+        assert!(highlight > 0.0 && highlight < 100.0 && m.moving, "{highlight}");
+    }
+
+    #[test]
+    fn lyrics_timing_reads_as_earlier_or_later() {
+        assert_eq!(offset_text(0), "On time");
+        assert_eq!(offset_text(300), "−0.3 秒");
+        assert_eq!(offset_text(-1200), "+1.2 秒");
+    }
+}

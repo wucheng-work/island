@@ -1,0 +1,227 @@
+[
+  {
+    "id": "recent-Antic",
+    "name": "怪诞",
+    "group": "新款提示音",
+    "english": "Antic",
+    "file": "recent-Antic.caf",
+    "bytes": 279938,
+    "sha256": "3bcd3a7ad2f7ae9c1e0f45765ce2e1f067522e8f57475caff00bfbc63f903cb9"
+  },
+  {
+    "id": "recent-Cheers",
+    "name": "欢呼",
+    "group": "新款提示音",
+    "english": "Cheers",
+    "file": "recent-Cheers.caf",
+    "bytes": 361214,
+    "sha256": "483fb3d7a4b39cd027aa0780456ddca008f6e591d5b3017fb3bcaed7e04f88da"
+  },
+  {
+    "id": "recent-Droplet",
+    "name": "水滴",
+    "group": "新款提示音",
+    "english": "Droplet",
+    "file": "recent-Droplet.caf",
+    "bytes": 378302,
+    "sha256": "3f61db82f2483425dad52e6066a4a2fa094ed533647719feaf7d1ebefc416e76"
+  },
+  {
+    "id": "recent-Handoff",
+    "name": "接力",
+    "group": "新款提示音",
+    "english": "Handoff",
+    "file": "recent-Handoff.caf",
+    "bytes": 1110962,
+    "sha256": "1eeb5d8994547213d5cd2625cb6cca1ebee1713589c9356c20778eba47e91dda"
+  },
+  {
+    "id": "recent-Milestone",
+    "name": "重要事件",
+    "group": "新款提示音",
+    "english": "Milestone",
+    "file": "recent-Milestone.caf",
+    "bytes": 799250,
+    "sha256": "1deaf0b24969994707e8193bdc88cdaa10e7a5cc8589d6185ceaac92496f5cf0"
+  },
+  {
+    "id": "recent-Passage",
+    "name": "通道",
+    "group": "新款提示音",
+    "english": "Passage",
+    "file": "recent-Passage.caf",
+    "bytes": 543038,
+    "sha256": "df6310f6ed28d74cb8fb51dea3734a38f48f373152a1c45e27826faa41abd073"
+  },
+  {
+    "id": "recent-Portal",
+    "name": "门户",
+    "group": "新款提示音",
+    "english": "Portal",
+    "file": "recent-Portal.caf",
+    "bytes": 580190,
+    "sha256": "a254a711aee746fe5edc84482664d73c787b97e4cf0c2e9405ad1958df1c45ab"
+  },
+  {
+    "id": "recent-Rattle",
+    "name": "沙锤",
+    "group": "新款提示音",
+    "english": "Rattle",
+    "file": "recent-Rattle.caf",
+    "bytes": 371966,
+    "sha256": "fc79d637182920c818bbcb1e070d8a02c525460d203dcb09ea6dcff24e35b1c2"
+  },
+  {
+    "id": "recent-Rebound",
+    "name": "反弹",
+    "group": "新款提示音",
+    "english": "Rebound",
+    "file": "recent-Rebound.caf",
+    "bytes": 868242,
+    "sha256": "c802ae28a87d08f9a3d42e8eef27a7c1c052cf55fad996f74e2e8314ff1ee420"
+  },
+  {
+    "id": "recent-Slide",
+    "name": "滑梯",
+    "group": "新款提示音",
+    "english": "Slide",
+    "file": "recent-Slide.caf",
+    "bytes": 350876,
+    "sha256": "7dce6e9605fe2dded72372d6dc651c2a83bf8b6760b8ed9d482702c33fdb0bf0"
+  },
+  {
+    "id": "recent-Welcome",
+    "name": "欢迎",
+    "group": "新款提示音",
+    "english": "Welcome",
+    "file": "recent-Welcome.caf",
+    "bytes": 1001284,
+    "sha256": "b3f5c21c4db520a41ee1df3d7650cf95bd4514519371f2eefc11d67fd200681a"
+  },
+  {
+    "id": "modern-Aurora",
+    "name": "极光",
+    "group": "常用提示音",
+    "english": "Aurora",
+    "file": "modern-Aurora.m4r",
+    "bytes": 27956,
+    "sha256": "25f8e33cb82a72cede1947d3515061b9f524a214b6995307ca922331ed87f54d"
+  },
+  {
+    "id": "modern-Bamboo",
+    "name": "竹子",
+    "group": "常用提示音",
+    "english": "Bamboo",
+    "file": "modern-Bamboo.m4r",
+    "bytes": 9672,
+    "sha256": "267227d291d25e0f26013095e8dbecc98774bc876695ff937919389b234d1512"
+  },
+  {
+    "id": "modern-Chord",
+    "name": "和弦",
+    "group": "常用提示音",
+    "english": "Chord",
+    "file": "modern-Chord.m4r",
+    "bytes": 44010,
+    "sha256": "5ee243f7a21eb8557b7f2e9262314b5bc0965b4c2f2f2729db76f4f0545634e4"
+  },
+  {
+    "id": "modern-Circles",
+    "name": "圆圈",
+    "group": "常用提示音",
+    "english": "Circles",
+    "file": "modern-Circles.m4r",
+    "bytes": 35757,
+    "sha256": "f968c06a2d1e715696e146f752450ac8a39d1410db39ac9180e012e96d269085"
+  },
+  {
+    "id": "modern-Complete",
+    "name": "完成",
+    "group": "常用提示音",
+    "english": "Complete",
+    "file": "modern-Complete.m4r",
+    "bytes": 14149,
+    "sha256": "6f9d0ac3ac1989d444b780ea96ecfd415086aeff7b179d71ce5d464690482a88"
+  },
+  {
+    "id": "modern-Hello",
+    "name": "哈喽",
+    "group": "常用提示音",
+    "english": "Hello",
+    "file": "modern-Hello.m4r",
+    "bytes": 24713,
+    "sha256": "d52845d93a7964f97c7fa4c14aa9948004078996d164e151530c139d9092039d"
+  },
+  {
+    "id": "modern-Input",
+    "name": "输入",
+    "group": "常用提示音",
+    "english": "Input",
+    "file": "modern-Input.m4r",
+    "bytes": 24764,
+    "sha256": "cda5f486930ce1f2159af522c594b9c061cbacf97e062ee7ba29e827bc3a9e96"
+  },
+  {
+    "id": "modern-Keys",
+    "name": "按键",
+    "group": "常用提示音",
+    "english": "Keys",
+    "file": "modern-Keys.m4r",
+    "bytes": 20576,
+    "sha256": "aa1ce56f896dd87bc47e00d29c1baf37f81395ddfcc79fa1c2d14fc6cc260d33"
+  },
+  {
+    "id": "modern-Note",
+    "name": "音符",
+    "group": "常用提示音",
+    "english": "Note",
+    "file": "modern-Note.m4r",
+    "bytes": 37967,
+    "sha256": "0befc40e99e104b6f1d8f8dd83beaf06d6fd8265a8fa3f6289474ed48fcf13dc"
+  },
+  {
+    "id": "modern-Popcorn",
+    "name": "爆米花",
+    "group": "常用提示音",
+    "english": "Popcorn",
+    "file": "modern-Popcorn.m4r",
+    "bytes": 18677,
+    "sha256": "21ce5f707a5f833a3b58d60face758fab67035827baf4d86136df16c3831c464"
+  },
+  {
+    "id": "modern-Pulse",
+    "name": "脉冲",
+    "group": "常用提示音",
+    "english": "Pulse",
+    "file": "modern-Pulse.m4r",
+    "bytes": 11959,
+    "sha256": "92a1f5eb55de5a76e0ef9a1a2365c43fcb790a7b3f9f78d65a7b0f8d9c6b49cd"
+  },
+  {
+    "id": "modern-Synth",
+    "name": "合成",
+    "group": "常用提示音",
+    "english": "Synth",
+    "file": "modern-Synth.m4r",
+    "bytes": 12251,
+    "sha256": "c42ef84ba303b6bcb57960c601a7c4af680b8f1da9e0bcf14aab039d7b8d368d"
+  },
+  {
+    "id": "classic-Telegraph",
+    "name": "敲打电报",
+    "group": "经典提示音",
+    "english": "Telegraph",
+    "file": "classic-Telegraph.m4r",
+    "bytes": 54399,
+    "sha256": "a9ad4f253edbfc7228103223af60278302c2eb1ae2bf98ba2b6907bfcc183217"
+  },
+  {
+    "id": "classic-Tri-Tone",
+    "name": "三全音",
+    "group": "经典提示音",
+    "english": "Tri-Tone",
+    "file": "classic-Tri-Tone.m4r",
+    "bytes": 36135,
+    "sha256": "57bf7fbf6aa6c33d66c1914ee730f11a73ddfec55112597ee6f2880cfc7d42f9"
+  }
+]

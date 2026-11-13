@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = ["crates/poni-core", "crates/studio-diorama", "crates/poni"]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+publish = false
+license = "MIT"
+repository = "https://github.com/wucheng-work/island"
+homepage = "https://github.com/wucheng-work/island"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+# JSON parsing runs for moments; Poni's per-frame code keeps opt-level 3.
+[profile.release.package.serde_json]
+opt-level = "s"
+# The Diorama theme's picture (crates/studio-diorama): painted once a minute
+# while the pill rests, and for the moment its glass ball rolls at sunrise
+# and sunset.
+[profile.release.package.studio-diorama]
+opt-level = "s"

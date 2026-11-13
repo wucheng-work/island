@@ -1,0 +1,311 @@
+name: Island release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish this version (select its existing v<version> tag; requires your update feed key)"
+        type: boolean
+        default: false
+      notarize_mac:
+        description: "Require Mac Developer ID signing and Apple notarization (failure stops the build; default is explicitly not notarized)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: island-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validate version, notes and repository
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      publish: ${{ steps.release.outputs.publish }}
+      notarize_mac: ${{ steps.release.outputs.notarize_mac }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: release
+        env:
+          REQUEST_PUBLISH: ${{ inputs.publish }}
+          REQUEST_NOTARIZE_MAC: ${{ inputs.notarize_mac }}
+          REPOSITORY_NOTARIZE_MAC: ${{ vars.ISLAND_MAC_NOTARIZE }}
+        run: |
+          set -euo pipefail
+          version=$(python3 tools/release.py version)
+          python3 tools/release.py check --require-notes --require-update-source --repository "$GITHUB_REPOSITORY"
+          publish=false
+          if [ "$GITHUB_EVENT_NAME" = push ] || [ "$REQUEST_PUBLISH" = true ]; then
+            test "$GITHUB_REF_TYPE" = tag || { echo "Publishing requires selecting the existing v$version tag" >&2; exit 1; }
+            python3 tools/release.py check --tag "$GITHUB_REF_NAME" --require-notes --require-update-source --repository "$GITHUB_REPOSITORY"
+            python3 -c 'import sys; sys.path.insert(0, "tools"); from make_update_feed import trusted_keys; trusted_keys()'
+            publish=true
+          fi
+          notarize_mac=false
+          if [ "$REQUEST_NOTARIZE_MAC" = true ] || [ "$REPOSITORY_NOTARIZE_MAC" = true ]; then
+            notarize_mac=true
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "notarize_mac=$notarize_mac" >> "$GITHUB_OUTPUT"
+          echo "Mac notarization policy: $notarize_mac" >> "$GITHUB_STEP_SUMMARY"
+
+  windows:
+    name: Windows build and portable package
+    needs: prepare
+    runs-on: windows-2025
+    env:
+      PONI_VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --locked --workspace --all-targets
+      - run: cargo test --locked --workspace --release
+      - run: cargo build --locked -p poni --release
+      - name: Package the portable app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $portable = "Island-For-Windows-$env:PONI_VERSION-x64"
+          New-Item -ItemType Directory -Force "dist\$portable" | Out-Null
+          Copy-Item target\release\poni.exe dist\Island.exe
+          Copy-Item dist\Island.exe "dist\$portable\Island.exe"
+          Copy-Item LICENSE, THIRD-PARTY-NOTICES.txt, docs\Windows使用说明.md, docs\codex-integration-windows.md "dist\$portable\"
+          Compress-Archive -Path "dist\$portable" -DestinationPath "dist\$portable.zip"
+          Get-FileHash dist\Island.exe, "dist\$portable.zip" -Algorithm SHA256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            dist/Island.exe
+            dist/Island-For-Windows-${{ env.PONI_VERSION }}-x64.zip
+          if-no-files-found: error
+
+  windows-package:
+    name: Windows NSIS installer
+    needs: [prepare, windows]
+    runs-on: ubuntu-24.04
+    env:
+      PONI_VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: dist
+      - name: Build the existing NSIS installer
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nsis
+          makensis -V2 -DVERSION="$PONI_VERSION" -DEXE="$PWD/dist/Island.exe" -DOUTDIR="$PWD/dist" installer/poni.nsi
+          test -s "dist/Island-For-Windows-Setup-$PONI_VERSION.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-assets
+          path: |
+            dist/Island-For-Windows-Setup-${{ env.PONI_VERSION }}.exe
+            dist/Island-For-Windows-${{ env.PONI_VERSION }}-x64.zip
+          if-no-files-found: error
+
+  mac:
+    name: Universal Mac app with explicit signing policy
+    needs: prepare
+    runs-on: macos-15
+    environment: release
+    env:
+      PONI_VERSION: ${{ needs.prepare.outputs.version }}
+      PUBLISH: ${{ needs.prepare.outputs.publish }}
+      NOTARIZE_MAC: ${{ needs.prepare.outputs.notarize_mac }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Check required official signing configuration
+        if: env.NOTARIZE_MAC == 'true'
+        env:
+          P12: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          for name in P12 P12_PASSWORD P8 NOTARY_KEY_ID NOTARY_ISSUER; do
+            test -n "${!name}" || { echo "Missing release signing secret: $name" >&2; exit 1; }
+          done
+      - run: cargo check --locked --workspace --all-targets
+      - run: cargo test --locked --workspace --release
+      - name: Build both Mac architectures
+        run: |
+          set -euo pipefail
+          cargo build --locked -p poni --release --target aarch64-apple-darwin
+          cargo build --locked -p poni --release --target x86_64-apple-darwin
+      - name: Existing Mac previews
+        run: |
+          native=$(rustc -vV | sed -n 's/^host: //p')
+          "target/$native/release/poni" --render previews --theme pill
+      - name: Build the existing MediaRemote adapter and icon
+        run: |
+          set -euo pipefail
+          cmake -S third_party/mediaremote-adapter -B build/mediaremote -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
+          cmake --build build/mediaremote --config Release -j 4
+          lipo -verify_arch arm64 x86_64 build/mediaremote/MediaRemoteAdapter.framework/MediaRemoteAdapter
+          python3 -m venv .icon-venv
+          .icon-venv/bin/pip install --quiet --disable-pip-version-check pillow
+          .icon-venv/bin/python tools/make_mac_icon.py build/IslandForMac.iconset
+          iconutil -c icns build/IslandForMac.iconset -o build/IslandForMac.icns
+      - name: Build the complete Mac app and test DMG
+        run: |
+          set -euo pipefail
+          MEDIAREMOTE_BUILD=build/mediaremote bash tools/make_mac_app.sh target/aarch64-apple-darwin/release/poni target/x86_64-apple-darwin/release/poni build/IslandForMac.icns dist
+          lipo -verify_arch arm64 x86_64 "dist/Island For Mac.app/Contents/MacOS/poni"
+          codesign --verify --deep --strict "dist/Island For Mac.app"
+      - name: Import the Developer ID into a temporary keychain
+        if: env.NOTARIZE_MAC == 'true'
+        env:
+          P12: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          kc="$RUNNER_TEMP/island-release.keychain-db"
+          pw=$(openssl rand -hex 24)
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$pw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$pw" "$kc"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$kc" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pw" "$kc" > /dev/null
+          security list-keychains -d user -s "$kc"
+          id=$(security find-identity -v -p codesigning "$kc" | awk '/Developer ID Application/ {print $2; exit}')
+          test -n "$id" || { echo "No valid Developer ID Application identity" >&2; exit 1; }
+          echo "SIGN_KEYCHAIN=$kc" >> "$GITHUB_ENV"
+          echo "SIGN_IDENTITY=$id" >> "$GITHUB_ENV"
+      - name: Sign, notarize and staple; never fall back to a test signature
+        if: env.NOTARIZE_MAC == 'true'
+        env:
+          P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          export NOTARY_KEY="$RUNNER_TEMP/notary-key.p8"
+          (umask 077 && printf '%s\n' "$P8" > "$NOTARY_KEY")
+          NOTARIZE=1 bash tools/sign_mac_dmg.sh "dist/Island-For-Mac-$PONI_VERSION-unsigned.dmg" signed "$SIGN_IDENTITY"
+          xcrun stapler validate "signed/Island-For-Mac-$PONI_VERSION.dmg"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "signed/Island-For-Mac-$PONI_VERSION.dmg"
+      - name: Select the declared Mac distribution policy
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          if [ "$NOTARIZE_MAC" = true ]; then
+            cp "signed/Island-For-Mac-$PONI_VERSION.dmg" "release-assets/Island-For-Mac-$PONI_VERSION.dmg"
+            echo "Mac package: Developer ID signed and Apple notarized." >> "$GITHUB_STEP_SUMMARY"
+          else
+            cp "dist/Island-For-Mac-$PONI_VERSION-unsigned.dmg" "release-assets/Island-For-Mac-$PONI_VERSION.dmg"
+            echo "Mac package: explicitly not notarized; uses the build's test signature. First launch may require Privacy & Security > Open Anyway." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: env.PUBLISH == 'true'
+        with:
+          name: mac-release-assets
+          path: release-assets/Island-For-Mac-${{ env.PONI_VERSION }}.dmg
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: env.PUBLISH != 'true' && env.NOTARIZE_MAC != 'true'
+        with:
+          name: mac-test-build-not-notarized
+          path: dist/Island-For-Mac-${{ env.PONI_VERSION }}-unsigned.dmg
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: env.PUBLISH != 'true' && env.NOTARIZE_MAC == 'true'
+        with:
+          name: mac-test-build-notarized
+          path: release-assets/Island-For-Mac-${{ env.PONI_VERSION }}.dmg
+          if-no-files-found: error
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/notary-key.p8"
+          if [ -f "$RUNNER_TEMP/island-release.keychain-db" ]; then
+            security delete-keychain "$RUNNER_TEMP/island-release.keychain-db"
+          fi
+
+  publish:
+    name: Sign the complete feed and publish once
+    needs: [prepare, windows-package, mac]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    env:
+      PONI_VERSION: ${{ needs.prepare.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      NOTARIZE_MAC: ${{ needs.prepare.outputs.notarize_mac }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-release-assets
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: mac-release-assets
+          path: dist
+      - name: Sign the complete local asset description
+        env:
+          UPDATE_FEED_KEY: ${{ secrets.UPDATE_FEED_KEY }}
+        run: |
+          set -euo pipefail
+          python3 tools/release.py check --tag "v$PONI_VERSION" --require-notes --require-update-source --repository "$GITHUB_REPOSITORY"
+          python3 tools/make_update_feed.py dist/latest.json --assets dist --version "$PONI_VERSION"
+          (cd dist && sha256sum "Island-For-Windows-Setup-$PONI_VERSION.exe" "Island-For-Windows-$PONI_VERSION-x64.zip" "Island-For-Mac-$PONI_VERSION.dmg" latest.json > SHA256SUMS.txt)
+      - name: Upload a draft, verify every file, then make it latest
+        run: |
+          set -euo pipefail
+          tag="v$PONI_VERSION"
+          python3 - <<'PYTHON'
+          import json, os, re, subprocess
+          result = subprocess.run(["gh", "api", "repos/" + os.environ["GITHUB_REPOSITORY"] + "/releases/latest"], capture_output=True, text=True)
+          if result.returncode:
+              if "HTTP 404" not in result.stderr:
+                  raise SystemExit(result.stderr)
+          else:
+              latest = json.loads(result.stdout)["tag_name"]
+              if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", latest):
+                  raise SystemExit("Existing latest release is not an Island stable version")
+              if tuple(map(int, latest[1:].split("."))) >= tuple(map(int, os.environ["PONI_VERSION"].split("."))):
+                  raise SystemExit("Release version must be newer than the current latest release")
+          PYTHON
+          # Never overwrite an existing published version or a prior failed draft.
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $tag already exists; review it before retrying" >&2
+            exit 1
+          fi
+          notes="$RUNNER_TEMP/island-release-notes.md"
+          cp "docs/release-notes/$tag.md" "$notes"
+          if [ "$NOTARIZE_MAC" = true ]; then
+            printf '\n\n### Mac 安装包策略\n\n本次 Mac 包已使用 Developer ID 签名，并通过 Apple 公证及票据装订。\n' >> "$notes"
+          else
+            printf '\n\n### Mac 安装包策略\n\n本次明确采用默认的未公证发行策略，Mac 包使用构建机测试签名，没有通过 Apple 公证。首次打开可能需要在“系统设置 → 隐私与安全性”中核对应用后选择“仍要打开”。更新清单签名用于验证发行来源与文件哈希，不代表 Apple 公证；Mac 更新仍由用户确认后手动安装。\n' >> "$notes"
+          fi
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "Island $PONI_VERSION" --notes-file "$notes"
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" "dist/Island-For-Windows-Setup-$PONI_VERSION.exe" "dist/Island-For-Windows-$PONI_VERSION-x64.zip" "dist/Island-For-Mac-$PONI_VERSION.dmg" dist/latest.json dist/SHA256SUMS.txt
+          mkdir "$RUNNER_TEMP/release-verify"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/release-verify"
+          (cd "$RUNNER_TEMP/release-verify" && sha256sum --check SHA256SUMS.txt)
+          cmp dist/SHA256SUMS.txt "$RUNNER_TEMP/release-verify/SHA256SUMS.txt"
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest
