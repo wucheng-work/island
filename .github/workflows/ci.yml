@@ -35,7 +35,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --locked --workspace --all-targets
-      - run: cargo test --locked --workspace
+      - name: Existing Windows tests
+        shell: pwsh
+        run: |
+          $started = Get-Date
+          cargo test --locked --workspace -- --nocapture
+          $testExit = $LASTEXITCODE
+          if ($testExit -ne 0) {
+            Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $started; Id = 1000, 1001 } -ErrorAction SilentlyContinue |
+              Select-Object TimeCreated, Id, Message | Format-List
+            # 保留并行运行的失败结果；串行重跑只用于定位现有测试的崩溃位置。
+            cargo test --locked -p poni --bin poni -- --nocapture --test-threads=1
+            exit $testExit
+          }
       - run: cargo build --locked --release -p poni
       - name: Existing Windows scene check
         shell: pwsh
