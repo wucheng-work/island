@@ -40,7 +40,9 @@ use poni_core::design::{control, radius, space};
 /// The card, in DIPs. Windows' window gives it room for its shadow and is
 /// less tall on a short screen (the content scrolls).
 pub const CARD_W: f32 = 840.0;
-pub const CARD_H: f32 = 580.0;
+// Windows 外观页还有字体设置，完整高度需容纳主题、字体和待机样式；
+// 矮屏仍由 settings_host 按工作区高度收缩并滚动。
+pub const CARD_H: f32 = if cfg!(windows) { 700.0 } else { 580.0 };
 /// Its corners when the window draws its own (Windows).
 const RADIUS: f32 = radius::WINDOW;
 const SIDEBAR_W: f32 = 220.0;
