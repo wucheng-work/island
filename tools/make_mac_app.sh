@@ -37,6 +37,9 @@ fi
 # 所选提示音随应用携带，避免依赖接收方系统的音效文件布局或版本。
 cp -R "$root/assets/sounds" "$app/Contents/Resources/Sounds"
 
+# 分享包同样保留源码与第三方组件的版权和许可说明。
+cp "$root/LICENSE" "$root/THIRD-PARTY-NOTICES.txt" "$app/Contents/Resources/"
+
 # What plays, from macOS's own now playing (browsers, Spotify, Music): the MediaRemote adapter's framework
 # and script (third_party/mediaremote-adapter), which /usr/bin/perl runs for the app
 # (crates/poni/src/mac/services/mediaremote.rs). MEDIAREMOTE_BUILD is its CMake build (mac.yml); without
