@@ -163,7 +163,7 @@ jobs:
           set -euo pipefail
           cmake -S third_party/mediaremote-adapter -B build/mediaremote -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
           cmake --build build/mediaremote --config Release -j 4
-          lipo -verify_arch arm64 x86_64 build/mediaremote/MediaRemoteAdapter.framework/MediaRemoteAdapter
+          lipo build/mediaremote/MediaRemoteAdapter.framework/MediaRemoteAdapter -verify_arch arm64 x86_64
           python3 -m venv .icon-venv
           .icon-venv/bin/pip install --quiet --disable-pip-version-check pillow
           .icon-venv/bin/python tools/make_mac_icon.py build/IslandForMac.iconset
@@ -172,7 +172,7 @@ jobs:
         run: |
           set -euo pipefail
           MEDIAREMOTE_BUILD=build/mediaremote bash tools/make_mac_app.sh target/aarch64-apple-darwin/release/poni target/x86_64-apple-darwin/release/poni build/IslandForMac.icns dist
-          lipo -verify_arch arm64 x86_64 "dist/Island For Mac.app/Contents/MacOS/poni"
+          lipo "dist/Island For Mac.app/Contents/MacOS/poni" -verify_arch arm64 x86_64
           codesign --verify --deep --strict "dist/Island For Mac.app"
       - name: Import the Developer ID into a temporary keychain
         if: env.NOTARIZE_MAC == 'true'
