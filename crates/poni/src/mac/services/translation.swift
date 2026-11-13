@@ -117,7 +117,7 @@ private final class MailTranslationRequest {
             if content.isEmpty {
                 result += part
             } else {
-                let prefix = part.prefix(while: { $0.isWhitespace })
+                let prefix = String(part.prefix(while: { $0.isWhitespace }))
                 let suffix = String(part.reversed().prefix(while: { $0.isWhitespace }).reversed())
                 do {
                     let translated = try await session.translate(content).targetText
