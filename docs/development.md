@@ -42,6 +42,8 @@ Mac Intel 构建目标为 `x86_64-apple-darwin`，只在安装了该目标及兼
 
 Mac 原生定位、附件预览与翻译桥由 `build.rs` 根据 Mac 目标编译并链接，Windows 不构建这些桥。Windows EXE 资源版本由 Cargo 生成。现有 CI 的 Windows 与 Mac 工作流分别检查同一份源码；本地检查不启动或修改外部工作流。
 
+Mac 构建需要 Xcode 26 或更新版本提供的 macOS 26 SDK 与 Swift 6.2 或更新编译器，邮件翻译桥使用该 SDK 的接口；应用最低部署版本仍为 macOS 14，邮件翻译只在 macOS 26 或更新版本启用。GitHub 的 `macos-15` runner 默认 Xcode 16，因此检查和发布流程通过 `DEVELOPER_DIR` 明确选择镜像已安装的 Xcode 26.3。
+
 ## 版本与打包
 
 每次明确请求新安装包时，将根 `Cargo.toml` 中 patch 加 1，再运行 Cargo 更新锁文件，核对只变更三个工作区包版本。同次任务的 Mac 与 Windows 包使用同一版本；失败重试沿用已经分配的版本。单纯合并或修改源码不代表打包，不自动加号。

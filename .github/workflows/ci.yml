@@ -52,6 +52,9 @@ jobs:
   mac:
     name: Mac compile, existing tests and previews
     runs-on: macos-15
+    env:
+      # 邮件翻译桥使用 macOS 26 SDK；runner 默认仍是 Xcode 16。
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
