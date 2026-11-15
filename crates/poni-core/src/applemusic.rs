@@ -48,7 +48,9 @@ pub fn find_bundle_urls(html: &str) -> Vec<String> {
     let mut rest = html;
     while let Some(i) = rest.find("/assets/index") {
         let tail = &rest[i..];
-        let end = tail.find(|c: char| c == '"' || c == '\'' || c == '<' || c == '>' || c.is_whitespace()).unwrap_or(tail.len());
+        let end = tail
+            .find(|c: char| c == '"' || c == '\'' || c == '<' || c == '>' || c.is_whitespace())
+            .unwrap_or(tail.len());
         let path = &tail[..end];
         if path.ends_with(".js") && !path.contains("legacy") {
             let url = format!("{ORIGIN}{path}");
@@ -68,19 +70,28 @@ pub fn find_developer_token(js: &str) -> Option<DevToken> {
     let mut rest = js;
     while let Some(i) = rest.find("eyJ") {
         let tail = &rest[i..];
-        let len = tail.find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')).unwrap_or(tail.len());
+        let len = tail
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.'))
+            .unwrap_or(tail.len());
         let candidate = &tail[..len];
         rest = &tail[3..];
         let parts: Vec<&str> = candidate.split('.').collect();
         if parts.len() != 3 || parts.iter().any(|p| p.is_empty()) {
             continue;
         }
-        let (Some(header), Some(payload)) = (decode_json(parts[0]), decode_json(parts[1])) else { continue };
-        let token = DevToken { token: candidate.to_string(), expires_at: payload["exp"].as_i64().unwrap_or(0) };
+        let (Some(header), Some(payload)) = (decode_json(parts[0]), decode_json(parts[1])) else {
+            continue;
+        };
+        let token = DevToken {
+            token: candidate.to_string(),
+            expires_at: payload["exp"].as_i64().unwrap_or(0),
+        };
         if header["kid"] == "WebPlayKid" || payload["iss"] == "AMPWebPlay" {
             return Some(token);
         }
-        let for_apple = payload["root_https_origin"].as_array().is_some_and(|a| a.iter().any(|o| o == "apple.com"));
+        let for_apple = payload["root_https_origin"]
+            .as_array()
+            .is_some_and(|a| a.iter().any(|o| o == "apple.com"));
         if for_apple && fallback.is_none() {
             fallback = Some(token);
         }
@@ -103,14 +114,17 @@ pub fn clean_user_token(text: &str) -> Option<String> {
     let value = match text.find(NAME) {
         Some(i) => {
             let after = text[i + NAME.len()..].trim_start();
-            let after = after.strip_prefix('=').or_else(|| after.strip_prefix(':'))?;
+            let after = after
+                .strip_prefix('=')
+                .or_else(|| after.strip_prefix(':'))?;
             after.split(';').next().unwrap_or("")
         }
         None => text,
     };
     let value = value.trim().trim_matches(|c| c == '"' || c == '\'').trim();
     let ok_char = |c: char| c.is_ascii_alphanumeric() || "+/=_-.%".contains(c);
-    (value.len() >= 80 && value.len() <= 8192 && value.chars().all(ok_char)).then(|| value.to_string())
+    (value.len() >= 80 && value.len() <= 8192 && value.chars().all(ok_char))
+        .then(|| value.to_string())
 }
 
 pub fn storefront_url() -> String {
@@ -119,24 +133,37 @@ pub fn storefront_url() -> String {
 
 pub fn search_url(storefront: &str, q: &TrackQuery) -> String {
     let term = format!("{} {}", q.artist, q.title);
-    with_query(&format!("{API_BASE}/catalog/{}/search", encode(storefront)), &[("term", term.trim()), ("types", "songs"), ("limit", "10")])
+    with_query(
+        &format!("{API_BASE}/catalog/{}/search", encode(storefront)),
+        &[("term", term.trim()), ("types", "songs"), ("limit", "10")],
+    )
 }
 
 pub fn lyrics_url(storefront: &str, song_id: &str) -> String {
-    format!("{API_BASE}/catalog/{}/songs/{}/lyrics", encode(storefront), encode(song_id))
+    format!(
+        "{API_BASE}/catalog/{}/songs/{}/lyrics",
+        encode(storefront),
+        encode(song_id)
+    )
 }
 
 /// The account's storefront ("id", "us", …) from `/me/storefront`.
 pub fn parse_storefront(json: &str) -> Option<String> {
     let v: Value = serde_json::from_str(json).ok()?;
     let id = v["data"][0]["id"].as_str()?.trim();
-    (!id.is_empty() && id.len() <= 8 && id.chars().all(|c| c.is_ascii_alphanumeric())).then(|| id.to_ascii_lowercase())
+    (!id.is_empty() && id.len() <= 8 && id.chars().all(|c| c.is_ascii_alphanumeric()))
+        .then(|| id.to_ascii_lowercase())
 }
 
 pub fn parse_search(json: &str) -> Result<Vec<AmSong>, String> {
     let v: Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
-    let Some(results) = v.get("results") else { return Err("no \"results\" in the reply".into()) };
-    let songs = results["songs"]["data"].as_array().map(Vec::as_slice).unwrap_or_default();
+    let Some(results) = v.get("results") else {
+        return Err("no \"results\" in the reply".into());
+    };
+    let songs = results["songs"]["data"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
     Ok(songs
         .iter()
         .filter_map(|s| {
@@ -176,7 +203,10 @@ pub fn best_song<'a>(songs: &'a [AmSong], q: &TrackQuery) -> Option<&'a AmSong> 
         if q.duration_s > 0 {
             // 合辑可能收录同一录音，但不同专辑必须采用更严格的时长约束。
             let max_drift = if same_album { MAX_SYNC_DRIFT_S } else { 2.0 };
-            if !song.duration_s.is_finite() || song.duration_s <= 0.0 || (song.duration_s - q.duration_s as f64).abs() > max_drift {
+            if !song.duration_s.is_finite()
+                || song.duration_s <= 0.0
+                || (song.duration_s - q.duration_s as f64).abs() > max_drift
+            {
                 continue;
             }
         } else if !same_album {
@@ -198,7 +228,9 @@ pub fn best_song<'a>(songs: &'a [AmSong], q: &TrackQuery) -> Option<&'a AmSong> 
         return None;
     }
     same_album_matches.sort_by(|a, b| {
-        (a.duration_s - q.duration_s as f64).abs().total_cmp(&(b.duration_s - q.duration_s as f64).abs())
+        (a.duration_s - q.duration_s as f64)
+            .abs()
+            .total_cmp(&(b.duration_s - q.duration_s as f64).abs())
     });
     let best_distance = (same_album_matches[0].duration_s - q.duration_s as f64).abs();
     let next_distance = (same_album_matches[1].duration_s - q.duration_s as f64).abs();
@@ -219,7 +251,13 @@ pub fn to_record(song: &AmSong, lyrics: &Lyrics) -> LrclibRecord {
         lyrics
             .lines
             .iter()
-            .map(|l| if timed { format!("[{}]{}", lrc_stamp(l.time_s), l.text) } else { l.text.clone() })
+            .map(|l| {
+                if timed {
+                    format!("[{}]{}", lrc_stamp(l.time_s), l.text)
+                } else {
+                    l.text.clone()
+                }
+            })
             .collect::<Vec<_>>()
             .join("\n")
     };
@@ -280,7 +318,10 @@ mod tests {
         let bytes = s.as_bytes();
         let mut out = String::new();
         for chunk in bytes.chunks(3) {
-            let n = chunk.iter().enumerate().fold(0u32, |n, (i, b)| n | (*b as u32) << (16 - 8 * i));
+            let n = chunk
+                .iter()
+                .enumerate()
+                .fold(0u32, |n, (i, b)| n | (*b as u32) << (16 - 8 * i));
             for i in 0..=chunk.len() {
                 out.push(ABC[(n >> (18 - 6 * i) & 63) as usize] as char);
             }
@@ -294,7 +335,14 @@ mod tests {
 
     #[test]
     fn base64url_roundtrip() {
-        for s in ["", "a", "ab", "abc", "{\"kid\":\"WebPlayKid\"}", "\u{e9}t\u{e9}"] {
+        for s in [
+            "",
+            "a",
+            "ab",
+            "abc",
+            "{\"kid\":\"WebPlayKid\"}",
+            "\u{e9}t\u{e9}",
+        ] {
             assert_eq!(base64url(&b64(s)).unwrap(), s.as_bytes());
         }
         assert!(base64url("not base64!").is_none());
@@ -302,8 +350,14 @@ mod tests {
 
     #[test]
     fn finds_the_web_player_token() {
-        let other = jwt(r#"{"alg":"ES256","kid":"OTHER"}"#, r#"{"iss":"X","exp":100,"root_https_origin":["apple.com"]}"#);
-        let web = jwt(r#"{"alg":"ES256","kid":"WebPlayKid"}"#, r#"{"iss":"AMPWebPlay","exp":1798583676}"#);
+        let other = jwt(
+            r#"{"alg":"ES256","kid":"OTHER"}"#,
+            r#"{"iss":"X","exp":100,"root_https_origin":["apple.com"]}"#,
+        );
+        let web = jwt(
+            r#"{"alg":"ES256","kid":"WebPlayKid"}"#,
+            r#"{"iss":"AMPWebPlay","exp":1798583676}"#,
+        );
         let js = format!(r#"var a="eyJnot.a.token";const t="{other}",u="{web}";"#);
         let t = find_developer_token(&js).unwrap();
         assert_eq!(t.token, web);
@@ -313,15 +367,36 @@ mod tests {
         assert_eq!(t.token, other);
         assert!(find_developer_token("no tokens here eyJ").is_none());
 
-        assert!(!dev_token_stale(&DevToken { token: "t".into(), expires_at: 1798583676 }, 1_790_000_000));
-        assert!(dev_token_stale(&DevToken { token: "t".into(), expires_at: 1000 }, 1000 - 3600));
-        assert!(!dev_token_stale(&DevToken { token: "t".into(), expires_at: 0 }, i64::MAX));
+        assert!(!dev_token_stale(
+            &DevToken {
+                token: "t".into(),
+                expires_at: 1798583676
+            },
+            1_790_000_000
+        ));
+        assert!(dev_token_stale(
+            &DevToken {
+                token: "t".into(),
+                expires_at: 1000
+            },
+            1000 - 3600
+        ));
+        assert!(!dev_token_stale(
+            &DevToken {
+                token: "t".into(),
+                expires_at: 0
+            },
+            i64::MAX
+        ));
     }
 
     #[test]
     fn finds_bundle_urls() {
         let html = r#"<script type="module" crossorigin src="/assets/index~ea66e33958.js"></script><link href="/assets/index~ea66e33958.css"><script src="/assets/index-legacy~1.js"></script>"#;
-        assert_eq!(find_bundle_urls(html), vec!["https://music.apple.com/assets/index~ea66e33958.js".to_string()]);
+        assert_eq!(
+            find_bundle_urls(html),
+            vec!["https://music.apple.com/assets/index~ea66e33958.js".to_string()]
+        );
         assert!(find_bundle_urls("<html></html>").is_empty());
     }
 
@@ -329,10 +404,22 @@ mod tests {
     fn cleans_user_tokens() {
         let raw = "Ak".to_string() + &"x".repeat(120) + "+/=";
         assert_eq!(clean_user_token(&raw).as_deref(), Some(raw.as_str()));
-        assert_eq!(clean_user_token(&format!("  \"{raw}\"\n")).as_deref(), Some(raw.as_str()));
-        assert_eq!(clean_user_token(&format!("media-user-token={raw}")).as_deref(), Some(raw.as_str()));
-        assert_eq!(clean_user_token(&format!("itre=1; media-user-token={raw}; pldfltcid=abc")).as_deref(), Some(raw.as_str()));
-        assert_eq!(clean_user_token(&format!("media-user-token: {raw}")).as_deref(), Some(raw.as_str()));
+        assert_eq!(
+            clean_user_token(&format!("  \"{raw}\"\n")).as_deref(),
+            Some(raw.as_str())
+        );
+        assert_eq!(
+            clean_user_token(&format!("media-user-token={raw}")).as_deref(),
+            Some(raw.as_str())
+        );
+        assert_eq!(
+            clean_user_token(&format!("itre=1; media-user-token={raw}; pldfltcid=abc")).as_deref(),
+            Some(raw.as_str())
+        );
+        assert_eq!(
+            clean_user_token(&format!("media-user-token: {raw}")).as_deref(),
+            Some(raw.as_str())
+        );
         assert!(clean_user_token("hello").is_none());
         assert!(clean_user_token(&format!("{raw} {raw}")).is_none());
         assert!(clean_user_token("media-user-token=").is_none());
@@ -340,18 +427,32 @@ mod tests {
 
     #[test]
     fn urls() {
-        let q = TrackQuery { title: "Paper Boats".into(), artist: "The Lanterns".into(), album: String::new(), duration_s: 201 };
+        let q = TrackQuery {
+            title: "Paper Boats".into(),
+            artist: "The Lanterns".into(),
+            album: String::new(),
+            duration_s: 201,
+        };
         assert_eq!(
             search_url("id", &q),
             "https://amp-api.music.apple.com/v1/catalog/id/search?term=The%20Lanterns%20Paper%20Boats&types=songs&limit=10"
         );
-        assert_eq!(lyrics_url("id", "1234"), "https://amp-api.music.apple.com/v1/catalog/id/songs/1234/lyrics");
-        assert_eq!(storefront_url(), "https://amp-api.music.apple.com/v1/me/storefront");
+        assert_eq!(
+            lyrics_url("id", "1234"),
+            "https://amp-api.music.apple.com/v1/catalog/id/songs/1234/lyrics"
+        );
+        assert_eq!(
+            storefront_url(),
+            "https://amp-api.music.apple.com/v1/me/storefront"
+        );
     }
 
     #[test]
     fn reads_replies() {
-        assert_eq!(parse_storefront(r#"{"data":[{"id":"id","type":"storefronts"}]}"#).as_deref(), Some("id"));
+        assert_eq!(
+            parse_storefront(r#"{"data":[{"id":"id","type":"storefronts"}]}"#).as_deref(),
+            Some("id")
+        );
         assert_eq!(parse_storefront(r#"{"data":[]}"#), None);
         assert_eq!(parse_storefront(r#"{"data":[{"id":"../x"}]}"#), None);
 
@@ -365,16 +466,27 @@ mod tests {
         assert_eq!(songs.len(), 3);
         assert_eq!(songs[1].album, "Harbor (Deluxe)");
         assert!((songs[1].duration_s - 201.5).abs() < 1e-9);
-        let q = TrackQuery { title: "Paper Boats".into(), artist: "The Lanterns".into(), album: String::new(), duration_s: 201 };
+        let q = TrackQuery {
+            title: "Paper Boats".into(),
+            artist: "The Lanterns".into(),
+            album: String::new(),
+            duration_s: 201,
+        };
         // The synced one by the right artist, not the plain-only or the cover.
         assert_eq!(best_song(&songs, &q).unwrap().id, "12");
-        let other = TrackQuery { title: "Other Song".into(), ..q.clone() };
+        let other = TrackQuery {
+            title: "Other Song".into(),
+            ..q.clone()
+        };
         assert!(best_song(&songs, &other).is_none());
         assert!(parse_search(r#"{"results":{}}"#).unwrap().is_empty());
         assert!(parse_search(r#"{"errors":[]}"#).is_err());
         assert!(parse_search("<html>").is_err());
 
-        assert_eq!(parse_lyrics(r#"{"data":[{"attributes":{"ttml":"<tt/>"}}]}"#).as_deref(), Some("<tt/>"));
+        assert_eq!(
+            parse_lyrics(r#"{"data":[{"attributes":{"ttml":"<tt/>"}}]}"#).as_deref(),
+            Some("<tt/>")
+        );
         assert_eq!(parse_lyrics(r#"{"data":[]}"#), None);
     }
 
@@ -389,17 +501,34 @@ mod tests {
             has_lyrics: true,
             has_synced: true,
         };
-        let line = |t: f64, s: &str| LyricLine { time_s: t, text: s.into() };
-        let lyrics = Lyrics { lines: vec![line(10.5, "Paper boats drift"), line(16.0, ""), line(62.25, "Harbor lights"), line(3725.0, "Late row")], synced: true };
+        let line = |t: f64, s: &str| LyricLine {
+            time_s: t,
+            text: s.into(),
+        };
+        let lyrics = Lyrics {
+            lines: vec![
+                line(10.5, "Paper boats drift"),
+                line(16.0, ""),
+                line(62.25, "Harbor lights"),
+                line(3725.0, "Late row"),
+            ],
+            synced: true,
+        };
         let r = to_record(&song, &lyrics);
         assert_eq!(r.id, 12);
         assert_eq!(r.duration, Some(201.5));
         let back = parse_lrc(r.synced_lyrics.as_deref().unwrap());
         assert!(back.synced);
         assert_eq!(back.lines, lyrics.lines);
-        assert_eq!(r.plain_lyrics.as_deref(), Some("Paper boats drift\n\nHarbor lights\nLate row"));
+        assert_eq!(
+            r.plain_lyrics.as_deref(),
+            Some("Paper boats drift\n\nHarbor lights\nLate row")
+        );
 
-        let unsynced = Lyrics { lines: vec![line(0.0, "One row")], synced: false };
+        let unsynced = Lyrics {
+            lines: vec![line(0.0, "One row")],
+            synced: false,
+        };
         let r = to_record(&song, &unsynced);
         assert_eq!(r.synced_lyrics, None);
         assert_eq!(r.plain_lyrics.as_deref(), Some("One row"));

@@ -7,8 +7,8 @@
 //! is light or dark as Windows' apps are.
 
 use crate::gfx::Gfx;
-use crate::settings_window::{Frame, Painted, View, CARD_H, CARD_W};
 use crate::settings_model::{Key, Section};
+use crate::settings_window::{Frame, Painted, View, CARD_H, CARD_W};
 use crate::state::AppState;
 use poni_core::geom::{Point, Rect};
 use windows::core::{w, Result, PCWSTR};
@@ -76,7 +76,10 @@ pub fn register(wndproc: crate::window::WndProc) -> Result<()> {
 
 /// The window's size in pixels at `scale`, for a card `card_h` tall.
 fn surface_px(scale: f32, card_h: f32) -> (i32, i32) {
-    (((CARD_W + 2.0 * MARGIN) * scale).ceil() as i32, ((card_h + 2.0 * MARGIN) * scale).ceil() as i32)
+    (
+        ((CARD_W + 2.0 * MARGIN) * scale).ceil() as i32,
+        ((card_h + 2.0 * MARGIN) * scale).ceil() as i32,
+    )
 }
 
 /// The card inside the window, in DIPs.
@@ -86,7 +89,9 @@ pub fn card_rect(card_h: f32) -> Rect {
 
 /// How tall the card can be on a work area `work_h` pixels tall.
 fn card_h_for(work_h: i32, scale: f32) -> f32 {
-    (work_h as f32 / scale - 2.0 * MARGIN - 16.0).clamp(CARD_H_MIN, CARD_H).floor()
+    (work_h as f32 / scale - 2.0 * MARGIN - 16.0)
+        .clamp(CARD_H_MIN, CARD_H)
+        .floor()
 }
 
 impl SettingsWindow {
@@ -124,7 +129,18 @@ impl SettingsWindow {
             }
         };
         let light = crate::services::apps_use_light_theme();
-        Ok(SettingsWindow { hwnd, gfx, view: View::new(section), text_input: Default::default(), at: (x, y), dpi, card_h, tracking: false, light, reduce: animations_off() })
+        Ok(SettingsWindow {
+            hwnd,
+            gfx,
+            view: View::new(section),
+            text_input: Default::default(),
+            at: (x, y),
+            dpi,
+            card_h,
+            tracking: false,
+            light,
+            reduce: animations_off(),
+        })
     }
 
     pub fn set_font_family(&mut self, name: &str) {
@@ -179,7 +195,13 @@ impl SettingsWindow {
     /// dark as Windows' apps are. `only`: a frame of a glide, which redraws
     /// and shows only that part (DIPs). `capture`: keep this frame's pixels
     /// for the self-test.
-    pub fn paint(&mut self, st: &mut AppState, now: f64, only: Option<Rect>, capture: bool) -> Painted {
+    pub fn paint(
+        &mut self,
+        st: &mut AppState,
+        now: f64,
+        only: Option<Rect>,
+        capture: bool,
+    ) -> Painted {
         let (w, h) = surface_px(self.scale(), self.card_h);
         if let Err(e) = self.gfx.set_surface(w, h) {
             crate::pwarn!("settings window: surface failed ({e})");
@@ -187,16 +209,35 @@ impl SettingsWindow {
         }
         let light = self.light;
         self.gfx.set_look(poni_core::look::glass(light));
-        let full = RECT { left: 0, top: 0, right: w, bottom: h };
+        let full = RECT {
+            left: 0,
+            top: 0,
+            right: w,
+            bottom: h,
+        };
         if capture {
             self.gfx.request_capture(full);
         }
-        let frame = Frame { card: self.card(), own_chrome: true, top: 0.0, still: capture || self.reduce };
-        let part = only.filter(|_| !capture && !self.gfx.draws_all()).map(|r| crate::gfx::px_rect(r, self.scale(), 1, w, h));
+        let frame = Frame {
+            card: self.card(),
+            own_chrome: true,
+            top: 0.0,
+            still: capture || self.reduce,
+        };
+        let part = only
+            .filter(|_| !capture && !self.gfx.draws_all())
+            .map(|r| crate::gfx::px_rect(r, self.scale(), 1, w, h));
         // A glide's frame draws over exactly the pixels it cleared: whole
         // pixels, one more round what moves.
         let s = self.scale();
-        let clip = part.map(|p| Rect::new(p.left as f32 / s, p.top as f32 / s, (p.right - p.left) as f32 / s, (p.bottom - p.top) as f32 / s));
+        let clip = part.map(|p| {
+            Rect::new(
+                p.left as f32 / s,
+                p.top as f32 / s,
+                (p.right - p.left) as f32 / s,
+                (p.bottom - p.top) as f32 / s,
+            )
+        });
         self.view.input.ime_anchor = None;
         let out = match self.gfx.begin(part.unwrap_or(full)) {
             Ok(mut canvas) => {
@@ -230,9 +271,11 @@ impl SettingsWindow {
         }
         let out = out.unwrap_or_default();
         match out.focus {
-            Some(true) => unsafe { let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(self.hwnd); },
+            Some(true) => unsafe {
+                let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(self.hwnd);
+            },
             Some(false) => self.text_input.blur(self.hwnd, &mut self.view.input),
-            None => {},
+            None => {}
         }
         let scale = self.scale();
         self.text_input.sync(self.hwnd, &mut self.view.input, scale);
@@ -259,7 +302,14 @@ impl SettingsWindow {
 /// Windows' Animation effects are off (Settings › Accessibility › Visual effects).
 fn animations_off() -> bool {
     let mut on = windows::Win32::Foundation::BOOL(1);
-    let read = unsafe { SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, Some(&mut on as *mut _ as *mut core::ffi::c_void), SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0)) };
+    let read = unsafe {
+        SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            Some(&mut on as *mut _ as *mut core::ffi::c_void),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        )
+    };
     read.is_ok() && !on.as_bool()
 }
 
@@ -300,9 +350,18 @@ enum Cue {
 /// it was), and `on_frame` gets the first one's (premultiplied BGRA) and the
 /// part it drew (pixels; None = all of it). They open on a short screen
 /// (the card at its shortest), so Island's rows scroll.
-pub fn film(st: &mut AppState, work: RECT, dpi: u32, hz: f64, mut on_frame: impl FnMut(usize, i32, i32, &[u8], Option<RECT>)) -> Result<Film> {
+pub fn film(
+    st: &mut AppState,
+    work: RECT,
+    dpi: u32,
+    hz: f64,
+    mut on_frame: impl FnMut(usize, i32, i32, &[u8], Option<RECT>),
+) -> Result<Film> {
     let scale = dpi as f32 / 96.0;
-    let short = RECT { bottom: work.top + ((CARD_H_MIN + 2.0 * MARGIN + 16.0) * scale).ceil() as i32, ..work };
+    let short = RECT {
+        bottom: work.top + ((CARD_H_MIN + 2.0 * MARGIN + 16.0) * scale).ceil() as i32,
+        ..work
+    };
     let mut parts = SettingsWindow::new(short, dpi, Section::General)?;
     let mut whole = SettingsWindow::new(short, dpi, Section::General)?;
     for w in [&mut parts, &mut whole] {
@@ -315,7 +374,14 @@ pub fn film(st: &mut AppState, work: RECT, dpi: u32, hz: f64, mut on_frame: impl
     // The person's part, in 144ths of a second from the start.
     let at = |k: f64| (k * hz / 144.0).round() as usize;
     let (w_px, h_px) = surface_px(scale, parts.card_h);
-    let mut film = Film { frames: at(216.0), size: (w_px, h_px), partial_ms: Vec::new(), differing: Vec::new(), worst: None, missing: Vec::new() };
+    let mut film = Film {
+        frames: at(216.0),
+        size: (w_px, h_px),
+        partial_ms: Vec::new(),
+        differing: Vec::new(),
+        worst: None,
+        missing: Vec::new(),
+    };
     let t0 = crate::clock::mono() + 1.0;
     let (mut shown_a, mut shown_b) = (Vec::new(), Vec::new());
     for f in 0..film.frames {
@@ -323,7 +389,9 @@ pub fn film(st: &mut AppState, work: RECT, dpi: u32, hz: f64, mut on_frame: impl
         crate::clock::hold(Some(now));
         st.now = now;
         let mut find = |id: Option<u64>, what: &'static str| {
-            let c = id.and_then(|id| parts.view.hit_rect(id)).map(|r| r.center());
+            let c = id
+                .and_then(|id| parts.view.hit_rect(id))
+                .map(|r| r.center());
             if c.is_none() && !film.missing.contains(&what) {
                 film.missing.push(what);
             }
@@ -338,7 +406,10 @@ pub fn film(st: &mut AppState, work: RECT, dpi: u32, hz: f64, mut on_frame: impl
             _ if f == at(88.0) => find(island, "Island").map(Cue::Up),
             _ if f == at(150.0) => {
                 let card = parts.card();
-                Some(Cue::Wheel(Point::new(card.right() - 160.0, card.center().y), -1.0))
+                Some(Cue::Wheel(
+                    Point::new(card.right() - 160.0, card.center().y),
+                    -1.0,
+                ))
             }
             _ => None,
         };
@@ -368,7 +439,9 @@ pub fn film(st: &mut AppState, work: RECT, dpi: u32, hz: f64, mut on_frame: impl
                 // Only that part goes to the screen.
                 Some(r) if shown_a.len() == px.len() => {
                     film.partial_ms.push(ms);
-                    let row = |y: i32| ((y * w_px + r.left) * 4) as usize..((y * w_px + r.right) * 4) as usize;
+                    let row = |y: i32| {
+                        ((y * w_px + r.left) * 4) as usize..((y * w_px + r.right) * 4) as usize
+                    };
                     for y in r.top..r.bottom {
                         shown_a[row(y)].copy_from_slice(&px[row(y)]);
                     }
@@ -398,23 +471,44 @@ pub fn film(st: &mut AppState, work: RECT, dpi: u32, hz: f64, mut on_frame: impl
 /// (`partial`; otherwise all of it), nothing when nothing moves. Its pixels
 /// when it drew, how long it took (ms), and the part it drew (pixels, as
 /// `paint` picks it; None = all of it).
-fn film_frame(w: &mut SettingsWindow, st: &mut AppState, now: f64, input: bool, partial: bool) -> Option<(Vec<u8>, f64, Option<RECT>)> {
+fn film_frame(
+    w: &mut SettingsWindow,
+    st: &mut AppState,
+    now: f64,
+    input: bool,
+    partial: bool,
+) -> Option<(Vec<u8>, f64, Option<RECT>)> {
     let changed = input || w.view.dirty;
     if !changed && !w.view.moving {
         return None;
     }
-    let only = if changed || !partial { None } else { w.view.next_clip() };
+    let only = if changed || !partial {
+        None
+    } else {
+        w.view.next_clip()
+    };
     let (wp, hp) = surface_px(w.scale(), w.card_h);
-    let part = only.filter(|_| !w.gfx.draws_all()).map(|r| crate::gfx::px_rect(r, w.scale(), 1, wp, hp));
+    let part = only
+        .filter(|_| !w.gfx.draws_all())
+        .map(|r| crate::gfx::px_rect(r, w.scale(), 1, wp, hp));
     let t = std::time::Instant::now();
     for _ in 0..4 {
-        w.gfx.request_capture(RECT { left: 0, top: 0, right: wp, bottom: hp });
+        w.gfx.request_capture(RECT {
+            left: 0,
+            top: 0,
+            right: wp,
+            bottom: hp,
+        });
         let out = w.paint(st, now, only, false);
         if only.is_some() || !(out.again || w.view.dirty) {
             break;
         }
     }
-    Some((w.gfx.take_capture(), t.elapsed().as_secs_f64() * 1000.0, part))
+    Some((
+        w.gfx.take_capture(),
+        t.elapsed().as_secs_f64() * 1000.0,
+        part,
+    ))
 }
 
 /// How many pixels of `a` and `b` (BGRA, `w` a row) differ by more than a
@@ -424,12 +518,28 @@ fn differ(a: &[u8], b: &[u8], w: i32) -> Option<(usize, RECT)> {
         return Some((a.len().max(b.len()) / 4, RECT::default()));
     }
     let mut n = 0;
-    let mut r = RECT { left: i32::MAX, top: i32::MAX, right: 0, bottom: 0 };
-    for (i, (p, q)) in a.as_chunks::<4>().0.iter().zip(b.as_chunks::<4>().0).enumerate() {
+    let mut r = RECT {
+        left: i32::MAX,
+        top: i32::MAX,
+        right: 0,
+        bottom: 0,
+    };
+    for (i, (p, q)) in a
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(b.as_chunks::<4>().0)
+        .enumerate()
+    {
         if p.iter().zip(q).any(|(x, y)| x.abs_diff(*y) > 2) {
             n += 1;
             let (x, y) = (i as i32 % w, i as i32 / w);
-            r = RECT { left: r.left.min(x), top: r.top.min(y), right: r.right.max(x + 1), bottom: r.bottom.max(y + 1) };
+            r = RECT {
+                left: r.left.min(x),
+                top: r.top.min(y),
+                right: r.right.max(x + 1),
+                bottom: r.bottom.max(y + 1),
+            };
         }
     }
     (n > 0).then_some((n, r))

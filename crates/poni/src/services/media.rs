@@ -28,20 +28,30 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
-use windows::core::{Interface, IUnknown, RuntimeType, HSTRING, PCWSTR};
-use windows::Foundation::{AsyncOperationCompletedHandler, AsyncStatus, EventRegistrationToken, IAsyncOperation, TypedEventHandler};
+use windows::core::{IUnknown, Interface, RuntimeType, HSTRING, PCWSTR};
+use windows::Foundation::{
+    AsyncOperationCompletedHandler, AsyncStatus, EventRegistrationToken, IAsyncOperation,
+    TypedEventHandler,
+};
 use windows::Media::Control::{
     CurrentSessionChangedEventArgs, GlobalSystemMediaTransportControlsSession as Session,
     GlobalSystemMediaTransportControlsSessionManager as Manager,
     GlobalSystemMediaTransportControlsSessionPlaybackInfo as PlaybackInfo,
-    GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus, MediaPropertiesChangedEventArgs,
-    PlaybackInfoChangedEventArgs, SessionsChangedEventArgs, TimelinePropertiesChangedEventArgs,
+    GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus,
+    MediaPropertiesChangedEventArgs, PlaybackInfoChangedEventArgs, SessionsChangedEventArgs,
+    TimelinePropertiesChangedEventArgs,
 };
 use windows::Storage::Streams::{DataReader, IRandomAccessStreamReference, InputStreamOptions};
-use windows::Win32::Foundation::{BOOL, E_ABORT, E_FAIL, FALSE, HWND, LPARAM, REGDB_E_CLASSNOTREG, TRUE};
-use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, CoUninitialize, IBindCtx, COINIT_MULTITHREADED};
+use windows::Win32::Foundation::{
+    BOOL, E_ABORT, E_FAIL, FALSE, HWND, LPARAM, REGDB_E_CLASSNOTREG, TRUE,
+};
+use windows::Win32::System::Com::{
+    CoInitializeEx, CoTaskMemFree, CoUninitialize, IBindCtx, COINIT_MULTITHREADED,
+};
 use windows::Win32::UI::Shell::{IShellItem, SHCreateItemFromParsingName, SIGDN_NORMALDISPLAY};
-use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindowTextLengthW, GetWindowTextW, IsWindowVisible};
+use windows::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GetWindowTextLengthW, GetWindowTextW, IsWindowVisible,
+};
 
 /// Wait this long after the first event of a burst before refreshing.
 const COALESCE: Duration = Duration::from_millis(50);
@@ -225,7 +235,10 @@ fn opt<T>(r: windows::core::Result<T>) -> windows::core::Result<Option<T>> {
     }
 }
 
-fn handler<S: RuntimeType + 'static, A: RuntimeType + 'static>(tx: &Sender<Msg>, msg: Msg) -> TypedEventHandler<S, A> {
+fn handler<S: RuntimeType + 'static, A: RuntimeType + 'static>(
+    tx: &Sender<Msg>,
+    msg: Msg,
+) -> TypedEventHandler<S, A> {
     let tx = tx.clone();
     TypedEventHandler::new(move |_, _| {
         let _ = tx.send(msg.clone());
@@ -235,11 +248,15 @@ fn handler<S: RuntimeType + 'static, A: RuntimeType + 'static>(tx: &Sender<Msg>,
 
 /// COM identity of a session (stable for as long as we hold a reference).
 fn identity(s: &Session) -> usize {
-    s.cast::<IUnknown>().map(|u| u.as_raw() as usize).unwrap_or_else(|_| s.as_raw() as usize)
+    s.cast::<IUnknown>()
+        .map(|u| u.as_raw() as usize)
+        .unwrap_or_else(|_| s.as_raw() as usize)
 }
 
 fn playback_status(s: &Session) -> PlaybackStatus {
-    s.GetPlaybackInfo().and_then(|i| i.PlaybackStatus()).unwrap_or(PlaybackStatus::Closed)
+    s.GetPlaybackInfo()
+        .and_then(|i| i.PlaybackStatus())
+        .unwrap_or(PlaybackStatus::Closed)
 }
 
 // ------------------------------------------------------------------ subscriptions
@@ -253,9 +270,11 @@ struct ManagerSub {
 
 impl ManagerSub {
     fn new(mgr: Manager, tx: &Sender<Msg>) -> windows::core::Result<Self> {
-        let h: TypedEventHandler<Manager, CurrentSessionChangedEventArgs> = handler(tx, Msg::CurrentChanged);
+        let h: TypedEventHandler<Manager, CurrentSessionChangedEventArgs> =
+            handler(tx, Msg::CurrentChanged);
         let current = mgr.CurrentSessionChanged(&h)?;
-        let h: TypedEventHandler<Manager, SessionsChangedEventArgs> = handler(tx, Msg::SessionsChanged);
+        let h: TypedEventHandler<Manager, SessionsChangedEventArgs> =
+            handler(tx, Msg::SessionsChanged);
         let sessions = match mgr.SessionsChanged(&h) {
             Ok(t) => t,
             Err(e) => {
@@ -263,7 +282,11 @@ impl ManagerSub {
                 return Err(e);
             }
         };
-        Ok(Self { mgr, current: Some(current), sessions: Some(sessions) })
+        Ok(Self {
+            mgr,
+            current: Some(current),
+            sessions: Some(sessions),
+        })
     }
 }
 
@@ -298,14 +321,16 @@ struct Tracked {
 impl Tracked {
     fn follow(&mut self, tx: &Sender<Msg>) {
         if self.props.is_none() {
-            let h: TypedEventHandler<Session, MediaPropertiesChangedEventArgs> = handler(tx, Msg::Props(self.sid));
+            let h: TypedEventHandler<Session, MediaPropertiesChangedEventArgs> =
+                handler(tx, Msg::Props(self.sid));
             match self.session.MediaPropertiesChanged(&h) {
                 Ok(t) => self.props = Some(t),
                 Err(e) => crate::pwarn!("media: MediaPropertiesChanged subscribe failed ({e})"),
             }
         }
         if self.timeline.is_none() {
-            let h: TypedEventHandler<Session, TimelinePropertiesChangedEventArgs> = handler(tx, Msg::Timeline(self.sid));
+            let h: TypedEventHandler<Session, TimelinePropertiesChangedEventArgs> =
+                handler(tx, Msg::Timeline(self.sid));
             match self.session.TimelinePropertiesChanged(&h) {
                 Ok(t) => self.timeline = Some(t),
                 Err(e) => crate::pwarn!("media: TimelinePropertiesChanged subscribe failed ({e})"),
@@ -504,10 +529,22 @@ impl Worker {
         let recovery = if self.rest {
             None
         } else {
-            self.sessions.iter().filter_map(|session| session.retry_at)
-                .chain(self.empty_retry_at).min()
+            self.sessions
+                .iter()
+                .filter_map(|session| session.retry_at)
+                .chain(self.empty_retry_at)
+                .min()
         };
-        [self.refresh_at, self.resync_at, self.connect_at, recovery, self.netease_at].into_iter().flatten().min()
+        [
+            self.refresh_at,
+            self.resync_at,
+            self.connect_at,
+            recovery,
+            self.netease_at,
+        ]
+        .into_iter()
+        .flatten()
+        .min()
     }
 
     fn on_msg(&mut self, msg: Msg) {
@@ -571,14 +608,21 @@ impl Worker {
                 if session.retry_at.is_some_and(|at| at <= now) {
                     session.retry_at = None;
                     session.dead = false;
-                    crate::pinfo!("media: retrying session app={:?} attempt={}", session.aumid, session.read_failures);
+                    crate::pinfo!(
+                        "media: retrying session app={:?} attempt={}",
+                        session.aumid,
+                        session.read_failures
+                    );
                     retry = true;
                 }
             }
             if self.empty_retry_at.is_some_and(|at| at <= now) {
                 self.empty_retry_at = None;
                 self.dirty.sessions = true;
-                crate::pinfo!("media: retrying empty session list attempt={}", self.empty_retries);
+                crate::pinfo!(
+                    "media: retrying empty session list attempt={}",
+                    self.empty_retries
+                );
                 retry = true;
             }
             if retry {
@@ -616,7 +660,10 @@ impl Worker {
     }
 
     fn request_refresh(&mut self, reason: &'static str) {
-        crate::pinfo!("media: refresh requested reason={reason} sessions={}", self.sessions.len());
+        crate::pinfo!(
+            "media: refresh requested reason={reason} sessions={}",
+            self.sessions.len()
+        );
         self.empty_retries = 0;
         self.empty_retry_at = None;
         for session in &mut self.sessions {
@@ -648,7 +695,9 @@ impl Worker {
             .and_then(|mgr| ManagerSub::new(mgr, &self.tx).map_err(OpErr::from));
         match result {
             Ok(m) => {
-                crate::pinfo!("media: watching Windows media sessions (diagnostics=netease-events-v7)");
+                crate::pinfo!(
+                    "media: watching Windows media sessions (diagnostics=netease-events-v7)"
+                );
                 self.mgr = Some(m);
                 self.connect_backoff = CONNECT_RETRY_MIN;
                 self.empty_retries = 0;
@@ -657,11 +706,16 @@ impl Worker {
                 self.poke();
             }
             Err(OpErr::Os(e)) if e.code() == REGDB_E_CLASSNOTREG => {
-                crate::pwarn!("media: Windows media sessions are not available on this system ({e})");
+                crate::pwarn!(
+                    "media: Windows media sessions are not available on this system ({e})"
+                );
                 self.show_nothing();
             }
             Err(e) => {
-                crate::pwarn!("media: could not reach Windows media sessions ({e}); retrying in {}s", self.connect_backoff.as_secs());
+                crate::pwarn!(
+                    "media: could not reach Windows media sessions ({e}); retrying in {}s",
+                    self.connect_backoff.as_secs()
+                );
                 self.show_nothing();
                 self.connect_at = Some(Instant::now() + self.connect_backoff);
                 self.connect_backoff = (self.connect_backoff * 2).min(CONNECT_RETRY_MAX);
@@ -682,8 +736,14 @@ impl Worker {
     /// Re-read the session list, keeping subscriptions of sessions we already
     /// track. Returns false when the manager failed.
     fn reload_sessions(&mut self) -> bool {
-        let Some(mgr) = self.mgr.as_ref().map(|m| m.mgr.clone()) else { return false };
-        let list = mgr.GetSessions().and_then(|v| (0..v.Size()?).map(|i| v.GetAt(i)).collect::<windows::core::Result<Vec<_>>>());
+        let Some(mgr) = self.mgr.as_ref().map(|m| m.mgr.clone()) else {
+            return false;
+        };
+        let list = mgr.GetSessions().and_then(|v| {
+            (0..v.Size()?)
+                .map(|i| v.GetAt(i))
+                .collect::<windows::core::Result<Vec<_>>>()
+        });
         let list = match list {
             Ok(l) => l,
             Err(e) => {
@@ -704,14 +764,26 @@ impl Worker {
                 next.push(t);
                 continue;
             }
-            let aumid = session.SourceAppUserModelId().map(|h| h.to_string()).unwrap_or_default();
+            let aumid = session
+                .SourceAppUserModelId()
+                .map(|h| h.to_string())
+                .unwrap_or_default();
             let sid = self.next_sid;
             self.next_sid += 1;
             let mut t = Tracked {
-                sid, session, identity: id, aumid, dead: false, read_failures: 0, retry_at: None,
-                playback: None, props: None, timeline: None,
+                sid,
+                session,
+                identity: id,
+                aumid,
+                dead: false,
+                read_failures: 0,
+                retry_at: None,
+                playback: None,
+                props: None,
+                timeline: None,
             };
-            let h: TypedEventHandler<Session, PlaybackInfoChangedEventArgs> = handler(&self.tx, Msg::Playback(sid));
+            let h: TypedEventHandler<Session, PlaybackInfoChangedEventArgs> =
+                handler(&self.tx, Msg::Playback(sid));
             match t.session.PlaybackInfoChanged(&h) {
                 Ok(tok) => t.playback = Some(tok),
                 Err(e) => crate::pwarn!("media: PlaybackInfoChanged subscribe failed ({e})"),
@@ -729,14 +801,22 @@ impl Worker {
         self.sessions = next;
         crate::pinfo!(
             "media: session list count={} apps={:?}",
-            self.sessions.len(), self.sessions.iter().map(|session| session.aumid.as_str()).collect::<Vec<_>>()
+            self.sessions.len(),
+            self.sessions
+                .iter()
+                .map(|session| session.aumid.as_str())
+                .collect::<Vec<_>>()
         );
         if self.sessions.is_empty() {
             if self.empty_retries < READ_RETRIES {
                 let delay = Duration::from_millis(500) * (1 << self.empty_retries);
                 self.empty_retries += 1;
                 self.empty_retry_at = Some(Instant::now() + delay);
-                crate::pinfo!("media: empty session list; retry scheduled attempt={} delay_ms={}", self.empty_retries, delay.as_millis());
+                crate::pinfo!(
+                    "media: empty session list; retry scheduled attempt={} delay_ms={}",
+                    self.empty_retries,
+                    delay.as_millis()
+                );
             }
         } else {
             self.empty_retries = 0;
@@ -755,7 +835,10 @@ impl Worker {
             return Some(i);
         }
         let aumid = s.SourceAppUserModelId().ok()?.to_string();
-        self.sessions.iter().position(|t| t.aumid == aumid && !t.dead).or_else(|| self.sessions.iter().position(|t| t.aumid == aumid))
+        self.sessions
+            .iter()
+            .position(|t| t.aumid == aumid && !t.dead)
+            .or_else(|| self.sessions.iter().position(|t| t.aumid == aumid))
     }
 
     /// Pick the session to show. `None` with `self.mgr == None` means the
@@ -778,8 +861,11 @@ impl Worker {
             cur = current.as_ref().and_then(|c| self.find(c));
         }
         let alive: Vec<bool> = self.sessions.iter().map(|t| !t.dead).collect();
-        let playing: Vec<bool> =
-            self.sessions.iter().map(|t| !t.dead && playback_status(&t.session) == PlaybackStatus::Playing).collect();
+        let playing: Vec<bool> = self
+            .sessions
+            .iter()
+            .map(|t| !t.dead && playback_status(&t.session) == PlaybackStatus::Playing)
+            .collect();
         let prev = self.chosen.and_then(|sid| self.index_of(sid));
 
         // 音乐播放时不跟随浏览器等音频抢占；多款音乐同时播放时保持当前音乐。
@@ -886,14 +972,23 @@ impl Worker {
     }
 
     /// 读取所选会话。暂时失败由调用方安排有限重试，不等同于播放器退出。
-    fn read_and_publish(&mut self, i: usize, need_props: bool, explicit_props: bool, force: bool) -> Result<(), OpErr> {
+    fn read_and_publish(
+        &mut self,
+        i: usize,
+        need_props: bool,
+        explicit_props: bool,
+        force: bool,
+    ) -> Result<(), OpErr> {
         let session = self.sessions[i].session.clone();
         let mut fresh_props = false;
         if need_props || self.meta.is_none() {
             match read_props(&session, &self.sessions[i].aumid, &mut self.logged_props) {
                 Ok(p) if p.title.is_empty() => {
                     // 本轮跳过不可用的会话，继续尝试其他候选；仍按会话有限重试。
-                    return Err(OpErr::Os(windows::core::Error::new(E_FAIL, "media title is empty")));
+                    return Err(OpErr::Os(windows::core::Error::new(
+                        E_FAIL,
+                        "media title is empty",
+                    )));
                 }
                 Ok(p) => {
                     let app_id = self.sessions[i].aumid.clone();
@@ -909,12 +1004,21 @@ impl Worker {
                         }
                     }
                     let (artist, album) = nowplaying::artist_album(&app_id, p.artist, p.album);
-                    let mut meta = Meta { app_id, app_name, title: p.title, artist, album, content_id: String::new() };
+                    let mut meta = Meta {
+                        app_id,
+                        app_name,
+                        title: p.title,
+                        artist,
+                        album,
+                        content_id: String::new(),
+                    };
                     // 相同曲目的系统属性可能重复上报空专辑；保留已核实信息，
                     // 随后的原生事件仍会核对 ID，同名的另一录音不会继承位置。
                     if nowplaying::is_netease_music(&meta.app_id) && meta.album.is_empty() {
                         if let Some(previous) = self.meta.as_ref().filter(|previous| {
-                            previous.app_id == meta.app_id && previous.title == meta.title && previous.artist == meta.artist
+                            previous.app_id == meta.app_id
+                                && previous.title == meta.title
+                                && previous.artist == meta.artist
                         }) {
                             meta.album = previous.album.clone();
                             meta.content_id = previous.content_id.clone();
@@ -942,20 +1046,33 @@ impl Worker {
             PlaybackStatus::Changing => self.shown.as_ref().is_some_and(|s| s.timeline.playing),
             _ => false,
         };
-        let rate = opt(info.PlaybackRate()).ok().flatten().and_then(|r| r.Value().ok()).unwrap_or(1.0);
+        let rate = opt(info.PlaybackRate())
+            .ok()
+            .flatten()
+            .and_then(|r| r.Value().ok())
+            .unwrap_or(1.0);
         let raw_timeline = (|| {
             let tl = session.GetTimelineProperties().inspect_err(|e| {
                 crate::pwarn!("media: app={aumid:?} stage=timeline read failed ({e})");
             })?;
-            let start = tl.StartTime().inspect_err(|e| {
-                crate::pwarn!("media: app={aumid:?} stage=timeline_start read failed ({e})");
-            })?.Duration;
-            let end = tl.EndTime().inspect_err(|e| {
-                crate::pwarn!("media: app={aumid:?} stage=timeline_end read failed ({e})");
-            })?.Duration;
-            let pos = tl.Position().inspect_err(|e| {
-                crate::pwarn!("media: app={aumid:?} stage=timeline_position read failed ({e})");
-            })?.Duration;
+            let start = tl
+                .StartTime()
+                .inspect_err(|e| {
+                    crate::pwarn!("media: app={aumid:?} stage=timeline_start read failed ({e})");
+                })?
+                .Duration;
+            let end = tl
+                .EndTime()
+                .inspect_err(|e| {
+                    crate::pwarn!("media: app={aumid:?} stage=timeline_end read failed ({e})");
+                })?
+                .Duration;
+            let pos = tl
+                .Position()
+                .inspect_err(|e| {
+                    crate::pwarn!("media: app={aumid:?} stage=timeline_position read failed ({e})");
+                })?
+                .Duration;
             let updated = tl.LastUpdatedTime().map(|t| t.UniversalTime).unwrap_or(0);
             Ok::<_, windows::core::Error>((start, end, pos, updated))
         })();
@@ -973,14 +1090,24 @@ impl Worker {
         // 网易云 3.x 的 SMTC 可能没有时间轴。按本机实际 load/seek/state
         // 事件补全，曲目与所选会话一致后才采用，不依赖窗口是否最小化。
         let native = if !self.rest {
-            self.meta.as_ref().filter(|meta| nowplaying::is_netease_music(&meta.app_id))
-                .filter(|meta| !timeline_available || meta.album.is_empty() || meta.content_id.is_empty())
+            self.meta
+                .as_ref()
+                .filter(|meta| nowplaying::is_netease_music(&meta.app_id))
+                .filter(|meta| {
+                    !timeline_available || meta.album.is_empty() || meta.content_id.is_empty()
+                })
                 .and_then(|meta| self.netease.read(&meta.title, &meta.artist, playing))
                 .filter(|native| {
                     let meta = self.meta.as_ref().unwrap();
-                    let matches = (meta.album.is_empty() || !meta.content_id.is_empty()
-                        || poni_core::lrclib::fold(&meta.album) == poni_core::lrclib::fold(&native.album))
-                        && (end <= start || (native.duration_s - end.saturating_sub(start) as f64 / TICKS_PER_S).abs() < 2.0);
+                    let matches = (meta.album.is_empty()
+                        || !meta.content_id.is_empty()
+                        || poni_core::lrclib::fold(&meta.album)
+                            == poni_core::lrclib::fold(&native.album))
+                        && (end <= start
+                            || (native.duration_s
+                                - end.saturating_sub(start) as f64 / TICKS_PER_S)
+                                .abs()
+                                < 2.0);
                     if !matches {
                         self.netease.status = "system_metadata_conflict";
                     }
@@ -1001,20 +1128,43 @@ impl Worker {
             }
         }
         if !self.rest {
-            if let Some(meta) = self.meta.as_ref().filter(|meta| nowplaying::is_netease_music(&meta.app_id)) {
+            if let Some(meta) = self
+                .meta
+                .as_ref()
+                .filter(|meta| nowplaying::is_netease_music(&meta.app_id))
+            {
                 let status = self.netease.status;
-                if self.logged_native.as_ref().is_none_or(|(previous, previous_status)| previous != meta || *previous_status != status) {
-                    crate::pinfo!("media: NetEase native status={status} title={:?} content_id={:?}", meta.title, meta.content_id);
+                if self
+                    .logged_native
+                    .as_ref()
+                    .is_none_or(|(previous, previous_status)| {
+                        previous != meta || *previous_status != status
+                    })
+                {
+                    crate::pinfo!(
+                        "media: NetEase native status={status} title={:?} content_id={:?}",
+                        meta.title,
+                        meta.content_id
+                    );
                     self.logged_native = Some((meta.clone(), status));
                 }
             }
         }
         // 仅在播放且缺少系统时间轴时每秒读取新增事件，跟随后台切歌和拖动。
         // 复用现有媒体线程；暂停、切换播放器、锁屏、熄屏和节能立即停止。
-        self.netease_at = (!timeline_available && playing && !self.rest
-            && self.meta.as_ref().is_some_and(|meta| nowplaying::is_netease_music(&meta.app_id)))
-            .then(|| Instant::now() + Duration::from_secs(1));
-        if timeline_available || native.as_ref().is_some_and(|native| native.position_s.is_some()) {
+        self.netease_at = (!timeline_available
+            && playing
+            && !self.rest
+            && self
+                .meta
+                .as_ref()
+                .is_some_and(|meta| nowplaying::is_netease_music(&meta.app_id)))
+        .then(|| Instant::now() + Duration::from_secs(1));
+        if timeline_available
+            || native
+                .as_ref()
+                .is_some_and(|native| native.position_s.is_some())
+        {
             self.sessions[i].read_failures = 0;
             self.sessions[i].retry_at = None;
         } else if self.netease_at.is_none() {
@@ -1022,23 +1172,60 @@ impl Worker {
         }
         let now = crate::clock::mono();
         let mut timeline = if timeline_available {
-            make_timeline(start, end, pos, updated, playing, rate, crate::clock::filetime_now(), now)
+            make_timeline(
+                start,
+                end,
+                pos,
+                updated,
+                playing,
+                rate,
+                crate::clock::filetime_now(),
+                now,
+            )
         } else {
-            let previous = self.shown.as_ref().filter(|shown| self.meta.as_ref() == Some(&shown.meta));
-            let position = native.as_ref().and_then(|native| native.position_s)
-                .or_else(|| previous.filter(|shown| shown.timeline.position_known).map(|shown| shown.timeline.position_at(now)));
-            let duration_s = native.as_ref().map(|native| native.duration_s)
+            let previous = self
+                .shown
+                .as_ref()
+                .filter(|shown| self.meta.as_ref() == Some(&shown.meta));
+            let position = native
+                .as_ref()
+                .and_then(|native| native.position_s)
+                .or_else(|| {
+                    previous
+                        .filter(|shown| shown.timeline.position_known)
+                        .map(|shown| shown.timeline.position_at(now))
+                });
+            let duration_s = native
+                .as_ref()
+                .map(|native| native.duration_s)
                 .unwrap_or_else(|| previous.map_or(0.0, |shown| shown.timeline.duration_s));
-            Timeline { position_s: position.unwrap_or(0.0), duration_s, sampled_at: now, playing, rate, position_known: position.is_some() }
+            Timeline {
+                position_s: position.unwrap_or(0.0),
+                duration_s,
+                sampled_at: now,
+                playing,
+                rate,
+                position_known: position.is_some(),
+            }
         };
         // Before the controls are worked out: a blank length would also turn
         // seeking off and replace the whole card.
-        let same_track = self.shown.as_ref().filter(|s| self.meta.as_ref() == Some(&s.meta));
-        if let Some(filled) = same_track.map(|s| timeline.or_length_of(&s.timeline, now)).filter(|f| *f != timeline) {
+        let same_track = self
+            .shown
+            .as_ref()
+            .filter(|s| self.meta.as_ref() == Some(&s.meta));
+        if let Some(filled) = same_track
+            .map(|s| timeline.or_length_of(&s.timeline, now))
+            .filter(|f| *f != timeline)
+        {
             if self.timeline_logs < TIMELINE_LOGS_PER_TRACK {
                 self.timeline_logs += 1;
                 let app = self.meta.as_ref().map_or("", |m| m.app_name.as_str());
-                crate::pinfo!("media: {app} reported no track length at {:.1} s; keeping {:.0} s", filled.position_at(now), filled.duration_s);
+                crate::pinfo!(
+                    "media: {app} reported no track length at {:.1} s; keeping {:.0} s",
+                    filled.position_at(now),
+                    filled.duration_s
+                );
             }
             timeline = filled;
         }
@@ -1047,7 +1234,11 @@ impl Worker {
         }
         let reported = read_caps(&info);
         let aumid = &self.sessions[i].aumid;
-        if self.logged_caps.as_ref().is_none_or(|(id, c)| id != aumid || *c != reported) {
+        if self
+            .logged_caps
+            .as_ref()
+            .is_none_or(|(id, c)| id != aumid || *c != reported)
+        {
             let on = |b: bool| if b { "on" } else { "off" };
             crate::pinfo!(
                 "media: {} reports Previous {}, Next {}, play/pause {}, seeking {}",
@@ -1059,7 +1250,11 @@ impl Worker {
             );
             self.logged_caps = Some((aumid.clone(), reported));
         }
-        let caps = nowplaying::island_controls(aumid, reported, timeline_available && timeline.has_duration());
+        let caps = nowplaying::island_controls(
+            aumid,
+            reported,
+            timeline_available && timeline.has_duration(),
+        );
 
         self.publish(caps, timeline, fresh_props, explicit_props, force);
         // 先发布媒体结果，再记录快照；采集不阻塞本次数据进入界面队列。
@@ -1068,9 +1263,15 @@ impl Worker {
                 || nowplaying::is_qq_music(&meta.app_id)
                 || nowplaying::is_apple_music(&meta.app_id)
         }) {
-            let changed = self.logged_timeline.as_ref().is_none_or(|(previous, old_start, old_end, old_status, old_available)| {
-                previous != meta || *old_start != start || *old_end != end || *old_status != playback_status || *old_available != timeline_available
-            });
+            let changed = self.logged_timeline.as_ref().is_none_or(
+                |(previous, old_start, old_end, old_status, old_available)| {
+                    previous != meta
+                        || *old_start != start
+                        || *old_end != end
+                        || *old_status != playback_status
+                        || *old_available != timeline_available
+                },
+            );
             if changed {
                 crate::pinfo!(
                     "media: snapshot app={:?} title={:?} artist={:?} album={:?} start_ticks={start} end_ticks={end} position_ticks={pos} updated_ticks={updated} status={playback_status:?} timeline_available={timeline_available} raw_duration_s={:.3} duration_s={:.3} position_s={:.3} rate={:.3}",
@@ -1078,7 +1279,13 @@ impl Worker {
                     if end > start { end.saturating_sub(start) as f64 / TICKS_PER_S } else { 0.0 },
                     timeline.duration_s, timeline.position_s, timeline.rate
                 );
-                self.logged_timeline = Some((meta.clone(), start, end, playback_status, timeline_available));
+                self.logged_timeline = Some((
+                    meta.clone(),
+                    start,
+                    end,
+                    playback_status,
+                    timeline_available,
+                ));
             }
         }
         Ok(())
@@ -1087,17 +1294,34 @@ impl Worker {
     fn retry_session(&mut self, i: usize) {
         let session = &mut self.sessions[i];
         if session.read_failures >= READ_RETRIES {
-            crate::pwarn!("media: session retries exhausted app={:?}; waiting for an event or page refresh", session.aumid);
+            crate::pwarn!(
+                "media: session retries exhausted app={:?}; waiting for an event or page refresh",
+                session.aumid
+            );
             return;
         }
         let delay = Duration::from_millis(500) * (1 << session.read_failures);
         session.read_failures += 1;
         session.retry_at = Some(Instant::now() + delay);
-        crate::pinfo!("media: session retry scheduled app={:?} attempt={} delay_ms={}", session.aumid, session.read_failures, delay.as_millis());
+        crate::pinfo!(
+            "media: session retry scheduled app={:?} attempt={} delay_ms={}",
+            session.aumid,
+            session.read_failures,
+            delay.as_millis()
+        );
     }
 
-    fn publish(&mut self, caps: Caps, timeline: Timeline, fresh_props: bool, explicit_props: bool, force: bool) {
-        let Some(meta) = self.meta.clone() else { return };
+    fn publish(
+        &mut self,
+        caps: Caps,
+        timeline: Timeline,
+        fresh_props: bool,
+        explicit_props: bool,
+        force: bool,
+    ) {
+        let Some(meta) = self.meta.clone() else {
+            return;
+        };
         if meta.title.is_empty() {
             self.show_nothing();
             return;
@@ -1108,7 +1332,10 @@ impl Worker {
             key.push_str(&meta.content_id);
         }
         if self.art.track_key != key {
-            self.art = ArtState { track_key: key.clone(), ..Default::default() };
+            self.art = ArtState {
+                track_key: key.clone(),
+                ..Default::default()
+            };
         }
         match self.shown.as_mut() {
             Some(s) if s.meta == meta && s.caps == caps => {
@@ -1120,20 +1347,36 @@ impl Worker {
                 } else {
                     let settled = self.pending_seek.take();
                     if let Some(p) = settled.filter(|p| p.expired(now)) {
-                        crate::pinfo!("media: {} did not move to {:.1} s (it reports {:.1} s)", meta.app_name, p.target_s(), timeline.position_at(now));
+                        crate::pinfo!(
+                            "media: {} did not move to {:.1} s (it reports {:.1} s)",
+                            meta.app_name,
+                            p.target_s(),
+                            timeline.position_at(now)
+                        );
                     }
-                    if s.timeline.playing && timeline.playing && self.timeline_logs < TIMELINE_LOGS_PER_TRACK {
+                    if s.timeline.playing
+                        && timeline.playing
+                        && self.timeline_logs < TIMELINE_LOGS_PER_TRACK
+                    {
                         let jump = timeline.position_at(now) - s.timeline.position_at(now);
                         if jump.abs() >= 0.05 {
                             self.timeline_logs += 1;
-                            crate::pinfo!("media: {} position report moved {:+.0} ms at {:.1} s", meta.app_name, jump * 1000.0, timeline.position_at(now));
+                            crate::pinfo!(
+                                "media: {} position report moved {:+.0} ms at {:.1} s",
+                                meta.app_name,
+                                jump * 1000.0,
+                                timeline.position_at(now)
+                            );
                         }
                     }
                     // Once a seek settles the UI gets the player's own timeline,
                     // even when it matches the one sent before the seek.
                     if force || settled.is_some() || timeline_differs(&s.timeline, &timeline, now) {
                         s.timeline = timeline;
-                        self.sink.send(AppEvent::MediaTimeline { track_key: key.clone(), timeline });
+                        self.sink.send(AppEvent::MediaTimeline {
+                            track_key: key.clone(),
+                            timeline,
+                        });
                     }
                 }
             }
@@ -1155,7 +1398,11 @@ impl Worker {
                     can_seek: caps.seek,
                     track_key: key.clone(),
                 })));
-                self.shown = Some(Shown { meta, caps, timeline });
+                self.shown = Some(Shown {
+                    meta,
+                    caps,
+                    timeline,
+                });
                 self.timeline_logs = 0;
             }
         }
@@ -1177,7 +1424,9 @@ impl Worker {
     /// when the bytes differ) when the player announces new properties for the
     /// same track, since some players publish a stale thumbnail first.
     fn update_art(&mut self, key: &str, explicit_props: bool) {
-        let Some(thumb) = self.thumb.clone() else { return };
+        let Some(thumb) = self.thumb.clone() else {
+            return;
+        };
         if self.art.reads >= ART_READS_PER_TRACK || (self.art.hash.is_some() && !explicit_props) {
             return;
         }
@@ -1198,7 +1447,10 @@ impl Worker {
         }
         self.art.hash = Some(hash);
         match crate::services::imaging::decode_bytes(&bytes, ART_MAX_PX) {
-            Ok(img) => self.sink.send(AppEvent::MediaArt { track_key: key.to_string(), art: Some(img) }),
+            Ok(img) => self.sink.send(AppEvent::MediaArt {
+                track_key: key.to_string(),
+                art: Some(img),
+            }),
             Err(e) => crate::pwarn!("media: album art could not be decoded ({e})"),
         }
     }
@@ -1206,7 +1458,9 @@ impl Worker {
     // -------------------------------------------------------------- commands
 
     fn command(&mut self, cmd: MediaCmd) {
-        let Some(i) = self.chosen.and_then(|sid| self.index_of(sid)) else { return };
+        let Some(i) = self.chosen.and_then(|sid| self.index_of(sid)) else {
+            return;
+        };
         let session = self.sessions[i].session.clone();
         let apple = nowplaying::is_apple_music(&self.sessions[i].aumid);
         if cmd == MediaCmd::Prepare {
@@ -1226,9 +1480,18 @@ impl Worker {
                     return;
                 }
                 let duration = self.shown.as_ref().map_or(0.0, |sh| sh.timeline.duration_s);
-                let secs = if duration > 0.0 { s.clamp(0.0, duration) } else { s.max(0.0) };
-                let result = if apple { self.apple_seek(&session, secs, duration) } else { self.session_seek(&session, secs) };
-                self.pending_seek = matches!(result, Ok(true)).then(|| PendingSeek::new(secs, crate::clock::mono()));
+                let secs = if duration > 0.0 {
+                    s.clamp(0.0, duration)
+                } else {
+                    s.max(0.0)
+                };
+                let result = if apple {
+                    self.apple_seek(&session, secs, duration)
+                } else {
+                    self.session_seek(&session, secs)
+                };
+                self.pending_seek = matches!(result, Ok(true))
+                    .then(|| PendingSeek::new(secs, crate::clock::mono()));
                 result
             }
         };
@@ -1262,7 +1525,9 @@ impl Worker {
                     crate::pinfo!("media: moved Apple Music's own progress slider to {secs:.1} s");
                     return Ok(true);
                 }
-                Err(e) => crate::pinfo!("media: Apple Music's progress slider: {e}; asking its media session"),
+                Err(e) => crate::pinfo!(
+                    "media: Apple Music's progress slider: {e}; asking its media session"
+                ),
             }
         }
         self.session_seek(session, secs)
@@ -1300,10 +1565,23 @@ fn toggle_play_pause(session: &Session) -> Result<bool, OpErr> {
 // ------------------------------------------------------------------ reading
 
 fn clean(s: &windows::core::Result<HSTRING>) -> String {
-    s.as_ref().map(|h| h.to_string().chars().filter(|c| !c.is_control()).collect::<String>().trim().to_string()).unwrap_or_default()
+    s.as_ref()
+        .map(|h| {
+            h.to_string()
+                .chars()
+                .filter(|c| !c.is_control())
+                .collect::<String>()
+                .trim()
+                .to_string()
+        })
+        .unwrap_or_default()
 }
 
-fn read_props(session: &Session, app_id: &str, logged_props: &mut Option<String>) -> Result<Props, OpErr> {
+fn read_props(
+    session: &Session,
+    app_id: &str,
+    logged_props: &mut Option<String>,
+) -> Result<Props, OpErr> {
     let op = session.TryGetMediaPropertiesAsync().inspect_err(|e| {
         crate::pwarn!("media: app={app_id:?} stage=metadata_request failed ({e})");
     })?;
@@ -1311,7 +1589,8 @@ fn read_props(session: &Session, app_id: &str, logged_props: &mut Option<String>
         Ok(p) => p,
         // No properties published (yet): treat as an empty track.
         Err(OpErr::Os(e)) if is_null(&e) => {
-            let snapshot = format!("media: app={app_id:?} stage=metadata_read returned no properties ({e})");
+            let snapshot =
+                format!("media: app={app_id:?} stage=metadata_read returned no properties ({e})");
             if logged_props.as_ref() != Some(&snapshot) {
                 crate::pinfo!("{snapshot}");
                 *logged_props = Some(snapshot);
@@ -1326,15 +1605,27 @@ fn read_props(session: &Session, app_id: &str, logged_props: &mut Option<String>
     // 保持采集接入前的读取顺序，只在 Artist 为空时读取 AlbumArtist。
     let raw_artist = p.Artist();
     let mut artist = clean(&raw_artist);
-    let album_artist = if artist.is_empty() { Some(p.AlbumArtist()) } else { None };
+    let album_artist = if artist.is_empty() {
+        Some(p.AlbumArtist())
+    } else {
+        None
+    };
     if let Some(value) = &album_artist {
         artist = clean(value);
     }
     let title = p.Title();
     let album = p.AlbumTitle();
-    let props = Props { title: clean(&title), artist, album: clean(&album), thumb: opt(p.Thumbnail()).ok().flatten() };
+    let props = Props {
+        title: clean(&title),
+        artist,
+        album: clean(&album),
+        thumb: opt(p.Thumbnail()).ok().flatten(),
+    };
     // 全部读取完成后才采集既有结果，不为诊断增加播放器属性访问。
-    if nowplaying::is_netease_music(app_id) || nowplaying::is_qq_music(app_id) || nowplaying::is_apple_music(app_id) {
+    if nowplaying::is_netease_music(app_id)
+        || nowplaying::is_qq_music(app_id)
+        || nowplaying::is_apple_music(app_id)
+    {
         let snapshot = format!("media: raw metadata app={app_id:?} title={title:?} artist={raw_artist:?} album_artist={album_artist:?} album={album:?}");
         if logged_props.as_ref() != Some(&snapshot) {
             crate::pinfo!("{snapshot}");
@@ -1360,12 +1651,16 @@ fn read_props(session: &Session, app_id: &str, logged_props: &mut Option<String>
 }
 
 fn read_caps(info: &PlaybackInfo) -> Caps {
-    let Ok(c) = info.Controls() else { return Caps::default() };
+    let Ok(c) = info.Controls() else {
+        return Caps::default();
+    };
     let f = |r: windows::core::Result<bool>| r.unwrap_or(false);
     Caps {
         prev: f(c.IsPreviousEnabled()),
         next: f(c.IsNextEnabled()),
-        play_pause: f(c.IsPlayPauseToggleEnabled()) || f(c.IsPlayEnabled()) || f(c.IsPauseEnabled()),
+        play_pause: f(c.IsPlayPauseToggleEnabled())
+            || f(c.IsPlayEnabled())
+            || f(c.IsPauseEnabled()),
         seek: f(c.IsPlaybackPositionEnabled()),
     }
 }
@@ -1376,19 +1671,32 @@ fn read_stream_bytes(r: &IRandomAccessStreamReference) -> Result<Vec<u8>, OpErr>
     let size = stream.Size().unwrap_or(0);
     let result = (|| -> Result<Vec<u8>, OpErr> {
         if size > ART_MAX_BYTES {
-            return Err(OpErr::Os(windows::core::Error::new(E_FAIL, format!("thumbnail too large ({size} bytes)"))));
+            return Err(OpErr::Os(windows::core::Error::new(
+                E_FAIL,
+                format!("thumbnail too large ({size} bytes)"),
+            )));
         }
         let reader = DataReader::CreateDataReader(&stream)?;
         let mut out = Vec::new();
         if size > 0 {
-            let got = wait(&reader.LoadAsync(size as u32)?.cast::<IAsyncOperation<u32>>()?, OP_TIMEOUT)?;
+            let got = wait(
+                &reader
+                    .LoadAsync(size as u32)?
+                    .cast::<IAsyncOperation<u32>>()?,
+                OP_TIMEOUT,
+            )?;
             out.resize(got as usize, 0);
             reader.ReadBytes(&mut out)?;
         } else {
             // Unknown length: read in chunks until the stream ends.
             reader.SetInputStreamOptions(InputStreamOptions::Partial)?;
             loop {
-                let got = wait(&reader.LoadAsync(64 * 1024)?.cast::<IAsyncOperation<u32>>()?, OP_TIMEOUT)?;
+                let got = wait(
+                    &reader
+                        .LoadAsync(64 * 1024)?
+                        .cast::<IAsyncOperation<u32>>()?,
+                    OP_TIMEOUT,
+                )?;
                 if got == 0 {
                     break;
                 }
@@ -1396,7 +1704,10 @@ fn read_stream_bytes(r: &IRandomAccessStreamReference) -> Result<Vec<u8>, OpErr>
                 out.resize(at + got as usize, 0);
                 reader.ReadBytes(&mut out[at..])?;
                 if out.len() as u64 > ART_MAX_BYTES {
-                    return Err(OpErr::Os(windows::core::Error::new(E_FAIL, "thumbnail too large")));
+                    return Err(OpErr::Os(windows::core::Error::new(
+                        E_FAIL,
+                        "thumbnail too large",
+                    )));
                 }
             }
         }
@@ -1414,14 +1725,16 @@ fn shell_display_name(aumid: &str) -> Option<String> {
     }
     let path = HSTRING::from(format!("shell:AppsFolder\\{aumid}"));
     unsafe {
-        let item: IShellItem = SHCreateItemFromParsingName(PCWSTR(path.as_ptr()), None::<&IBindCtx>).ok()?;
+        let item: IShellItem =
+            SHCreateItemFromParsingName(PCWSTR(path.as_ptr()), None::<&IBindCtx>).ok()?;
         let p = item.GetDisplayName(SIGDN_NORMALDISPLAY).ok()?;
         if p.is_null() {
             return None;
         }
         let name = p.to_string().ok();
         CoTaskMemFree(Some(p.0 as *const core::ffi::c_void));
-        name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty() && !n.eq_ignore_ascii_case(aumid))
+        name.map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty() && !n.eq_ignore_ascii_case(aumid))
     }
 }
 
@@ -1430,7 +1743,12 @@ fn shell_display_name(aumid: &str) -> Option<String> {
 /// The current session, unless it isn't playing while another one is (then
 /// prefer the playing one, sticking with the previous pick when it plays).
 /// Dead sessions are never picked.
-fn pick_session(current: Option<usize>, previous: Option<usize>, playing: &[bool], alive: &[bool]) -> Option<usize> {
+fn pick_session(
+    current: Option<usize>,
+    previous: Option<usize>,
+    playing: &[bool],
+    alive: &[bool],
+) -> Option<usize> {
     let ok = |i: &usize| alive.get(*i).copied().unwrap_or(false);
     let is_playing = |i: &usize| playing.get(*i).copied().unwrap_or(false);
     let current = current.filter(ok);
@@ -1459,15 +1777,38 @@ fn make_timeline(
     now_ft: i64,
     now_mono: f64,
 ) -> Timeline {
-    let duration_s = if end > start { end.saturating_sub(start) as f64 / TICKS_PER_S } else { 0.0 };
+    let duration_s = if end > start {
+        end.saturating_sub(start) as f64 / TICKS_PER_S
+    } else {
+        0.0
+    };
     let mut position_s = position.saturating_sub(start).max(0) as f64 / TICKS_PER_S;
     if duration_s > 0.0 {
         position_s = position_s.min(duration_s);
     }
-    let age_ticks = if last_updated_ft > 0 { now_ft.saturating_sub(last_updated_ft) } else { 0 };
-    let age_s = if (0..=MAX_SNAPSHOT_AGE_TICKS).contains(&age_ticks) { age_ticks as f64 / TICKS_PER_S } else { 0.0 };
-    let rate = if rate.is_finite() && rate > 0.0 { rate } else { 1.0 };
-    Timeline { position_s, duration_s, sampled_at: now_mono - age_s, playing, rate, position_known: true }
+    let age_ticks = if last_updated_ft > 0 {
+        now_ft.saturating_sub(last_updated_ft)
+    } else {
+        0
+    };
+    let age_s = if (0..=MAX_SNAPSHOT_AGE_TICKS).contains(&age_ticks) {
+        age_ticks as f64 / TICKS_PER_S
+    } else {
+        0.0
+    };
+    let rate = if rate.is_finite() && rate > 0.0 {
+        rate
+    } else {
+        1.0
+    };
+    Timeline {
+        position_s,
+        duration_s,
+        sampled_at: now_mono - age_s,
+        playing,
+        rate,
+        position_known: true,
+    }
 }
 
 /// Whether the UI needs a new timeline (drift-free extrapolations are skipped
@@ -1508,7 +1849,10 @@ fn browser_site(media_title: &str) -> Option<&'static str> {
             None => TRUE,
         }
     }
-    let mut search = Search { media_title, found: None };
+    let mut search = Search {
+        media_title,
+        found: None,
+    };
     // Stopping early makes EnumWindows report an error; the answer is in `search`.
     let _ = unsafe { EnumWindows(Some(visit), LPARAM(&mut search as *mut Search as isize)) };
     search.found
@@ -1551,7 +1895,10 @@ fn known_app_name(aumid: &str) -> Option<&'static str> {
     if id.contains("_crx_") && !id.contains(YT_MUSIC_CRX) {
         return None;
     }
-    KNOWN_APPS.iter().find(|(k, _)| id.contains(k)).map(|(_, v)| *v)
+    KNOWN_APPS
+        .iter()
+        .find(|(k, _)| id.contains(k))
+        .map(|(_, v)| *v)
 }
 
 /// Best-effort name from the AUMID itself: `C:\…\foo.exe` → "Foo",
@@ -1570,11 +1917,18 @@ fn fallback_app_name(aumid: &str) -> String {
     }
     // Package family name: Name_<13-char publisher id>.
     if let Some((name, publisher)) = s.rsplit_once('_') {
-        if publisher.len() == 13 && publisher.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()) {
+        if publisher.len() == 13
+            && publisher
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        {
             s = name;
         }
     }
-    if s.len() >= 4 && s.get(s.len() - 4..).is_some_and(|ext| ext.eq_ignore_ascii_case(".exe")) {
+    if s.len() >= 4
+        && s.get(s.len() - 4..)
+            .is_some_and(|ext| ext.eq_ignore_ascii_case(".exe"))
+    {
         s = &s[..s.len() - 4];
     }
     // "Publisher.AppName" / reverse-DNS ids → the last segment.
@@ -1611,19 +1965,37 @@ mod tests {
     #[test]
     fn known_players() {
         assert_eq!(known_app_name("Spotify.exe"), Some("Spotify"));
-        assert_eq!(known_app_name("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify"), Some("Spotify"));
+        assert_eq!(
+            known_app_name("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify"),
+            Some("Spotify")
+        );
         assert_eq!(known_app_name("Chrome"), Some("Chrome"));
         assert_eq!(known_app_name("MSEdge"), Some("Edge"));
         assert_eq!(known_app_name("308046B0AF4A39CB"), Some("Firefox"));
         assert_eq!(known_app_name("firefox.exe"), Some("Firefox"));
         assert_eq!(known_app_name("Brave"), Some("Brave"));
         assert_eq!(known_app_name("Opera"), Some("Opera"));
-        assert_eq!(known_app_name("Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic"), Some("Media Player"));
+        assert_eq!(
+            known_app_name("Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic"),
+            Some("Media Player")
+        );
         assert_eq!(known_app_name("VideoLAN.VLC"), Some("VLC"));
-        assert_eq!(known_app_name("AppleInc.AppleMusicWin_nzyj5cx40ttqa!App"), Some("Apple Music"));
-        assert_eq!(known_app_name("com.github.th-ch.youtube-music"), Some("YouTube Music"));
-        assert_eq!(known_app_name("Chrome._crx_cinhimbnkkaeohfgghhklpknlkffjgod"), Some("YouTube Music"));
-        assert_eq!(known_app_name("Chrome._crx_abcdefabcdefabcdefabcdefabcdefab"), None);
+        assert_eq!(
+            known_app_name("AppleInc.AppleMusicWin_nzyj5cx40ttqa!App"),
+            Some("Apple Music")
+        );
+        assert_eq!(
+            known_app_name("com.github.th-ch.youtube-music"),
+            Some("YouTube Music")
+        );
+        assert_eq!(
+            known_app_name("Chrome._crx_cinhimbnkkaeohfgghhklpknlkffjgod"),
+            Some("YouTube Music")
+        );
+        assert_eq!(
+            known_app_name("Chrome._crx_abcdefabcdefabcdefabcdefabcdefab"),
+            None
+        );
         assert_eq!(known_app_name("SomePlayer.exe"), None);
     }
 
@@ -1631,10 +2003,22 @@ mod tests {
     fn fallback_names() {
         assert_eq!(fallback_app_name("foobar2000.exe"), "Foobar2000");
         assert_eq!(fallback_app_name("MusicBee.EXE"), "MusicBee");
-        assert_eq!(fallback_app_name(r"C:\Program Files\Tool\player.exe"), "Player");
-        assert_eq!(fallback_app_name("Contoso.GrooveBox_1a2b3c4d5e6f7!App"), "Groove Box");
-        assert_eq!(fallback_app_name("Chrome._crx_abcdefabcdefabcdefabcdefabcdefab"), "Chrome");
-        assert_eq!(fallback_app_name("MSEdge._crx_abcdefabcdefabcdefabcdefabcdefab"), "Edge");
+        assert_eq!(
+            fallback_app_name(r"C:\Program Files\Tool\player.exe"),
+            "Player"
+        );
+        assert_eq!(
+            fallback_app_name("Contoso.GrooveBox_1a2b3c4d5e6f7!App"),
+            "Groove Box"
+        );
+        assert_eq!(
+            fallback_app_name("Chrome._crx_abcdefabcdefabcdefabcdefabcdefab"),
+            "Chrome"
+        );
+        assert_eq!(
+            fallback_app_name("MSEdge._crx_abcdefabcdefabcdefabcdefabcdefab"),
+            "Edge"
+        );
         assert_eq!(fallback_app_name("com.example.tunes"), "Tunes");
         assert_eq!(fallback_app_name(""), "Media");
         assert_eq!(fallback_app_name("über.exe"), "Über");
@@ -1643,18 +2027,39 @@ mod tests {
     #[test]
     fn picks_current_unless_another_plays() {
         let alive = [true, true, true];
-        assert_eq!(pick_session(Some(0), None, &[true, true, false], &alive), Some(0));
-        assert_eq!(pick_session(Some(0), None, &[false, false, true], &alive), Some(2));
-        assert_eq!(pick_session(Some(0), Some(1), &[false, true, true], &alive), Some(1));
-        assert_eq!(pick_session(Some(0), Some(1), &[false, false, false], &alive), Some(0));
-        assert_eq!(pick_session(None, Some(1), &[false, false, false], &alive), Some(1));
-        assert_eq!(pick_session(None, None, &[false, false, false], &alive), Some(0));
+        assert_eq!(
+            pick_session(Some(0), None, &[true, true, false], &alive),
+            Some(0)
+        );
+        assert_eq!(
+            pick_session(Some(0), None, &[false, false, true], &alive),
+            Some(2)
+        );
+        assert_eq!(
+            pick_session(Some(0), Some(1), &[false, true, true], &alive),
+            Some(1)
+        );
+        assert_eq!(
+            pick_session(Some(0), Some(1), &[false, false, false], &alive),
+            Some(0)
+        );
+        assert_eq!(
+            pick_session(None, Some(1), &[false, false, false], &alive),
+            Some(1)
+        );
+        assert_eq!(
+            pick_session(None, None, &[false, false, false], &alive),
+            Some(0)
+        );
         assert_eq!(pick_session(None, None, &[], &[]), None);
     }
 
     #[test]
     fn skips_dead_sessions() {
-        assert_eq!(pick_session(Some(0), None, &[false, false], &[false, true]), Some(1));
+        assert_eq!(
+            pick_session(Some(0), None, &[false, false], &[false, true]),
+            Some(1)
+        );
         assert_eq!(pick_session(Some(0), Some(0), &[false], &[false]), None);
     }
 
@@ -1662,7 +2067,16 @@ mod tests {
     fn timeline_from_ticks() {
         let now_ft = 133_000_000_000_000_000;
         // 30 s into a 200 s track, sampled 2 s ago, playing.
-        let t = make_timeline(0, 200 * 10_000_000, 30 * 10_000_000, now_ft - 2 * 10_000_000, true, 1.0, now_ft, 50.0);
+        let t = make_timeline(
+            0,
+            200 * 10_000_000,
+            30 * 10_000_000,
+            now_ft - 2 * 10_000_000,
+            true,
+            1.0,
+            now_ft,
+            50.0,
+        );
         assert!((t.duration_s - 200.0).abs() < 1e-9);
         assert!((t.position_s - 30.0).abs() < 1e-9);
         assert!((t.position_at(50.0) - 32.0).abs() < 1e-6);
@@ -1673,19 +2087,55 @@ mod tests {
     fn timeline_clamps_bad_ages_and_offsets() {
         let now_ft = 133_000_000_000_000_000;
         // Snapshot from the future: not extrapolated.
-        let t = make_timeline(0, 0, 10 * 10_000_000, now_ft + 50 * 10_000_000, true, 1.0, now_ft, 10.0);
+        let t = make_timeline(
+            0,
+            0,
+            10 * 10_000_000,
+            now_ft + 50 * 10_000_000,
+            true,
+            1.0,
+            now_ft,
+            10.0,
+        );
         assert_eq!(t.sampled_at, 10.0);
         assert_eq!(t.duration_s, 0.0);
         // Two hours old: not extrapolated.
-        let t = make_timeline(0, 600 * 10_000_000, 0, now_ft - 7200 * 10_000_000, true, 1.0, now_ft, 10.0);
+        let t = make_timeline(
+            0,
+            600 * 10_000_000,
+            0,
+            now_ft - 7200 * 10_000_000,
+            true,
+            1.0,
+            now_ft,
+            10.0,
+        );
         assert_eq!(t.sampled_at, 10.0);
         // Unset update time, non-zero start, bogus rate.
-        let t = make_timeline(5 * 10_000_000, 65 * 10_000_000, 15 * 10_000_000, 0, false, f64::NAN, now_ft, 1.0);
+        let t = make_timeline(
+            5 * 10_000_000,
+            65 * 10_000_000,
+            15 * 10_000_000,
+            0,
+            false,
+            f64::NAN,
+            now_ft,
+            1.0,
+        );
         assert!((t.position_s - 10.0).abs() < 1e-9);
         assert!((t.duration_s - 60.0).abs() < 1e-9);
         assert_eq!(t.rate, 1.0);
         // Position past the end is clamped.
-        let t = make_timeline(0, 60 * 10_000_000, 90 * 10_000_000, 0, false, 1.0, now_ft, 1.0);
+        let t = make_timeline(
+            0,
+            60 * 10_000_000,
+            90 * 10_000_000,
+            0,
+            false,
+            1.0,
+            now_ft,
+            1.0,
+        );
         assert_eq!(t.position_s, 60.0);
     }
 
@@ -1697,7 +2147,10 @@ mod tests {
         assert!(!timeline_differs(&a, &b, 106.0));
         let c = Timeline::new(15.0, 200.0, 100.0, true);
         assert!(timeline_differs(&a, &c, 106.0));
-        let d = Timeline { playing: false, ..a };
+        let d = Timeline {
+            playing: false,
+            ..a
+        };
         assert!(timeline_differs(&a, &d, 100.0));
     }
 }

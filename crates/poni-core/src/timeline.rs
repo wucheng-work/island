@@ -21,7 +21,14 @@ pub struct Timeline {
 
 impl Timeline {
     pub fn new(position_s: f64, duration_s: f64, sampled_at: f64, playing: bool) -> Self {
-        Self { position_s, position_known: true, duration_s, sampled_at, playing, rate: 1.0 }
+        Self {
+            position_s,
+            position_known: true,
+            duration_s,
+            sampled_at,
+            playing,
+            rate: 1.0,
+        }
     }
 
     /// Estimated position at monotonic time `now`, clamped to the track.
@@ -64,14 +71,31 @@ impl Timeline {
     /// `shown` is at `now`. Only a previously known position can fill a blank
     /// one; a complete report with a known position is returned as it is.
     pub fn or_length_of(self, shown: &Timeline, now: f64) -> Timeline {
-        if (self.position_known && self.has_duration()) || !shown.position_known || !shown.has_duration() {
+        if (self.position_known && self.has_duration())
+            || !shown.position_known
+            || !shown.has_duration()
+        {
             return self;
         }
-        let duration_s = if self.has_duration() { self.duration_s } else { shown.duration_s };
+        let duration_s = if self.has_duration() {
+            self.duration_s
+        } else {
+            shown.duration_s
+        };
         if self.position_known && self.position_s > 0.0 {
-            return Timeline { position_s: self.position_s.min(duration_s), duration_s, ..self };
+            return Timeline {
+                position_s: self.position_s.min(duration_s),
+                duration_s,
+                ..self
+            };
         }
-        Timeline { position_s: shown.position_at(now).min(duration_s), position_known: true, duration_s, sampled_at: now, ..self }
+        Timeline {
+            position_s: shown.position_at(now).min(duration_s),
+            position_known: true,
+            duration_s,
+            sampled_at: now,
+            ..self
+        }
     }
 }
 
@@ -164,11 +188,16 @@ impl LyricClock {
     pub fn tick(&mut self, now: f64, pos: f64, playing: bool, rate: f64) -> f64 {
         let dt = self.last_now.map_or(f64::INFINITY, |l| now - l);
         self.last_now = Some(now);
-        if !playing || !pos.is_finite() || !self.t.is_finite() || !(0.0..=Self::GAP_S).contains(&dt) {
+        if !playing || !pos.is_finite() || !self.t.is_finite() || !(0.0..=Self::GAP_S).contains(&dt)
+        {
             self.t = pos;
             return self.t;
         }
-        let rate = if rate.is_finite() && rate > 0.0 { rate } else { 1.0 };
+        let rate = if rate.is_finite() && rate > 0.0 {
+            rate
+        } else {
+            1.0
+        };
         let predicted = self.t + dt * rate;
         let err = pos - predicted;
         if err.abs() > Self::JUMP_S {
@@ -229,7 +258,10 @@ mod tests {
         assert!(!end.holds(&Timeline::new(260.0, 260.0, 100.5, true), 100.5));
         // Unconfirmed for CONFIRM_S: the player's word stands again.
         assert!(seek.expired(100.0 + PendingSeek::CONFIRM_S));
-        assert!(!seek.holds(&Timeline::new(33.0, 260.0, 103.0, true), 100.0 + PendingSeek::CONFIRM_S));
+        assert!(!seek.holds(
+            &Timeline::new(33.0, 260.0, 103.0, true),
+            100.0 + PendingSeek::CONFIRM_S
+        ));
     }
 
     #[test]
@@ -297,7 +329,10 @@ mod tests {
     fn report_with_a_position_but_no_length_keeps_its_position() {
         let shown = Timeline::new(72.0, 212.0, 100.0, true);
         let t = Timeline::new(95.0, 0.0, 120.0, true).or_length_of(&shown, 120.0);
-        assert_eq!((t.position_s, t.duration_s, t.sampled_at), (95.0, 212.0, 120.0));
+        assert_eq!(
+            (t.position_s, t.duration_s, t.sampled_at),
+            (95.0, 212.0, 120.0)
+        );
         // Never past the end.
         let t = Timeline::new(300.0, 0.0, 120.0, true).or_length_of(&shown, 120.0);
         assert_eq!(t.position_s, 212.0);

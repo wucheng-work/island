@@ -44,17 +44,21 @@ use crate::events::{AppEvent, EventSink};
 use objc2::rc::{autoreleasepool, Retained};
 use objc2::runtime::AnyObject;
 use objc2::{define_class, msg_send, sel, MainThreadMarker, MainThreadOnly};
-use objc2_app_kit::{NSWorkspace, NSWorkspaceScreensDidSleepNotification, NSWorkspaceScreensDidWakeNotification};
+use objc2_app_kit::{
+    NSWorkspace, NSWorkspaceScreensDidSleepNotification, NSWorkspaceScreensDidWakeNotification,
+};
 use objc2_core_foundation::CFString;
 use objc2_foundation::{
-    NSArray, NSDistributedNotificationCenter, NSNotification, NSNotificationSuspensionBehavior, NSNumber, NSObject, NSObjectProtocol, NSProcessInfo,
-    NSString, NSURLResourceKey, NSURLVolumeAvailableCapacityForImportantUsageKey, NSURLVolumeIsRemovableKey, NSURLVolumeLocalizedNameKey,
-    NSURLVolumeTotalCapacityKey, NSURL,
+    NSArray, NSDistributedNotificationCenter, NSNotification, NSNotificationSuspensionBehavior,
+    NSNumber, NSObject, NSObjectProtocol, NSProcessInfo, NSString, NSURLResourceKey,
+    NSURLVolumeAvailableCapacityForImportantUsageKey, NSURLVolumeIsRemovableKey,
+    NSURLVolumeLocalizedNameKey, NSURLVolumeTotalCapacityKey, NSURL,
 };
 use poni_core::power::PowerReading;
 use poni_core::sysmon::{
-    app_bundle, bundle_name, core_kinds, core_split, level_pressure, pack_mwh, parse_if_list, top_cpu, top_io, top_memory, AppTracker, AppUse,
-    BatteryReading, CoreKind, CoreLoad, CoreTimes, CpuReading, DiskActivity, Drive, GpuReading, IfStats, MemoryReading, Monitor, NetReading,
+    app_bundle, bundle_name, core_kinds, core_split, level_pressure, pack_mwh, parse_if_list,
+    top_cpu, top_io, top_memory, AppTracker, AppUse, BatteryReading, CoreKind, CoreLoad, CoreTimes,
+    CpuReading, DiskActivity, Drive, GpuReading, IfStats, MemoryReading, Monitor, NetReading,
     PressureLevel, ProcSample, Reading, TOP_APPS,
 };
 use std::collections::{HashMap, HashSet};
@@ -164,17 +168,40 @@ struct StatFs {
     reserved: [u32; 7],
 }
 
-const _: () = assert!(std::mem::size_of::<RusageInfoV2>() == 160 && std::mem::size_of::<StatFs>() == 2168 && std::mem::size_of::<XswUsage>() == 32);
+const _: () = assert!(
+    std::mem::size_of::<RusageInfoV2>() == 160
+        && std::mem::size_of::<StatFs>() == 2168
+        && std::mem::size_of::<XswUsage>() == 32
+);
 
 extern "C" {
     fn mach_host_self() -> u32;
     static mach_task_self_: u32;
     fn mach_port_deallocate(task: u32, name: u32) -> i32;
-    fn host_processor_info(host: u32, flavor: i32, count: *mut u32, info: *mut *mut i32, info_count: *mut u32) -> i32;
+    fn host_processor_info(
+        host: u32,
+        flavor: i32,
+        count: *mut u32,
+        info: *mut *mut i32,
+        info_count: *mut u32,
+    ) -> i32;
     fn vm_deallocate(task: u32, address: usize, size: usize) -> i32;
     fn mach_timebase_info(info: *mut MachTimebase) -> i32;
-    fn sysctl(name: *mut i32, namelen: u32, oldp: *mut c_void, oldlenp: *mut usize, newp: *mut c_void, newlen: usize) -> i32;
-    fn sysctlbyname(name: *const c_char, oldp: *mut c_void, oldlenp: *mut usize, newp: *mut c_void, newlen: usize) -> i32;
+    fn sysctl(
+        name: *mut i32,
+        namelen: u32,
+        oldp: *mut c_void,
+        oldlenp: *mut usize,
+        newp: *mut c_void,
+        newlen: usize,
+    ) -> i32;
+    fn sysctlbyname(
+        name: *const c_char,
+        oldp: *mut c_void,
+        oldlenp: *mut usize,
+        newp: *mut c_void,
+        newlen: usize,
+    ) -> i32;
     // Intel builds pick the 64-bit inode `statfs` by its suffixed name, as the SDK headers do.
     #[cfg_attr(target_arch = "x86_64", link_name = "getfsstat$INODE64")]
     fn getfsstat(buf: *mut StatFs, bufsize: i32, flags: i32) -> i32;
@@ -189,13 +216,19 @@ extern "C" {
 #[link(name = "IOKit", kind = "framework")]
 extern "C" {
     fn IOServiceMatching(name: *const c_char) -> CFTypeRef;
-    fn IOServiceGetMatchingServices(main_port: u32, matching: CFTypeRef, existing: *mut u32) -> i32;
+    fn IOServiceGetMatchingServices(main_port: u32, matching: CFTypeRef, existing: *mut u32)
+        -> i32;
     fn IOServiceGetMatchingService(main_port: u32, matching: CFTypeRef) -> u32;
     fn IOIteratorNext(iterator: u32) -> u32;
     fn IOObjectRelease(object: u32) -> i32;
     fn IOObjectGetClass(object: u32, name: *mut c_char) -> i32;
     fn IORegistryEntryGetRegistryEntryID(entry: u32, id: *mut u64) -> i32;
-    fn IORegistryEntryCreateCFProperty(entry: u32, key: CFTypeRef, allocator: CFTypeRef, options: u32) -> CFTypeRef;
+    fn IORegistryEntryCreateCFProperty(
+        entry: u32,
+        key: CFTypeRef,
+        allocator: CFTypeRef,
+        options: u32,
+    ) -> CFTypeRef;
     fn IORegistryEntryGetParentEntry(entry: u32, plane: *const c_char, parent: *mut u32) -> i32;
     fn IOPSCopyPowerSourcesInfo() -> CFTypeRef;
     fn IOPSCopyPowerSourcesList(blob: CFTypeRef) -> CFTypeRef;
@@ -230,8 +263,13 @@ enum Msg {
 impl SysMon {
     pub fn start(sink: EventSink, background: bool) -> std::io::Result<Self> {
         let (tx, rx) = mpsc::channel();
-        let thread = std::thread::Builder::new().name("poni-sysmon".into()).spawn(move || worker(sink, rx, background))?;
-        Ok(Self { tx, thread: Some(thread) })
+        let thread = std::thread::Builder::new()
+            .name("poni-sysmon".into())
+            .spawn(move || worker(sink, rx, background))?;
+        Ok(Self {
+            tx,
+            thread: Some(thread),
+        })
     }
 
     pub fn open(&self, on: bool) {
@@ -313,7 +351,14 @@ fn worker(sink: EventSink, rx: Receiver<Msg>, mut background: bool) {
         }
         if let Some(a) = want_away {
             if a != away && (background || open) {
-                pinfo!("system readings: {}", if a { "resting while nobody can see the screen" } else { "reading again" });
+                pinfo!(
+                    "system readings: {}",
+                    if a {
+                        "resting while nobody can see the screen"
+                    } else {
+                        "reading again"
+                    }
+                );
             }
             away = a;
         }
@@ -346,14 +391,25 @@ fn worker(sink: EventSink, rx: Receiver<Msg>, mut background: bool) {
 }
 
 // What the readings cost this thread: [light, full] × (readings, CPU nanoseconds).
-static COST: [[AtomicU64; 2]; 2] = [[AtomicU64::new(0), AtomicU64::new(0)], [AtomicU64::new(0), AtomicU64::new(0)]];
+static COST: [[AtomicU64; 2]; 2] = [
+    [AtomicU64::new(0), AtomicU64::new(0)],
+    [AtomicU64::new(0), AtomicU64::new(0)],
+];
 static LOGGED: [AtomicU32; 2] = [AtomicU32::new(0), AtomicU32::new(0)];
 
 /// (readings, average CPU time) of the light and the full readings so far.
 pub fn cost() -> [(u64, Duration); 2] {
     [0, 1].map(|k| {
         let n = COST[k][0].load(Ordering::Relaxed);
-        (n, Duration::from_nanos(COST[k][1].load(Ordering::Relaxed).checked_div(n).unwrap_or(0)))
+        (
+            n,
+            Duration::from_nanos(
+                COST[k][1]
+                    .load(Ordering::Relaxed)
+                    .checked_div(n)
+                    .unwrap_or(0),
+            ),
+        )
     })
 }
 
@@ -375,7 +431,12 @@ fn read(s: &mut Sampler, full: bool) -> Reading {
     if log {
         LOGGED[k].fetch_add(1, Ordering::Relaxed);
         let kind = if full { "full" } else { "light" };
-        pinfo!("system readings: {kind} reading took {:.2} ms of CPU, {:.2} ms in all ({})", cpu as f64 / 1e6, wall.as_secs_f64() * 1e3, laps.line());
+        pinfo!(
+            "system readings: {kind} reading took {:.2} ms of CPU, {:.2} ms in all ({})",
+            cpu as f64 / 1e6,
+            wall.as_secs_f64() * 1e3,
+            laps.line()
+        );
     }
     r
 }
@@ -389,7 +450,11 @@ struct Laps {
 
 impl Laps {
     fn new(on: bool) -> Laps {
-        Laps { at: on.then(Instant::now), parts: Vec::new(), processes: 0 }
+        Laps {
+            at: on.then(Instant::now),
+            parts: Vec::new(),
+            processes: 0,
+        }
     }
 
     fn lap(&mut self, name: &'static str) {
@@ -401,7 +466,11 @@ impl Laps {
     }
 
     fn line(&self) -> String {
-        let mut s: Vec<String> = self.parts.iter().map(|(n, d)| format!("{n} {:.2} ms", d.as_secs_f64() * 1e3)).collect();
+        let mut s: Vec<String> = self
+            .parts
+            .iter()
+            .map(|(n, d)| format!("{n} {:.2} ms", d.as_secs_f64() * 1e3))
+            .collect();
         if self.processes > 0 {
             s.push(format!("{} processes", self.processes));
         }
@@ -508,7 +577,11 @@ impl Sampler {
         // Baselines for everything measured between two readings.
         s.ticks = s.core_ticks();
         let cores = s.ticks.as_ref().map_or(0, |t| t.len());
-        s.logical = if cores > 0 { cores as u32 } else { sysstats::sysctl_u64(c"hw.logicalcpu").unwrap_or(1).max(1) as u32 };
+        s.logical = if cores > 0 {
+            cores as u32
+        } else {
+            sysstats::sysctl_u64(c"hw.logicalcpu").unwrap_or(1).max(1) as u32
+        };
         s.kinds = mac_core_kinds(s.logical as usize);
         let _ = s.disk_activity();
         s.refresh_route();
@@ -519,7 +592,8 @@ impl Sampler {
     /// A fresh process list to measure the next full reading's app CPU and disk use against.
     fn prime_apps(&mut self) {
         let procs = self.process_list();
-        self.apps.update(self.started.elapsed().as_secs_f64(), self.logical, &procs);
+        self.apps
+            .update(self.started.elapsed().as_secs_f64(), self.logical, &procs);
     }
 
     /// A reading: `full` while the page is open, else light.
@@ -552,8 +626,14 @@ impl Sampler {
         if full {
             let procs = self.process_list();
             laps.processes = procs.len();
-            let apps = self.apps.update(self.started.elapsed().as_secs_f64(), self.logical, &procs);
-            top = (self.named(top_cpu(&apps, TOP_APPS)), self.named(top_memory(&apps, TOP_APPS)), self.named(top_io(&apps, TOP_APPS)));
+            let apps = self
+                .apps
+                .update(self.started.elapsed().as_secs_f64(), self.logical, &procs);
+            top = (
+                self.named(top_cpu(&apps, TOP_APPS)),
+                self.named(top_memory(&apps, TOP_APPS)),
+                self.named(top_io(&apps, TOP_APPS)),
+            );
             laps.lap("apps");
             self.battery = self.battery_reading();
             laps.lap("battery");
@@ -564,9 +644,23 @@ impl Sampler {
             self.smc = None;
             self.smc_looked = false;
         }
-        let power = (full && self.battery.is_none()).then(|| self.power_reading()).flatten();
+        let power = (full && self.battery.is_none())
+            .then(|| self.power_reading())
+            .flatten();
         let (top_cpu, top_memory, top_io) = top;
-        Reading { cpu, gpu, memory, drives: self.drive_list.clone(), disk, network, battery: self.battery.clone(), power, top_cpu, top_memory, top_io }
+        Reading {
+            cpu,
+            gpu,
+            memory,
+            drives: self.drive_list.clone(),
+            disk,
+            network,
+            battery: self.battery.clone(),
+            power,
+            top_cpu,
+            top_memory,
+            top_io,
+        }
     }
 
     /// What the SMC says the whole Mac draws, opened with the page's first
@@ -575,11 +669,27 @@ impl Sampler {
         if !self.smc_looked {
             self.smc_looked = true;
             self.smc = super::smc::Smc::open();
-            let w = self.smc.as_ref().and_then(|s| s.float(super::smc::SYSTEM_TOTAL));
-            pinfo!("system: the SMC's whole-Mac power: {}", w.map_or("none".to_string(), |w| format!("{w:.1} W")));
+            let w = self
+                .smc
+                .as_ref()
+                .and_then(|s| s.float(super::smc::SYSTEM_TOTAL));
+            pinfo!(
+                "system: the SMC's whole-Mac power: {}",
+                w.map_or("none".to_string(), |w| format!("{w:.1} W"))
+            );
         }
-        let w = self.smc.as_ref()?.float(super::smc::SYSTEM_TOTAL).filter(|w| w.is_finite() && *w > 0.0)?;
-        Some(PowerReading { total_w: w, cpu_w: None, gpu_w: None, rest_w: w, psu: None })
+        let w = self
+            .smc
+            .as_ref()?
+            .float(super::smc::SYSTEM_TOTAL)
+            .filter(|w| w.is_finite() && *w > 0.0)?;
+        Some(PowerReading {
+            total_w: w,
+            cpu_w: None,
+            gpu_w: None,
+            rest_w: w,
+            psu: None,
+        })
     }
 
     // ------------------------------------------------------------ CPU
@@ -587,14 +697,26 @@ impl Sampler {
     /// Each core's (user, system, idle, nice) ticks since the Mac started.
     fn core_ticks(&self) -> Option<Vec<[u32; 4]>> {
         let (mut count, mut info, mut len) = (0u32, std::ptr::null_mut::<i32>(), 0u32);
-        let r = unsafe { host_processor_info(self.host, PROCESSOR_CPU_LOAD_INFO, &mut count, &mut info, &mut len) };
+        let r = unsafe {
+            host_processor_info(
+                self.host,
+                PROCESSOR_CPU_LOAD_INFO,
+                &mut count,
+                &mut info,
+                &mut len,
+            )
+        };
         if r != 0 || info.is_null() {
             warn_once(1, &format!("per-core ticks unavailable ({r})"));
             return None;
         }
         // SAFETY: the kernel handed over `len` integers, four tick counters a processor.
         let ints = unsafe { std::slice::from_raw_parts(info as *const u32, len as usize) };
-        let cores = ints.chunks_exact(4).take(count as usize).map(|c| [c[0], c[1], c[2], c[3]]).collect();
+        let cores = ints
+            .chunks_exact(4)
+            .take(count as usize)
+            .map(|c| [c[0], c[1], c[2], c[3]])
+            .collect();
         unsafe { vm_deallocate(mach_task_self_, info as usize, len as usize * 4) };
         Some(cores)
     }
@@ -614,11 +736,25 @@ impl Sampler {
             .zip(now)
             .map(|(a, b)| {
                 let d = |k: usize| u64::from(b[k].wrapping_sub(a[k]));
-                CoreTimes { idle: d(2), kernel: d(1) + d(2), user: d(0) + d(3), dpc: 0, interrupt: 0 }
+                CoreTimes {
+                    idle: d(2),
+                    kernel: d(1) + d(2),
+                    user: d(0) + d(3),
+                    dpc: 0,
+                    interrupt: 0,
+                }
             })
             .collect();
         let s = core_split(&vec![CoreTimes::default(); span.len()], &span)?;
-        let cores = s.cores.iter().enumerate().map(|(i, load)| CoreLoad { load: *load, kind: self.kinds.get(i).copied().unwrap_or_default() }).collect();
+        let cores = s
+            .cores
+            .iter()
+            .enumerate()
+            .map(|(i, load)| CoreLoad {
+                load: *load,
+                kind: self.kinds.get(i).copied().unwrap_or_default(),
+            })
+            .collect();
         Some(CpuReading {
             load: s.load,
             user: s.user,
@@ -645,8 +781,12 @@ impl Sampler {
         let swap = swap_usage();
         // How full memory is by the kernel's own count (what `memory_pressure`
         // prints as free), else Memory Used; the level picks the gauge's zone.
-        let full = sysstats::sysctl_u64(c"kern.memorystatus_level").filter(|v| *v <= 100).map_or(used as f32 / total as f32, |free| 1.0 - free as f32 / 100.0);
-        let pressure = sysstats::sysctl_u64(c"kern.memorystatus_vm_pressure_level").and_then(PressureLevel::from_kernel).map(|l| level_pressure(l, full));
+        let full = sysstats::sysctl_u64(c"kern.memorystatus_level")
+            .filter(|v| *v <= 100)
+            .map_or(used as f32 / total as f32, |free| 1.0 - free as f32 / 100.0);
+        let pressure = sysstats::sysctl_u64(c"kern.memorystatus_vm_pressure_level")
+            .and_then(PressureLevel::from_kernel)
+            .map(|l| level_pressure(l, full));
         Some(MemoryReading {
             total,
             used,
@@ -667,8 +807,13 @@ impl Sampler {
     fn disk_counts(&self) -> Option<HashMap<u64, (u64, u64)>> {
         let mut out = HashMap::with_capacity(self.disks.len());
         for (id, d) in &self.disks {
-            let Some(st) = prop(d.0, "Statistics") else { continue };
-            if let (Some(r), Some(w)) = (cf::dict_i64(st.0, "Bytes (Read)"), cf::dict_i64(st.0, "Bytes (Write)")) {
+            let Some(st) = prop(d.0, "Statistics") else {
+                continue;
+            };
+            if let (Some(r), Some(w)) = (
+                cf::dict_i64(st.0, "Bytes (Read)"),
+                cf::dict_i64(st.0, "Bytes (Write)"),
+            ) {
                 out.insert(*id, (r.max(0) as u64, w.max(0) as u64));
             }
         }
@@ -694,7 +839,11 @@ impl Sampler {
                         w = w.saturating_add(w1.saturating_sub(*w0));
                     }
                 }
-                DiskActivity { read_bps: r as f64 / dt, write_bps: w as f64 / dt, active: None }
+                DiskActivity {
+                    read_bps: r as f64 / dt,
+                    write_bps: w as f64 / dt,
+                    active: None,
+                }
             })
         });
         self.disk_prev = Some((at, now));
@@ -709,14 +858,34 @@ impl Sampler {
         for _ in 0..3 {
             if !self.if_buf.is_empty() {
                 let mut got = self.if_buf.len();
-                let r = unsafe { sysctl(mib.as_mut_ptr(), 6, self.if_buf.as_mut_ptr().cast(), &mut got, std::ptr::null_mut(), 0) };
+                let r = unsafe {
+                    sysctl(
+                        mib.as_mut_ptr(),
+                        6,
+                        self.if_buf.as_mut_ptr().cast(),
+                        &mut got,
+                        std::ptr::null_mut(),
+                        0,
+                    )
+                };
                 if r == 0 {
                     return Some(parse_if_list(&self.if_buf[..got.min(self.if_buf.len())]));
                 }
             }
             // The first time, or the list outgrew the buffer: ask how big it is.
             let mut need = 0usize;
-            if unsafe { sysctl(mib.as_mut_ptr(), 6, std::ptr::null_mut(), &mut need, std::ptr::null_mut(), 0) } != 0 || need == 0 {
+            if unsafe {
+                sysctl(
+                    mib.as_mut_ptr(),
+                    6,
+                    std::ptr::null_mut(),
+                    &mut need,
+                    std::ptr::null_mut(),
+                    0,
+                )
+            } != 0
+                || need == 0
+            {
                 warn_once(8, "network counters unavailable");
                 return None;
             }
@@ -730,7 +899,10 @@ impl Sampler {
     fn net_reading(&mut self) -> Option<NetReading> {
         let list = self.interfaces()?;
         let up: Vec<&IfStats> = list.iter().filter(|i| counted(i)).collect();
-        let mut n = NetReading { online: !up.is_empty(), ..NetReading::default() };
+        let mut n = NetReading {
+            online: !up.is_empty(),
+            ..NetReading::default()
+        };
         for i in &up {
             n.received = n.received.saturating_add(i.received);
             n.sent = n.sent.saturating_add(i.sent);
@@ -752,14 +924,31 @@ impl Sampler {
                 n.up_bps = tx as f64 / dt;
             }
         }
-        let routed = up.iter().find(|i| self.routed.as_deref() == Some(i.name.as_str()));
-        if let Some(i) = routed.or_else(|| up.iter().max_by_key(|i| i.received.saturating_add(i.sent))) {
-            n.adapter = self.labels.get(&i.name).cloned().unwrap_or_else(|| i.name.clone());
+        let routed = up
+            .iter()
+            .find(|i| self.routed.as_deref() == Some(i.name.as_str()));
+        if let Some(i) =
+            routed.or_else(|| up.iter().max_by_key(|i| i.received.saturating_add(i.sent)))
+        {
+            n.adapter = self
+                .labels
+                .get(&i.name)
+                .cloned()
+                .unwrap_or_else(|| i.name.clone());
             n.mac = i.mac.clone();
             n.link_bps = i.baud;
-            n.ipv4 = self.ipv4s.iter().find(|(name, _)| *name == i.name).map(|(_, ip)| ip.to_string());
+            n.ipv4 = self
+                .ipv4s
+                .iter()
+                .find(|(name, _)| *name == i.name)
+                .map(|(_, ip)| ip.to_string());
         }
-        self.net_prev = Some((now, up.iter().map(|i| (i.name.clone(), (i.received, i.sent))).collect()));
+        self.net_prev = Some((
+            now,
+            up.iter()
+                .map(|i| (i.name.clone(), (i.received, i.sent)))
+                .collect(),
+        ));
         Some(n)
     }
 
@@ -768,8 +957,18 @@ impl Sampler {
     fn refresh_route(&mut self) {
         self.ipv4s = host::interface_ipv4s();
         let ip = host::route_ipv4();
-        self.routed = ip.and_then(|ip| self.ipv4s.iter().find(|(_, a)| *a == ip).map(|(n, _)| n.clone()));
-        if self.labels.is_empty() || self.ipv4s.iter().any(|(n, _)| n.starts_with("en") && !self.labels.contains_key(n)) {
+        self.routed = ip.and_then(|ip| {
+            self.ipv4s
+                .iter()
+                .find(|(_, a)| *a == ip)
+                .map(|(n, _)| n.clone())
+        });
+        if self.labels.is_empty()
+            || self
+                .ipv4s
+                .iter()
+                .any(|(n, _)| n.starts_with("en") && !self.labels.contains_key(n))
+        {
             self.labels = interface_labels();
         }
     }
@@ -783,7 +982,10 @@ impl Sampler {
         } else {
             self.gpu_misses += 1;
             if self.gpu_misses >= GPU_MISSES {
-                warn_once(16, "GPU stopped answering; looking for it again with the page");
+                warn_once(
+                    16,
+                    "GPU stopped answering; looking for it again with the page",
+                );
                 self.gpu = None;
             }
         }
@@ -804,7 +1006,14 @@ impl Sampler {
         if self.pids.len() < room {
             self.pids.resize(room, 0);
         }
-        let got = unsafe { proc_listpids(PROC_UID_ONLY, uid, self.pids.as_mut_ptr().cast(), (self.pids.len() * 4) as i32) };
+        let got = unsafe {
+            proc_listpids(
+                PROC_UID_ONLY,
+                uid,
+                self.pids.as_mut_ptr().cast(),
+                (self.pids.len() * 4) as i32,
+            )
+        };
         self.listed = (got.max(0) as usize / 4).min(self.pids.len());
         let mut out = Vec::with_capacity(self.listed);
         for k in 0..self.listed {
@@ -814,13 +1023,22 @@ impl Sampler {
             }
             // SAFETY: all zeroes is a valid value of this plain C struct.
             let mut ri: RusageInfoV2 = unsafe { std::mem::zeroed() };
-            if unsafe { proc_pid_rusage(pid, RUSAGE_INFO_V2, (&mut ri as *mut RusageInfoV2).cast()) } != 0 {
+            if unsafe {
+                proc_pid_rusage(pid, RUSAGE_INFO_V2, (&mut ri as *mut RusageInfoV2).cast())
+            } != 0
+            {
                 continue;
             }
             let image = self.app_key(pid, ri.proc_start_abstime);
             let cpu_time = self.to_100ns(ri.user_time.saturating_add(ri.system_time));
             let io = ri.diskio_bytesread.saturating_add(ri.diskio_byteswritten);
-            out.push(ProcSample { pid: pid as u64, image, cpu_time, memory: ri.phys_footprint, io });
+            out.push(ProcSample {
+                pid: pid as u64,
+                image,
+                cpu_time,
+                memory: ri.phys_footprint,
+                io,
+            });
         }
         out
     }
@@ -840,7 +1058,11 @@ impl Sampler {
         }
         let path = process_path(pid);
         let (key, icon, name) = match path.as_deref().and_then(app_bundle) {
-            Some(bundle) => (bundle.to_lowercase(), Some(bundle.to_string()), bundle_name(bundle).to_string()),
+            Some(bundle) => (
+                bundle.to_lowercase(),
+                Some(bundle.to_string()),
+                bundle_name(bundle).to_string(),
+            ),
             None => match &path {
                 Some(p) => {
                     let file = p.rsplit('/').next().unwrap_or(p);
@@ -948,7 +1170,9 @@ fn search(entry: u32, key: &str) -> Option<Cf> {
     for _ in 0..PARENT_LEVELS {
         let mut parent = 0u32;
         let from = at.as_ref().map_or(entry, |e| e.0);
-        if unsafe { IORegistryEntryGetParentEntry(from, c"IOService".as_ptr(), &mut parent) } != 0 || parent == 0 {
+        if unsafe { IORegistryEntryGetParentEntry(from, c"IOService".as_ptr(), &mut parent) } != 0
+            || parent == 0
+        {
             return None;
         }
         let parent = Io(parent);
@@ -984,7 +1208,9 @@ fn class_name(entry: u32) -> String {
     if unsafe { IOObjectGetClass(entry, name.as_mut_ptr()) } != 0 {
         return String::new();
     }
-    unsafe { CStr::from_ptr(name.as_ptr()) }.to_string_lossy().into_owned()
+    unsafe { CStr::from_ptr(name.as_ptr()) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 // ---------------------------------------------------------------- CPU kinds
@@ -1016,7 +1242,15 @@ fn level_classes(n: usize) -> Option<Vec<u8>> {
 fn swap_usage() -> Option<XswUsage> {
     let mut s = XswUsage::default();
     let mut len = std::mem::size_of::<XswUsage>();
-    let r = unsafe { sysctlbyname(c"vm.swapusage".as_ptr(), (&mut s as *mut XswUsage).cast(), &mut len, std::ptr::null_mut(), 0) };
+    let r = unsafe {
+        sysctlbyname(
+            c"vm.swapusage".as_ptr(),
+            (&mut s as *mut XswUsage).cast(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
     (r == 0).then_some(s)
 }
 
@@ -1035,7 +1269,10 @@ impl Gpu {
     fn open(ram: u64) -> Option<Gpu> {
         let mut best: Option<(u8, Gpu)> = None;
         for e in services(c"IOAccelerator") {
-            if prop(e.0, "PerformanceStatistics").and_then(|s| device_use(s.0)).is_none() {
+            if prop(e.0, "PerformanceStatistics")
+                .and_then(|s| device_use(s.0))
+                .is_none()
+            {
                 continue;
             }
             let class = class_name(e.0);
@@ -1051,12 +1288,25 @@ impl Gpu {
             if best.as_ref().is_some_and(|(r, _)| *r >= rank) {
                 continue;
             }
-            let name = search(e.0, "model").and_then(|v| cf::text(v.0)).filter(|n| !n.is_empty()).unwrap_or(class);
+            let name = search(e.0, "model")
+                .and_then(|v| cf::text(v.0))
+                .filter(|n| !n.is_empty())
+                .unwrap_or(class);
             let integrated = apple || intel;
             // Apple silicon's GPU shares all of the Mac's memory; a card has its own.
-            let vram = search(e.0, "VRAM,totalMB").and_then(|v| cf::number_i64(v.0)).map(|mb| mb.max(0) as u64 * 1024 * 1024);
+            let vram = search(e.0, "VRAM,totalMB")
+                .and_then(|v| cf::number_i64(v.0))
+                .map(|mb| mb.max(0) as u64 * 1024 * 1024);
             let mem_total = if integrated { ram } else { vram.unwrap_or(0) };
-            best = Some((rank, Gpu { entry: e, name, integrated, mem_total }));
+            best = Some((
+                rank,
+                Gpu {
+                    entry: e,
+                    name,
+                    integrated,
+                    mem_total,
+                },
+            ));
         }
         if best.is_none() {
             warn_once(64, "no GPU statistics");
@@ -1069,7 +1319,14 @@ impl Gpu {
         let get = |k: &str| cf::dict_i64(s.0, k);
         let pct = |v: i64| (v as f32 / 100.0).clamp(0.0, 1.0);
         let util = pct(device_use(s.0)?);
-        let mem_used = ["vramUsedBytes", "In use system memory", "inUseVidMemoryBytes"].iter().find_map(|k| get(*k)).map_or(0, |b| b.max(0) as u64);
+        let mem_used = [
+            "vramUsedBytes",
+            "In use system memory",
+            "inUseVidMemoryBytes",
+        ]
+        .iter()
+        .find_map(|k| get(*k))
+        .map_or(0, |b| b.max(0) as u64);
         Some(GpuReading {
             name: self.name.clone(),
             util,
@@ -1112,20 +1369,35 @@ fn volumes() -> Vec<Drive> {
         return Vec::new();
     }
     // SAFETY: all zeroes is a valid value of this plain C struct.
-    let mut buf: Vec<StatFs> = (0..n as usize + 4).map(|_| unsafe { std::mem::zeroed() }).collect();
+    let mut buf: Vec<StatFs> = (0..n as usize + 4)
+        .map(|_| unsafe { std::mem::zeroed() })
+        .collect();
     let bytes = i32::try_from(buf.len() * std::mem::size_of::<StatFs>()).unwrap_or(i32::MAX);
     let got = unsafe { getfsstat(buf.as_mut_ptr(), bytes, MNT_NOWAIT) };
     let mut drives = Vec::new();
     for f in &buf[..(got.max(0) as usize).min(buf.len())] {
-        let mount = unsafe { CStr::from_ptr(f.mntonname.as_ptr()) }.to_string_lossy().into_owned();
+        let mount = unsafe { CStr::from_ptr(f.mntonname.as_ptr()) }
+            .to_string_lossy()
+            .into_owned();
         let root = mount == "/";
         // The startup disk is read-only (its system half); others that are read-only are images.
         let place = root || mount.starts_with("/Volumes/");
-        if !place || f.flags & MNT_LOCAL == 0 || f.flags & MNT_DONTBROWSE != 0 || (!root && f.flags & MNT_RDONLY != 0) {
+        if !place
+            || f.flags & MNT_LOCAL == 0
+            || f.flags & MNT_DONTBROWSE != 0
+            || (!root && f.flags & MNT_RDONLY != 0)
+        {
             continue;
         }
         let bsize = u64::from(f.bsize);
-        if let Some(d) = volume(&mount, root, (f.blocks.saturating_mul(bsize), f.bavail.saturating_mul(bsize))) {
+        if let Some(d) = volume(
+            &mount,
+            root,
+            (
+                f.blocks.saturating_mul(bsize),
+                f.bavail.saturating_mul(bsize),
+            ),
+        ) {
             drives.push(d);
         }
     }
@@ -1138,9 +1410,17 @@ fn volumes() -> Vec<Drive> {
 /// `statfs`'s (total, free) when Foundation doesn't say.
 fn volume(mount: &str, system: bool, fallback: (u64, u64)) -> Option<Drive> {
     let url = NSURL::fileURLWithPath(&NSString::from_str(mount));
-    let keys: [&NSURLResourceKey; 4] =
-        unsafe { [NSURLVolumeLocalizedNameKey, NSURLVolumeIsRemovableKey, NSURLVolumeTotalCapacityKey, NSURLVolumeAvailableCapacityForImportantUsageKey] };
-    let vals = url.resourceValuesForKeys_error(&NSArray::from_slice(&keys)).ok();
+    let keys: [&NSURLResourceKey; 4] = unsafe {
+        [
+            NSURLVolumeLocalizedNameKey,
+            NSURLVolumeIsRemovableKey,
+            NSURLVolumeTotalCapacityKey,
+            NSURLVolumeAvailableCapacityForImportantUsageKey,
+        ]
+    };
+    let vals = url
+        .resourceValuesForKeys_error(&NSArray::from_slice(&keys))
+        .ok();
     let value = |k: &NSURLResourceKey| vals.as_ref().and_then(|v| v.objectForKey(k));
     let num = |k: &NSURLResourceKey| value(k).and_then(|v| v.downcast::<NSNumber>().ok());
     if num(keys[1]).is_some_and(|n| n.boolValue()) {
@@ -1149,9 +1429,24 @@ fn volume(mount: &str, system: bool, fallback: (u64, u64)) -> Option<Drive> {
     let bytes = |k: &NSURLResourceKey| num(k).map(|n| n.longLongValue().max(0) as u64);
     let total = bytes(keys[2]).filter(|t| *t > 0).unwrap_or(fallback.0);
     let free = bytes(keys[3]).filter(|f| *f > 0).unwrap_or(fallback.1);
-    let name = value(keys[0]).and_then(|v| v.downcast::<NSString>().ok()).map(|s| s.to_string()).filter(|s| !s.is_empty());
-    let name = name.unwrap_or_else(|| mount.rsplit('/').find(|s| !s.is_empty()).unwrap_or("Macintosh HD").to_string());
-    (total > 0).then(|| Drive { root: name, label: String::new(), total, free: free.min(total), system })
+    let name = value(keys[0])
+        .and_then(|v| v.downcast::<NSString>().ok())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty());
+    let name = name.unwrap_or_else(|| {
+        mount
+            .rsplit('/')
+            .find(|s| !s.is_empty())
+            .unwrap_or("Macintosh HD")
+            .to_string()
+    });
+    (total > 0).then(|| Drive {
+        root: name,
+        label: String::new(),
+        total,
+        free: free.min(total),
+        system,
+    })
 }
 
 // ---------------------------------------------------------------- network
@@ -1159,13 +1454,18 @@ fn volume(mount: &str, system: bool, fallback: (u64, u64)) -> Option<Drive> {
 /// An Ethernet or Wi-Fi interface that is up and connected ("en0", "en1", …;
 /// not Apple's own peer-to-peer links, bridges, tunnels or the loopback).
 fn counted(i: &IfStats) -> bool {
-    i.name.starts_with("en") && i.kind == IFT_ETHER && i.flags & (IFF_UP | IFF_RUNNING) == (IFF_UP | IFF_RUNNING) && i.flags & IFF_LOOPBACK == 0
+    i.name.starts_with("en")
+        && i.kind == IFT_ETHER
+        && i.flags & (IFF_UP | IFF_RUNNING) == (IFF_UP | IFF_RUNNING)
+        && i.flags & IFF_LOOPBACK == 0
 }
 
 /// Each interface's name in System Settings ("Wi-Fi", "Ethernet"), by its BSD name.
 fn interface_labels() -> HashMap<String, String> {
     let mut out = HashMap::new();
-    let Some(all) = Cf::new(unsafe { SCNetworkInterfaceCopyAll() }) else { return out };
+    let Some(all) = Cf::new(unsafe { SCNetworkInterfaceCopyAll() }) else {
+        return out;
+    };
     for i in 0..unsafe { cf::CFArrayGetCount(all.0) } {
         let iface = unsafe { cf::CFArrayGetValueAtIndex(all.0, i) };
         let bsd = cf::text(unsafe { SCNetworkInterfaceGetBSDName(iface) });
@@ -1205,11 +1505,18 @@ struct BatteryDetails {
 /// registry entry; None on a Mac without one.
 fn battery_now(details: Option<&BatteryDetails>) -> Option<BatteryReading> {
     let blob = Cf::new(unsafe { IOPSCopyPowerSourcesInfo() })?;
-    let on_ac = cf::str_is(unsafe { IOPSGetProvidingPowerSourceType(blob.0) }, "AC Power");
+    let on_ac = cf::str_is(
+        unsafe { IOPSGetProvidingPowerSourceType(blob.0) },
+        "AC Power",
+    );
     let list = Cf::new(unsafe { IOPSCopyPowerSourcesList(blob.0) })?;
     for i in 0..unsafe { cf::CFArrayGetCount(list.0) } {
-        let desc = unsafe { IOPSGetPowerSourceDescription(blob.0, cf::CFArrayGetValueAtIndex(list.0, i)) };
-        if desc.is_null() || !cf::dict_str_is(desc, "Type", "InternalBattery") || cf::dict_bool(desc, "Is Present") == Some(false) {
+        let desc =
+            unsafe { IOPSGetPowerSourceDescription(blob.0, cf::CFArrayGetValueAtIndex(list.0, i)) };
+        if desc.is_null()
+            || !cf::dict_str_is(desc, "Type", "InternalBattery")
+            || cf::dict_bool(desc, "Is Present") == Some(false)
+        {
             continue;
         }
         let cur = cf::dict_i64(desc, "Current Capacity").unwrap_or(0);
@@ -1248,17 +1555,29 @@ fn battery_details() -> Option<BatteryDetails> {
     }
     let e = Io(e);
     let num = |k: &str| prop(e.0, k).and_then(|v| cf::number_i64(v.0));
-    let mv = num("Voltage").or_else(|| num("AppleRawBatteryVoltage")).filter(|v| *v > 0);
+    let mv = num("Voltage")
+        .or_else(|| num("AppleRawBatteryVoltage"))
+        .filter(|v| *v > 0);
     let ma = num("Amperage").or_else(|| num("InstantAmperage"));
     let design = num("DesignCapacity").filter(|v| *v > 0);
     // Apple silicon's MaxCapacity is a percentage; Intel's is mAh.
-    let full = num("NominalChargeCapacity").or_else(|| num("AppleRawMaxCapacity")).or_else(|| num("MaxCapacity").filter(|v| *v > 100)).filter(|v| *v > 0);
-    let energy = |mah: Option<i64>| mah.zip(mv).and_then(|(c, v)| pack_mwh(u32::try_from(c).ok()?, u32::try_from(v).ok()?));
+    let full = num("NominalChargeCapacity")
+        .or_else(|| num("AppleRawMaxCapacity"))
+        .or_else(|| num("MaxCapacity").filter(|v| *v > 100))
+        .filter(|v| *v > 0);
+    let energy = |mah: Option<i64>| {
+        mah.zip(mv)
+            .and_then(|(c, v)| pack_mwh(u32::try_from(c).ok()?, u32::try_from(v).ok()?))
+    };
     Some(BatteryDetails {
         design_mwh: energy(design),
         full_mwh: energy(full),
-        cycles: num("CycleCount").and_then(|c| u32::try_from(c).ok()).filter(|c| *c > 0),
-        rate_mw: mv.zip(ma).and_then(|(v, a)| i32::try_from(v.saturating_mul(a) / 1000).ok()),
+        cycles: num("CycleCount")
+            .and_then(|c| u32::try_from(c).ok())
+            .filter(|c| *c > 0),
+        rate_mw: mv
+            .zip(ma)
+            .and_then(|(v, a)| i32::try_from(v.saturating_mul(a) / 1000).ok()),
     })
 }
 
@@ -1274,7 +1593,9 @@ pub fn mac_model() -> Option<String> {
         return None;
     }
     let e = Io(e);
-    prop(e.0, "model").and_then(|v| cf::text(v.0)).filter(|m| !m.is_empty())
+    prop(e.0, "model")
+        .and_then(|v| cf::text(v.0))
+        .filter(|m| !m.is_empty())
 }
 
 // ---------------------------------------------------------------- nobody there
@@ -1332,13 +1653,34 @@ pub fn watch_away(mtm: MainThreadMarker, sink: EventSink) {
     let obs: &AnyObject = observer.as_ref();
     let workspace = NSWorkspace::sharedWorkspace().notificationCenter();
     unsafe {
-        workspace.addObserver_selector_name_object(obs, sel!(screensSlept:), Some(NSWorkspaceScreensDidSleepNotification), None);
-        workspace.addObserver_selector_name_object(obs, sel!(screensWoke:), Some(NSWorkspaceScreensDidWakeNotification), None);
+        workspace.addObserver_selector_name_object(
+            obs,
+            sel!(screensSlept:),
+            Some(NSWorkspaceScreensDidSleepNotification),
+            None,
+        );
+        workspace.addObserver_selector_name_object(
+            obs,
+            sel!(screensWoke:),
+            Some(NSWorkspaceScreensDidWakeNotification),
+            None,
+        );
     }
     let center = NSDistributedNotificationCenter::defaultCenter();
-    for (name, sel) in [("com.apple.screenIsLocked", sel!(screenLocked:)), ("com.apple.screenIsUnlocked", sel!(screenUnlocked:))] {
+    for (name, sel) in [
+        ("com.apple.screenIsLocked", sel!(screenLocked:)),
+        ("com.apple.screenIsUnlocked", sel!(screenUnlocked:)),
+    ] {
         let name = NSString::from_str(name);
-        unsafe { center.addObserver_selector_name_object_suspensionBehavior(obs, sel, Some(&name), None, NSNotificationSuspensionBehavior::DeliverImmediately) };
+        unsafe {
+            center.addObserver_selector_name_object_suspensionBehavior(
+                obs,
+                sel,
+                Some(&name),
+                None,
+                NSNotificationSuspensionBehavior::DeliverImmediately,
+            )
+        };
     }
     std::mem::forget(observer);
 }

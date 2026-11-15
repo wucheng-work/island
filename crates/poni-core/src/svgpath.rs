@@ -23,13 +23,18 @@ struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     fn skip_ws(&mut self) {
-        while self.i < self.s.len() && (self.s[self.i].is_ascii_whitespace() || self.s[self.i] == b',') {
+        while self.i < self.s.len()
+            && (self.s[self.i].is_ascii_whitespace() || self.s[self.i] == b',')
+        {
             self.i += 1;
         }
     }
     fn peek_cmd(&mut self) -> Option<u8> {
         self.skip_ws();
-        self.s.get(self.i).copied().filter(|c| c.is_ascii_alphabetic())
+        self.s
+            .get(self.i)
+            .copied()
+            .filter(|c| c.is_ascii_alphabetic())
     }
     fn at_number(&mut self) -> bool {
         self.skip_ws();
@@ -91,7 +96,10 @@ impl<'a> Lexer<'a> {
 /// Parse path data into absolute segments. Smooth curves (S/T) are expanded
 /// into full cubic/quadratic segments.
 pub fn parse(d: &str) -> Result<Vec<Seg>, ParseError> {
-    let mut lx = Lexer { s: d.as_bytes(), i: 0 };
+    let mut lx = Lexer {
+        s: d.as_bytes(),
+        i: 0,
+    };
     let mut out = Vec::new();
     let (mut cx, mut cy) = (0.0f32, 0.0f32);
     let (mut sx, mut sy) = (0.0f32, 0.0f32);
@@ -105,7 +113,9 @@ pub fn parse(d: &str) -> Result<Vec<Seg>, ParseError> {
         } else if !lx.at_number() {
             break;
         }
-        let Some(c) = cmd else { return Err(ParseError("path must start with a command".into())) };
+        let Some(c) = cmd else {
+            return Err(ParseError("path must start with a command".into()));
+        };
         let rel = c.is_ascii_lowercase();
         let (ox, oy) = if rel { (cx, cy) } else { (0.0, 0.0) };
         match c.to_ascii_uppercase() {
@@ -198,7 +208,12 @@ pub fn parse(d: &str) -> Result<Vec<Seg>, ParseError> {
                 last_ctrl = None;
                 cmd = None;
             }
-            other => return Err(ParseError(format!("unsupported command '{}'", other as char))),
+            other => {
+                return Err(ParseError(format!(
+                    "unsupported command '{}'",
+                    other as char
+                )))
+            }
         }
     }
     Ok(out)
@@ -212,7 +227,17 @@ pub fn parse(d: &str) -> Result<Vec<Seg>, ParseError> {
 /// Béziers itself. Follows SVG 1.1 appendix F.6.5/F.6.6. `sweep = true` is
 /// the positive-angle direction (clockwise on a y-down screen).
 #[allow(clippy::too_many_arguments)]
-pub fn arc_to_cubics(x1: f32, y1: f32, rx: f32, ry: f32, rot_deg: f32, large: bool, sweep: bool, x2: f32, y2: f32) -> Vec<[f32; 6]> {
+pub fn arc_to_cubics(
+    x1: f32,
+    y1: f32,
+    rx: f32,
+    ry: f32,
+    rot_deg: f32,
+    large: bool,
+    sweep: bool,
+    x2: f32,
+    y2: f32,
+) -> Vec<[f32; 6]> {
     let (x1d, y1d, x2d, y2d) = (x1 as f64, y1 as f64, x2 as f64, y2 as f64);
     if (x1d - x2d).abs() < 1e-9 && (y1d - y2d).abs() < 1e-9 {
         return Vec::new();
@@ -237,7 +262,11 @@ pub fn arc_to_cubics(x1: f32, y1: f32, rx: f32, ry: f32, rot_deg: f32, large: bo
     }
     let num = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p;
     let den = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
-    let mut coef = if den.abs() < 1e-12 { 0.0 } else { (num / den).max(0.0).sqrt() };
+    let mut coef = if den.abs() < 1e-12 {
+        0.0
+    } else {
+        (num / den).max(0.0).sqrt()
+    };
     if large == sweep {
         coef = -coef;
     }
@@ -268,13 +297,18 @@ pub fn arc_to_cubics(x1: f32, y1: f32, rx: f32, ry: f32, rot_deg: f32, large: bo
         delta += tau;
     }
 
-    let n = ((delta.abs() / std::f64::consts::FRAC_PI_2) - 1e-9).ceil().max(1.0) as usize;
+    let n = ((delta.abs() / std::f64::consts::FRAC_PI_2) - 1e-9)
+        .ceil()
+        .max(1.0) as usize;
     let step = delta / n as f64;
     let k = 4.0 / 3.0 * (step / 4.0).tan();
     let map = |ex: f64, ey: f64| -> (f32, f32) {
         let x = rx * ex;
         let y = ry * ey;
-        ((cos_p * x - sin_p * y + cx) as f32, (sin_p * x + cos_p * y + cy) as f32)
+        (
+            (cos_p * x - sin_p * y + cx) as f32,
+            (sin_p * x + cos_p * y + cy) as f32,
+        )
     };
     let mut out = Vec::with_capacity(n);
     let mut t = theta1;
@@ -294,7 +328,13 @@ pub fn arc_to_cubics(x1: f32, y1: f32, rx: f32, ry: f32, rot_deg: f32, large: bo
 
 /// Convenience: SVG `<circle>` as path data (two arcs).
 pub fn circle(cx: f32, cy: f32, r: f32) -> String {
-    format!("M{} {}a{r} {r} 0 1 0 {} 0a{r} {r} 0 1 0 {} 0", cx - r, cy, 2.0 * r, -2.0 * r)
+    format!(
+        "M{} {}a{r} {r} 0 1 0 {} 0a{r} {r} 0 1 0 {} 0",
+        cx - r,
+        cy,
+        2.0 * r,
+        -2.0 * r
+    )
 }
 
 /// Convenience: SVG `<rect>` with corner radius as path data.
@@ -324,13 +364,29 @@ mod tests {
     #[test]
     fn parses_basic_commands() {
         let segs = parse("M2 3 L4 5 H10 V1 Z").unwrap();
-        assert_eq!(segs, vec![Seg::MoveTo(2.0, 3.0), Seg::LineTo(4.0, 5.0), Seg::LineTo(10.0, 5.0), Seg::LineTo(10.0, 1.0), Seg::Close]);
+        assert_eq!(
+            segs,
+            vec![
+                Seg::MoveTo(2.0, 3.0),
+                Seg::LineTo(4.0, 5.0),
+                Seg::LineTo(10.0, 5.0),
+                Seg::LineTo(10.0, 1.0),
+                Seg::Close
+            ]
+        );
     }
 
     #[test]
     fn relative_and_implicit_lineto() {
         let segs = parse("m1 1 2 2 l1-1").unwrap();
-        assert_eq!(segs, vec![Seg::MoveTo(1.0, 1.0), Seg::LineTo(3.0, 3.0), Seg::LineTo(4.0, 2.0)]);
+        assert_eq!(
+            segs,
+            vec![
+                Seg::MoveTo(1.0, 1.0),
+                Seg::LineTo(3.0, 3.0),
+                Seg::LineTo(4.0, 2.0)
+            ]
+        );
     }
 
     #[test]
@@ -360,8 +416,14 @@ mod tests {
 
     fn bezier_point(p0: (f32, f32), c: &[f32; 6], t: f32) -> (f32, f32) {
         let mt = 1.0 - t;
-        let x = mt * mt * mt * p0.0 + 3.0 * mt * mt * t * c[0] + 3.0 * mt * t * t * c[2] + t * t * t * c[4];
-        let y = mt * mt * mt * p0.1 + 3.0 * mt * mt * t * c[1] + 3.0 * mt * t * t * c[3] + t * t * t * c[5];
+        let x = mt * mt * mt * p0.0
+            + 3.0 * mt * mt * t * c[0]
+            + 3.0 * mt * t * t * c[2]
+            + t * t * t * c[4];
+        let y = mt * mt * mt * p0.1
+            + 3.0 * mt * mt * t * c[1]
+            + 3.0 * mt * t * t * c[3]
+            + t * t * t * c[5];
         (x, y)
     }
 
@@ -372,7 +434,10 @@ mod tests {
             for i in 0..=8 {
                 let (x, y) = bezier_point(p0, c, i as f32 / 8.0);
                 let d = ((x - cx).powi(2) + (y - cy).powi(2)).sqrt();
-                assert!((d - r).abs() < r * 0.003 + 1e-3, "point ({x},{y}) is {d} from centre, want {r}");
+                assert!(
+                    (d - r).abs() < r * 0.003 + 1e-3,
+                    "point ({x},{y}) is {d} from centre, want {r}"
+                );
             }
             p0 = (c[4], c[5]);
         }
@@ -420,7 +485,10 @@ mod tests {
         let c = arc_to_cubics(0.0, 0.0, 1.0, 1.0, 0.0, false, true, 10.0, 0.0);
         assert_on_circle((0.0, 0.0), &c, 5.0, 0.0, 5.0);
         assert!(arc_to_cubics(1.0, 1.0, 5.0, 5.0, 0.0, false, true, 1.0, 1.0).is_empty());
-        assert_eq!(arc_to_cubics(0.0, 0.0, 0.0, 5.0, 0.0, false, true, 4.0, 0.0).len(), 1);
+        assert_eq!(
+            arc_to_cubics(0.0, 0.0, 0.0, 5.0, 0.0, false, true, 4.0, 0.0).len(),
+            1
+        );
     }
 
     #[test]

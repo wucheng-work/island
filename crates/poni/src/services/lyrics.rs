@@ -148,15 +148,25 @@ impl Job {
         } else {
             return;
         };
-        crate::pinfo!("lyrics diag player={player} request={} attempt={} stage={stage} {detail}", self.generation, self.attempt);
+        crate::pinfo!(
+            "lyrics diag player={player} request={} attempt={} stage={stage} {detail}",
+            self.generation,
+            self.attempt
+        );
     }
 
     fn diagnostic_candidate(&self, stage: &str, record: &LrclibRecord, reason: &str) {
-        self.diagnostic(stage, format_args!(
-            "reason={reason} candidate_id={} title={:?} artist={:?} album={:?} duration_s={:?}",
-            record.id, diagnostic_text(&record.track_name), diagnostic_text(&record.artist_name),
-            diagnostic_text(record.album_name.as_deref().unwrap_or_default()), record.duration,
-        ));
+        self.diagnostic(
+            stage,
+            format_args!(
+                "reason={reason} candidate_id={} title={:?} artist={:?} album={:?} duration_s={:?}",
+                record.id,
+                diagnostic_text(&record.track_name),
+                diagnostic_text(&record.artist_name),
+                diagnostic_text(record.album_name.as_deref().unwrap_or_default()),
+                record.duration,
+            ),
+        );
     }
 }
 
@@ -203,7 +213,11 @@ impl Shared {
         self.q.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    fn wait_for<'a>(&self, g: MutexGuard<'a, Queue>, timeout: Option<Duration>) -> MutexGuard<'a, Queue> {
+    fn wait_for<'a>(
+        &self,
+        g: MutexGuard<'a, Queue>,
+        timeout: Option<Duration>,
+    ) -> MutexGuard<'a, Queue> {
         match timeout {
             Some(d) => match self.cv.wait_timeout(g, d) {
                 Ok((g, _)) => g,
@@ -221,7 +235,10 @@ enum Halt {
     /// Superseded by a newer track, or shutting down: say nothing.
     Abandoned,
     /// Report the failure now; an eligible retry can still recover later.
-    Failed { msg: String, retry_at: Option<Instant> },
+    Failed {
+        msg: String,
+        retry_at: Option<Instant>,
+    },
 }
 
 fn worker_main(shared: Arc<Shared>, sink: EventSink) {
@@ -231,9 +248,14 @@ fn worker_main(shared: Arc<Shared>, sink: EventSink) {
     prune_cache(&cache_dir);
     let apple = AppleMusic::new();
     let mut w = Worker {
-        shared, sink, cache_dir, apple,
-        qq_client: None, qq_blocked_until: None,
-        netease_client: None, netease_blocked_until: None,
+        shared,
+        sink,
+        cache_dir,
+        apple,
+        qq_client: None,
+        qq_blocked_until: None,
+        netease_client: None,
+        netease_blocked_until: None,
         writes: 0,
     };
     while let Some(work) = w.next_job() {
@@ -299,41 +321,100 @@ impl Worker {
 
     fn deliver(&self, job: &Job, result: LyricsResult) {
         if self.is_current(job) {
-            self.sink.send(AppEvent::Lyrics { track_key: job.track_key.clone(), app_id: job.app_id.clone(), generation: job.generation, result });
+            self.sink.send(AppEvent::Lyrics {
+                track_key: job.track_key.clone(),
+                app_id: job.app_id.clone(),
+                generation: job.generation,
+                result,
+            });
         }
     }
 
     fn process(&mut self, job: Job) {
         let started = Instant::now();
-        job.diagnostic("start", format_args!(
-            "title={:?} artist={:?} album={:?} duration_s={} netease_song_id={:?}",
-            diagnostic_text(&job.query.title), diagnostic_text(&job.query.artist),
-            diagnostic_text(&job.query.album), job.query.duration_s, netease_song_id(&job.content_id),
-        ));
+        job.diagnostic(
+            "start",
+            format_args!(
+                "title={:?} artist={:?} album={:?} duration_s={} netease_song_id={:?}",
+                diagnostic_text(&job.query.title),
+                diagnostic_text(&job.query.artist),
+                diagnostic_text(&job.query.album),
+                job.query.duration_s,
+                netease_song_id(&job.content_id),
+            ),
+        );
         match self.lookup(&job) {
             Ok(result) => {
                 match &result {
-                    LyricsResult::Found { lyrics } => job.diagnostic("finish", format_args!(
-                        "result=found synced={} text_lines={} elapsed_ms={}", lyrics.synced, lyrics.text_lines(), started.elapsed().as_millis(),
-                    )),
-                    LyricsResult::Instrumental => job.diagnostic("finish", format_args!("result=instrumental elapsed_ms={}", started.elapsed().as_millis())),
-                    LyricsResult::NotFound => job.diagnostic("finish", format_args!("result=not_found elapsed_ms={}", started.elapsed().as_millis())),
-                    LyricsResult::Retrying(_) => job.diagnostic("retry", format_args!("result=pending elapsed_ms={}", started.elapsed().as_millis())),
-                    LyricsResult::Error(_) => job.diagnostic("finish", format_args!("result=error elapsed_ms={}", started.elapsed().as_millis())),
+                    LyricsResult::Found { lyrics } => job.diagnostic(
+                        "finish",
+                        format_args!(
+                            "result=found synced={} text_lines={} elapsed_ms={}",
+                            lyrics.synced,
+                            lyrics.text_lines(),
+                            started.elapsed().as_millis(),
+                        ),
+                    ),
+                    LyricsResult::Instrumental => job.diagnostic(
+                        "finish",
+                        format_args!(
+                            "result=instrumental elapsed_ms={}",
+                            started.elapsed().as_millis()
+                        ),
+                    ),
+                    LyricsResult::NotFound => job.diagnostic(
+                        "finish",
+                        format_args!(
+                            "result=not_found elapsed_ms={}",
+                            started.elapsed().as_millis()
+                        ),
+                    ),
+                    LyricsResult::Retrying(_) => job.diagnostic(
+                        "retry",
+                        format_args!(
+                            "result=pending elapsed_ms={}",
+                            started.elapsed().as_millis()
+                        ),
+                    ),
+                    LyricsResult::Error(_) => job.diagnostic(
+                        "finish",
+                        format_args!("result=error elapsed_ms={}", started.elapsed().as_millis()),
+                    ),
                 }
                 self.deliver(&job, result);
             }
-            Err(Halt::Abandoned) => job.diagnostic("finish", format_args!("result=cancelled reason=superseded_or_shutdown elapsed_ms={}", started.elapsed().as_millis())),
+            Err(Halt::Abandoned) => job.diagnostic(
+                "finish",
+                format_args!(
+                    "result=cancelled reason=superseded_or_shutdown elapsed_ms={}",
+                    started.elapsed().as_millis()
+                ),
+            ),
             Err(Halt::Failed { msg, retry_at }) => {
                 if let Some(at) = retry_at {
                     if self.schedule_retry(&job, at) {
-                        job.diagnostic("retry", format_args!("result=scheduled next_attempt={} wait_ms={} reason={:?}", job.attempt + 1, at.saturating_duration_since(Instant::now()).as_millis(), diagnostic_text(&msg)));
+                        job.diagnostic(
+                            "retry",
+                            format_args!(
+                                "result=scheduled next_attempt={} wait_ms={} reason={:?}",
+                                job.attempt + 1,
+                                at.saturating_duration_since(Instant::now()).as_millis(),
+                                diagnostic_text(&msg)
+                            ),
+                        );
                         // 退避期间不是网络请求；说明上游故障，重试仍可用同一代次交付歌词。
                         self.deliver(&job, LyricsResult::Retrying(format!("{msg}，稍后自动重试")));
                         return;
                     }
                 }
-                job.diagnostic("finish", format_args!("result=failed elapsed_ms={} reason={:?}", started.elapsed().as_millis(), diagnostic_text(&msg)));
+                job.diagnostic(
+                    "finish",
+                    format_args!(
+                        "result=failed elapsed_ms={} reason={:?}",
+                        started.elapsed().as_millis(),
+                        diagnostic_text(&msg)
+                    ),
+                );
                 self.deliver(&job, LyricsResult::Error(msg));
             }
         }
@@ -347,7 +428,13 @@ impl Worker {
         if q.shutdown || q.generation != job.generation || q.pending.is_some() {
             return false;
         }
-        q.retry = Some((at, Job { attempt: job.attempt + 1, ..job.clone() }));
+        q.retry = Some((
+            at,
+            Job {
+                attempt: job.attempt + 1,
+                ..job.clone()
+            },
+        ));
         // The worker itself is the only waiter and it is not waiting right
         // now, so no notify is needed.
         true
@@ -389,8 +476,12 @@ impl Worker {
         if poni_core::nowplaying::is_netease_music(&job.app_id) {
             return self.lookup_netease(job, &q);
         }
-        if (job.app_id == "com.apple.Music" || poni_core::nowplaying::is_apple_music(&job.app_id)) && self.apple.enabled() {
-            return Ok(self.lookup_apple(job, &q)?.unwrap_or(LyricsResult::NotFound));
+        if (job.app_id == "com.apple.Music" || poni_core::nowplaying::is_apple_music(&job.app_id))
+            && self.apple.enabled()
+        {
+            return Ok(self
+                .lookup_apple(job, &q)?
+                .unwrap_or(LyricsResult::NotFound));
         }
         Ok(LyricsResult::NotFound)
     }
@@ -415,7 +506,10 @@ impl Worker {
         match self.apple.find(q, &live) {
             Ok(Some((record, lyrics))) => {
                 crate::pinfo!("lyrics {key}: synced");
-                self.store(&path, &CacheEntry::new(Some(record.clone()), crate::clock::unix_now()));
+                self.store(
+                    &path,
+                    &CacheEntry::new(Some(record.clone()), crate::clock::unix_now()),
+                );
                 Ok(Some(to_result(&record, lyrics, job)))
             }
             Ok(None) => {
@@ -424,16 +518,27 @@ impl Worker {
             }
             Err(Miss::Abandoned) => Err(Halt::Abandoned),
             Err(Miss::Rejected) => {
-                self.sink.send(AppEvent::AppleMusic(AppleMusicStatus::Rejected));
-                Err(Halt::Failed { msg: "Apple Music 授权已失效，请重新授权".into(), retry_at: None })
+                self.sink
+                    .send(AppEvent::AppleMusic(AppleMusicStatus::Rejected));
+                Err(Halt::Failed {
+                    msg: "Apple Music 授权已失效，请重新授权".into(),
+                    retry_at: None,
+                })
             }
             Err(Miss::NoAccess) => {
-                self.sink.send(AppEvent::AppleMusic(AppleMusicStatus::NoAccess));
-                Err(Halt::Failed { msg: "Apple Music 未允许访问这首歌的歌词".into(), retry_at: None })
+                self.sink
+                    .send(AppEvent::AppleMusic(AppleMusicStatus::NoAccess));
+                Err(Halt::Failed {
+                    msg: "Apple Music 未允许访问这首歌的歌词".into(),
+                    retry_at: None,
+                })
             }
             Err(Miss::Unreachable(why)) => {
                 crate::pwarn!("lyrics: Apple Music unavailable ({why})");
-                Err(Halt::Failed { msg: "暂时无法连接 Apple Music 歌词服务".into(), retry_at: Some(Instant::now() + retry_delay(job.attempt)) })
+                Err(Halt::Failed {
+                    msg: "暂时无法连接 Apple Music 歌词服务".into(),
+                    retry_at: Some(Instant::now() + retry_delay(job.attempt)),
+                })
             }
         }
     }
@@ -452,7 +557,10 @@ impl Worker {
         if let Some(record) = read_cache(&path).and_then(|entry| entry.record) {
             if recording_matches(q, &record) {
                 if let Some(lyrics) = record.full_synced_lyrics() {
-                    job.diagnostic("cache", format_args!("result=hit kind=album candidate_id={}", record.id));
+                    job.diagnostic(
+                        "cache",
+                        format_args!("result=hit kind=album candidate_id={}", record.id),
+                    );
                     return Ok(to_result(&record, lyrics, job));
                 }
             }
@@ -462,10 +570,16 @@ impl Worker {
             let legacy_path = self.cache_dir.join(format!("{legacy_key}.json"));
             if let Some(record) = read_cache(&legacy_path).and_then(|entry| entry.record) {
                 if recording_matches(q, &record)
-                    && record.album_name.as_deref().is_some_and(|name| lrclib::fold(name) == album)
+                    && record
+                        .album_name
+                        .as_deref()
+                        .is_some_and(|name| lrclib::fold(name) == album)
                 {
                     if let Some(lyrics) = record.full_synced_lyrics() {
-                        job.diagnostic("cache", format_args!("result=hit kind=legacy candidate_id={}", record.id));
+                        job.diagnostic(
+                            "cache",
+                            format_args!("result=hit kind=legacy candidate_id={}", record.id),
+                        );
                         return Ok(to_result(&record, lyrics, job));
                     }
                 }
@@ -511,8 +625,17 @@ impl Worker {
                 let record = LrclibRecord {
                     id: song.id,
                     // QQ's name can omit version tags that remain in title.
-                    track_name: if song.title.trim().is_empty() { song.name.trim().to_string() } else { song.title.trim().to_string() },
-                    artist_name: song.singer.iter().map(|singer| singer.name.trim()).collect::<Vec<_>>().join(" / "),
+                    track_name: if song.title.trim().is_empty() {
+                        song.name.trim().to_string()
+                    } else {
+                        song.title.trim().to_string()
+                    },
+                    artist_name: song
+                        .singer
+                        .iter()
+                        .map(|singer| singer.name.trim())
+                        .collect::<Vec<_>>()
+                        .join(" / "),
                     album_name: Some(song.album.name.trim().to_string()),
                     duration: Some(song.interval as f64),
                     ..Default::default()
@@ -530,13 +653,24 @@ impl Worker {
                     continue;
                 }
                 accepted += 1;
-                if !album.is_empty() && record.album_name.as_deref().is_some_and(|name| lrclib::fold(name) == album) {
+                if !album.is_empty()
+                    && record
+                        .album_name
+                        .as_deref()
+                        .is_some_and(|name| lrclib::fold(name) == album)
+                {
                     album_match_count += 1;
                     let difference = song.interval.abs_diff(q.duration_s);
-                    if best_album_match.as_ref().is_none_or(|(_, _, previous)| difference < *previous) {
+                    if best_album_match
+                        .as_ref()
+                        .is_none_or(|(_, _, previous)| difference < *previous)
+                    {
                         best_album_match = Some((song, record, difference));
                         best_distance_count = 1;
-                    } else if best_album_match.as_ref().is_some_and(|(_, _, previous)| difference == *previous) {
+                    } else if best_album_match
+                        .as_ref()
+                        .is_some_and(|(_, _, previous)| difference == *previous)
+                    {
                         best_distance_count += 1;
                     }
                 } else if q.duration_s > 0 {
@@ -550,18 +684,31 @@ impl Worker {
                 Some((song, record))
             } else {
                 job.diagnostic("selection", format_args!("reason=ambiguous_same_album album_matches={album_match_count} closest_matches={best_distance_count}"));
-                crate::pinfo!("lyrics: QQ Music search has ambiguous matches within the requested album");
+                crate::pinfo!(
+                    "lyrics: QQ Music search has ambiguous matches within the requested album"
+                );
                 None
             }
         } else if other_album_matches.len() == 1 {
             crate::pinfo!("lyrics: QQ Music search matched a unique recording from another album");
             other_album_matches.pop()
         } else {
-            job.diagnostic("selection", format_args!("reason=no_unique_recording same_album=0 other_album={}", other_album_matches.len()));
-            crate::pinfo!("lyrics: QQ Music search has no exact album and {} other recording matches", other_album_matches.len());
+            job.diagnostic(
+                "selection",
+                format_args!(
+                    "reason=no_unique_recording same_album=0 other_album={}",
+                    other_album_matches.len()
+                ),
+            );
+            crate::pinfo!(
+                "lyrics: QQ Music search has no exact album and {} other recording matches",
+                other_album_matches.len()
+            );
             None
         };
-        let Some((song, mut record)) = selected else { return Ok(LyricsResult::NotFound) };
+        let Some((song, mut record)) = selected else {
+            return Ok(LyricsResult::NotFound);
+        };
         job.diagnostic_candidate("selection", &record, "selected");
         // crypt=0 requests ordinary Base64-encoded LRC, without encrypted QRC.
         let request = serde_json::json!({
@@ -581,25 +728,51 @@ impl Worker {
             }
         });
         let data = self.qq_call(job, &request, "lyric", None)?;
-        let encoded = data.get("lyric").and_then(|value| value.as_str()).ok_or_else(|| qq_bad_reply(job, "lyric"))?;
+        let encoded = data
+            .get("lyric")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| qq_bad_reply(job, "lyric"))?;
         if encoded.trim().is_empty() {
-            job.diagnostic("lyric", format_args!("reason=empty_lyric candidate_id={}", record.id));
+            job.diagnostic(
+                "lyric",
+                format_args!("reason=empty_lyric candidate_id={}", record.id),
+            );
             return Ok(LyricsResult::NotFound);
         }
-        if data.get("crypt").and_then(|value| value.as_i64()).is_some_and(|crypt| crypt != 0) {
-            job.diagnostic("lyric", format_args!("reason=unsupported_encryption candidate_id={}", record.id));
-            return Err(Halt::Failed { msg: "QQ 音乐返回了不支持的歌词格式".into(), retry_at: None });
+        if data
+            .get("crypt")
+            .and_then(|value| value.as_i64())
+            .is_some_and(|crypt| crypt != 0)
+        {
+            job.diagnostic(
+                "lyric",
+                format_args!("reason=unsupported_encryption candidate_id={}", record.id),
+            );
+            return Err(Halt::Failed {
+                msg: "QQ 音乐返回了不支持的歌词格式".into(),
+                retry_at: None,
+            });
         }
-        let text = poni_core::base64::decode(encoded).and_then(|bytes| String::from_utf8(bytes).ok());
+        let text =
+            poni_core::base64::decode(encoded).and_then(|bytes| String::from_utf8(bytes).ok());
         let Some(text) = text else {
             return Err(qq_bad_reply(job, "lyric encoding"));
         };
         record.synced_lyrics = Some(text);
         let Some(lyrics) = record.full_synced_lyrics() else {
-            job.diagnostic("lyric", format_args!("reason=missing_timestamps_or_too_few_lines candidate_id={}", record.id));
+            job.diagnostic(
+                "lyric",
+                format_args!(
+                    "reason=missing_timestamps_or_too_few_lines candidate_id={}",
+                    record.id
+                ),
+            );
             return Ok(LyricsResult::NotFound);
         };
-        self.store(&path, &CacheEntry::new(Some(record.clone()), crate::clock::unix_now()));
+        self.store(
+            &path,
+            &CacheEntry::new(Some(record.clone()), crate::clock::unix_now()),
+        );
         crate::pinfo!("lyrics {key}: synced from QQ Music");
         Ok(to_result(&record, lyrics, job))
     }
@@ -620,7 +793,10 @@ impl Worker {
             }
         });
         let data = self.qq_call(job, &search, "search", Some(query))?;
-        let songs = data.pointer("/body/song/list").cloned().ok_or_else(|| qq_bad_reply(job, "search"))?;
+        let songs = data
+            .pointer("/body/song/list")
+            .cloned()
+            .ok_or_else(|| qq_bad_reply(job, "search"))?;
         serde_json::from_value(songs).map_err(|_| qq_bad_reply(job, "search candidates"))
     }
 
@@ -628,25 +804,42 @@ impl Worker {
     fn qq_album_songs(&mut self, job: &Job, q: &TrackQuery) -> Result<Vec<QqSong>, Halt> {
         let url = poni_core::urlenc::with_query(
             "https://c.y.qq.com/soso/fcgi-bin/client_search_cp",
-            &[("w", &q.album), ("p", "1"), ("n", "10"), ("format", "json"), ("g_tk", "5381"), ("t", "8")],
+            &[
+                ("w", &q.album),
+                ("p", "1"),
+                ("n", "10"),
+                ("format", "json"),
+                ("g_tk", "5381"),
+                ("t", "8"),
+            ],
         );
         let reply = self.qq_request(job, "album search", http::Method::Get, &url, None)?;
         if reply.get("code").and_then(|value| value.as_i64()) != Some(0) {
             return Err(qq_bad_reply(job, "album search"));
         }
-        let albums = reply.pointer("/data/album/list").cloned().ok_or_else(|| qq_bad_reply(job, "album search"))?;
-        let albums: Vec<QqAlbum> = serde_json::from_value(albums).map_err(|_| qq_bad_reply(job, "album candidates"))?;
+        let albums = reply
+            .pointer("/data/album/list")
+            .cloned()
+            .ok_or_else(|| qq_bad_reply(job, "album search"))?;
+        let albums: Vec<QqAlbum> =
+            serde_json::from_value(albums).map_err(|_| qq_bad_reply(job, "album candidates"))?;
         let album_name = lrclib::fold(&q.album);
         let artist = lrclib::fold(&q.artist);
         let mut mids = HashSet::new();
         let mut matches = albums.into_iter().filter(|album| {
             !album.mid.trim().is_empty()
                 && lrclib::fold(&album.name) == album_name
-                && album.singers.iter().any(|singer| lrclib::fold(&singer.name) == artist)
+                && album
+                    .singers
+                    .iter()
+                    .any(|singer| lrclib::fold(&singer.name) == artist)
                 && mids.insert(album.mid.clone())
         });
         let Some(album) = matches.next() else {
-            job.diagnostic("album_search", format_args!("reason=no_exact_album_and_artist"));
+            job.diagnostic(
+                "album_search",
+                format_args!("reason=no_exact_album_and_artist"),
+            );
             return Ok(Vec::new());
         };
         if matches.next().is_some() {
@@ -663,10 +856,18 @@ impl Worker {
             }
         });
         let data = self.qq_call(job, &request, "album", None)?;
-        let album: QqAlbumSongs = serde_json::from_value(data).map_err(|_| qq_bad_reply(job, "album tracks"))?;
+        let album: QqAlbumSongs =
+            serde_json::from_value(data).map_err(|_| qq_bad_reply(job, "album tracks"))?;
         // 未取得完整曲目时不能证明录音唯一，沿用无匹配结果而不猜测。
         if album.total != album.tracks.len() {
-            job.diagnostic("album_tracks", format_args!("reason=incomplete_track_list expected={} received={}", album.total, album.tracks.len()));
+            job.diagnostic(
+                "album_tracks",
+                format_args!(
+                    "reason=incomplete_track_list expected={} received={}",
+                    album.total,
+                    album.tracks.len()
+                ),
+            );
             crate::pinfo!("lyrics: QQ Music returned a partial album track list");
             return Ok(Vec::new());
         }
@@ -681,20 +882,35 @@ impl Worker {
             return Ok(LyricsResult::NotFound);
         }
         if metadata_only {
-            job.diagnostic("lookup", format_args!("path=metadata_only reason=missing_album_and_duration cache=bypassed"));
+            job.diagnostic(
+                "lookup",
+                format_args!("path=metadata_only reason=missing_album_and_duration cache=bypassed"),
+            );
         }
         let album_key = sha256::hex(&sha256::sha256(album.as_bytes()));
         let song_id = netease_song_id(&job.content_id);
         // 临时 UUID 会在同曲恢复时变化；缓存只区分可信歌曲 ID，未知时保留严格元数据匹配。
-        let content_key = song_id.map(|id| id.to_string()).unwrap_or_else(|| "search".into());
-        let key = format!("netease-v3-{}-{album_key}-{content_key}", lrclib::cache_key(q));
+        let content_key = song_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "search".into());
+        let key = format!(
+            "netease-v3-{}-{album_key}-{content_key}",
+            lrclib::cache_key(q)
+        );
         let path = self.cache_dir.join(format!("{key}.json"));
         // 没有录音标识时，每次重新检查候选歧义，不能把旧的唯一结果长期当成当前录音。
-        let cached_record = if metadata_only { None } else { read_cache(&path).and_then(|entry| entry.record) };
+        let cached_record = if metadata_only {
+            None
+        } else {
+            read_cache(&path).and_then(|entry| entry.record)
+        };
         if let Some(record) = cached_record {
             if song_id.is_none_or(|id| record.id == id) && recording_matches(q, &record) {
                 if let Some(lyrics) = record.full_synced_lyrics() {
-                    job.diagnostic("cache", format_args!("result=hit candidate_id={}", record.id));
+                    job.diagnostic(
+                        "cache",
+                        format_args!("result=hit candidate_id={}", record.id),
+                    );
                     return Ok(to_result(&record, lyrics, job));
                 }
             }
@@ -704,14 +920,25 @@ impl Worker {
             job.diagnostic("lookup", format_args!("path=player_song_id song_id={id}"));
             // 只认当前网易云播放器提供的明确歌曲 ID，并用详情核对录音元数据。
             let ids = format!("[{id}]");
-            let url = poni_core::urlenc::with_query("https://music.163.com/api/song/detail", &[("ids", &ids)]);
+            let url = poni_core::urlenc::with_query(
+                "https://music.163.com/api/song/detail",
+                &[("ids", &ids)],
+            );
             let data = self.netease_request(job, "song_detail", &url)?;
-            let songs = data.get("songs").cloned().ok_or_else(|| netease_bad_reply(job, "song_detail"))?;
-            let songs: Vec<NeteaseSong> = serde_json::from_value(songs).map_err(|_| netease_bad_reply(job, "song_detail"))?;
+            let songs = data
+                .get("songs")
+                .cloned()
+                .ok_or_else(|| netease_bad_reply(job, "song_detail"))?;
+            let songs: Vec<NeteaseSong> =
+                serde_json::from_value(songs).map_err(|_| netease_bad_reply(job, "song_detail"))?;
             match songs.into_iter().find(|song| song.id == id) {
                 Some(song) => {
                     let record = song.into_record();
-                    let mismatch = if metadata_only { recording_identity_mismatch(q, &record) } else { recording_mismatch(q, &record) };
+                    let mismatch = if metadata_only {
+                        recording_identity_mismatch(q, &record)
+                    } else {
+                        recording_mismatch(q, &record)
+                    };
                     if let Some(reason) = mismatch {
                         job.diagnostic_candidate("song_detail", &record, reason);
                         None
@@ -720,16 +947,25 @@ impl Worker {
                     }
                 }
                 None => {
-                    job.diagnostic("song_detail", format_args!("reason=requested_id_missing song_id={id}"));
+                    job.diagnostic(
+                        "song_detail",
+                        format_args!("reason=requested_id_missing song_id={id}"),
+                    );
                     None
                 }
             }
         } else {
-            job.diagnostic("lookup", format_args!("path=metadata_search reason=no_trusted_player_song_id"));
+            job.diagnostic(
+                "lookup",
+                format_args!("path=metadata_search reason=no_trusted_player_song_id"),
+            );
             self.search_netease(job, q, &album, metadata_only)?
         };
         let Some(mut record) = selected else {
-            job.diagnostic("selection", format_args!("reason=no_matching_recording song_id={song_id:?}"));
+            job.diagnostic(
+                "selection",
+                format_args!("reason=no_matching_recording song_id={song_id:?}"),
+            );
             return Ok(LyricsResult::NotFound);
         };
         job.diagnostic_candidate("selection", &record, "selected");
@@ -742,24 +978,50 @@ impl Worker {
         if data.get("nolyric").and_then(|v| v.as_bool()) == Some(true)
             || data.get("uncollected").and_then(|v| v.as_bool()) == Some(true)
         {
-            job.diagnostic("lyric", format_args!("reason=provider_no_lyric candidate_id={} nolyric={:?} uncollected={:?}", record.id, data.get("nolyric").and_then(|value| value.as_bool()), data.get("uncollected").and_then(|value| value.as_bool())));
+            job.diagnostic(
+                "lyric",
+                format_args!(
+                    "reason=provider_no_lyric candidate_id={} nolyric={:?} uncollected={:?}",
+                    record.id,
+                    data.get("nolyric").and_then(|value| value.as_bool()),
+                    data.get("uncollected").and_then(|value| value.as_bool())
+                ),
+            );
             return Ok(LyricsResult::NotFound);
         }
         // 只读取主歌词，忽略罗马音和翻译字段。
-        let text = data.pointer("/lrc/lyric").and_then(|v| v.as_str()).ok_or_else(|| netease_bad_reply(job, "lyric"))?;
+        let text = data
+            .pointer("/lrc/lyric")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| netease_bad_reply(job, "lyric"))?;
         record.synced_lyrics = Some(text.to_string());
         let Some(lyrics) = record.full_synced_lyrics() else {
-            job.diagnostic("lyric", format_args!("reason=missing_timestamps_or_too_few_lines candidate_id={}", record.id));
+            job.diagnostic(
+                "lyric",
+                format_args!(
+                    "reason=missing_timestamps_or_too_few_lines candidate_id={}",
+                    record.id
+                ),
+            );
             return Ok(LyricsResult::NotFound);
         };
         if !metadata_only {
-            self.store(&path, &CacheEntry::new(Some(record.clone()), crate::clock::unix_now()));
+            self.store(
+                &path,
+                &CacheEntry::new(Some(record.clone()), crate::clock::unix_now()),
+            );
         }
         crate::pinfo!("lyrics {key}: synced from NetEase Music");
         Ok(to_result(&record, lyrics, job))
     }
 
-    fn search_netease(&mut self, job: &Job, q: &TrackQuery, album: &str, metadata_only: bool) -> Result<Option<LrclibRecord>, Halt> {
+    fn search_netease(
+        &mut self,
+        job: &Job,
+        q: &TrackQuery,
+        album: &str,
+        metadata_only: bool,
+    ) -> Result<Option<LrclibRecord>, Halt> {
         let mut seen = HashSet::new();
         let mut same_album = Vec::new();
         let mut other_album = Vec::new();
@@ -767,44 +1029,84 @@ impl Worker {
         let normalized_title = recording_title(&q.title);
         // 搜索词去掉通用现场后缀以覆盖Live/Live版别名，筛选时仍严格核对版本。
         let extra_query = if metadata_only {
-            format!("{} {}", normalized_title.strip_suffix(" live").unwrap_or(&normalized_title), q.artist)
+            format!(
+                "{} {}",
+                normalized_title
+                    .strip_suffix(" live")
+                    .unwrap_or(&normalized_title),
+                q.artist
+            )
         } else {
             format!("{initial_query} {}", q.album)
         };
         for (round, query) in [&initial_query, &extra_query].into_iter().enumerate() {
-            if round == 1 && (query == &initial_query || (!metadata_only && (album.is_empty() || !same_album.is_empty()))) {
+            if round == 1
+                && (query == &initial_query
+                    || (!metadata_only && (album.is_empty() || !same_album.is_empty())))
+            {
                 break;
             }
-            let page_size = if metadata_only { NETEASE_SEARCH_PAGE_SIZE } else { 20 };
-            let page_limit = if metadata_only { NETEASE_SEARCH_MAX_PAGES } else { 1 };
+            let page_size = if metadata_only {
+                NETEASE_SEARCH_PAGE_SIZE
+            } else {
+                20
+            };
+            let page_limit = if metadata_only {
+                NETEASE_SEARCH_MAX_PAGES
+            } else {
+                1
+            };
             let mut offset = 0;
             let mut query_ids = HashSet::new();
             let mut complete = !metadata_only;
             for page in 0..page_limit {
                 let url = poni_core::urlenc::with_query(
                     "https://music.163.com/api/search/get",
-                    &[("s", query), ("type", "1"), ("limit", &page_size.to_string()), ("offset", &offset.to_string())],
+                    &[
+                        ("s", query),
+                        ("type", "1"),
+                        ("limit", &page_size.to_string()),
+                        ("offset", &offset.to_string()),
+                    ],
                 );
                 let data = self.netease_request(job, "search", &url)?;
                 let total = data.pointer("/result/songCount").and_then(|v| v.as_u64());
                 if total == Some(0) {
                     complete = true;
-                    job.diagnostic("search", format_args!("round={} candidates=0 reason=empty_search", round + 1));
+                    job.diagnostic(
+                        "search",
+                        format_args!("round={} candidates=0 reason=empty_search", round + 1),
+                    );
                     break;
                 }
-                if metadata_only && total.is_none_or(|count| count > (NETEASE_SEARCH_PAGE_SIZE * NETEASE_SEARCH_MAX_PAGES) as u64) {
-                    job.diagnostic("search", format_args!("reason=incomplete_candidate_set total={total:?}"));
+                if metadata_only
+                    && total.is_none_or(|count| {
+                        count > (NETEASE_SEARCH_PAGE_SIZE * NETEASE_SEARCH_MAX_PAGES) as u64
+                    })
+                {
+                    job.diagnostic(
+                        "search",
+                        format_args!("reason=incomplete_candidate_set total={total:?}"),
+                    );
                     return Ok(None);
                 }
-                let songs = data.pointer("/result/songs").cloned().ok_or_else(|| netease_bad_reply(job, "search"))?;
-                let songs: Vec<NeteaseSong> = serde_json::from_value(songs).map_err(|_| netease_bad_reply(job, "search"))?;
+                let songs = data
+                    .pointer("/result/songs")
+                    .cloned()
+                    .ok_or_else(|| netease_bad_reply(job, "search"))?;
+                let songs: Vec<NeteaseSong> =
+                    serde_json::from_value(songs).map_err(|_| netease_bad_reply(job, "search"))?;
                 let returned = songs.len();
                 let mut identity_rejected = 0;
                 let mut recording_rejected = 0;
                 for song in songs {
-                    if song.id <= 0 { return Err(netease_bad_reply(job, "search")); }
+                    if song.id <= 0 {
+                        return Err(netease_bad_reply(job, "search"));
+                    }
                     query_ids.insert(song.id);
-                    if !seen.insert(song.id) { continue; }
+                    if !seen.insert(song.id) {
+                        continue;
+                    }
                     let record = song.into_record();
                     if let Some(reason) = recording_identity_mismatch(q, &record) {
                         identity_rejected += 1;
@@ -825,7 +1127,12 @@ impl Worker {
                     if same_album.len() + other_album.len() < 3 {
                         job.diagnostic_candidate("candidate_accepted", &record, "matched");
                     }
-                    if !album.is_empty() && record.album_name.as_deref().is_some_and(|a| lrclib::fold(a) == album) {
+                    if !album.is_empty()
+                        && record
+                            .album_name
+                            .as_deref()
+                            .is_some_and(|a| lrclib::fold(a) == album)
+                    {
                         same_album.push(record);
                     } else {
                         other_album.push(record);
@@ -840,18 +1147,31 @@ impl Worker {
                     complete = true;
                     break;
                 }
-                if returned == 0 { break; }
+                if returned == 0 {
+                    break;
+                }
                 offset += returned;
             }
             if !complete {
-                job.diagnostic("search", format_args!("reason=partial_candidate_pages scanned={}", query_ids.len()));
+                job.diagnostic(
+                    "search",
+                    format_args!("reason=partial_candidate_pages scanned={}", query_ids.len()),
+                );
                 return Ok(None);
             }
         }
-        job.diagnostic("selection", format_args!("same_album={} other_album={}", same_album.len(), other_album.len()));
+        job.diagnostic(
+            "selection",
+            format_args!(
+                "same_album={} other_album={}",
+                same_album.len(),
+                other_album.len()
+            ),
+        );
         let selected = if !same_album.is_empty() {
             same_album.sort_by(|a, b| {
-                let distance = |r: &LrclibRecord| (r.duration.unwrap_or(0.0) - q.duration_s as f64).abs();
+                let distance =
+                    |r: &LrclibRecord| (r.duration.unwrap_or(0.0) - q.duration_s as f64).abs();
                 distance(a).total_cmp(&distance(b))
             });
             if same_album.len() == 1
@@ -873,24 +1193,47 @@ impl Worker {
         Ok(selected)
     }
 
-    fn netease_request(&mut self, job: &Job, stage: &str, url: &str) -> Result<serde_json::Value, Halt> {
+    fn netease_request(
+        &mut self,
+        job: &Job,
+        stage: &str,
+        url: &str,
+    ) -> Result<serde_json::Value, Halt> {
         if !self.is_current(job) {
             return Err(Halt::Abandoned);
         }
         if let Some(until) = self.netease_blocked_until {
             if Instant::now() < until {
-                job.diagnostic(stage, format_args!("reason=rate_limit_backoff wait_ms={}", until.saturating_duration_since(Instant::now()).as_millis()));
-                return Err(Halt::Failed { msg: "网易云音乐请求过于频繁，请稍后重试".into(), retry_at: Some(until) });
+                job.diagnostic(
+                    stage,
+                    format_args!(
+                        "reason=rate_limit_backoff wait_ms={}",
+                        until.saturating_duration_since(Instant::now()).as_millis()
+                    ),
+                );
+                return Err(Halt::Failed {
+                    msg: "网易云音乐请求过于频繁，请稍后重试".into(),
+                    retry_at: Some(until),
+                });
             }
             self.netease_blocked_until = None;
         }
         if self.netease_client.is_none() {
-            self.netease_client = Some(Client::private(WEB_USER_AGENT).map_err(|_| netease_bad_reply(job, stage))?);
+            self.netease_client =
+                Some(Client::private(WEB_USER_AGENT).map_err(|_| netease_bad_reply(job, stage))?);
         }
-        let response = self.netease_client.as_ref().unwrap().get_with_headers(url, &[("Referer", "https://music.163.com/")], http::DEFAULT_TIMEOUT);
+        let response = self.netease_client.as_ref().unwrap().get_with_headers(
+            url,
+            &[("Referer", "https://music.163.com/")],
+            http::DEFAULT_TIMEOUT,
+        );
         if let Ok(reply) = &response {
             if reply.status == 429 {
-                let delay = reply.retry_after_s.map(Duration::from_secs).unwrap_or(DEFAULT_BACKOFF).min(MAX_BACKOFF);
+                let delay = reply
+                    .retry_after_s
+                    .map(Duration::from_secs)
+                    .unwrap_or(DEFAULT_BACKOFF)
+                    .min(MAX_BACKOFF);
                 self.netease_blocked_until = Some(Instant::now() + delay);
             }
         }
@@ -913,12 +1256,15 @@ impl Worker {
         if response.status != 200 {
             return Err(Halt::Failed {
                 msg: format!("网易云音乐歌词服务错误 {}", response.status),
-                retry_at: if response.status == 429 { self.netease_blocked_until } else {
+                retry_at: if response.status == 429 {
+                    self.netease_blocked_until
+                } else {
                     (response.status >= 500).then(|| Instant::now() + retry_delay(job.attempt))
                 },
             });
         }
-        let data: serde_json::Value = serde_json::from_str(&response.body).map_err(|_| netease_bad_reply(job, stage))?;
+        let data: serde_json::Value =
+            serde_json::from_str(&response.body).map_err(|_| netease_bad_reply(job, stage))?;
         let code = data.get("code").and_then(|v| v.as_i64());
         job.diagnostic(stage, format_args!("api_code={code:?}"));
         match code {
@@ -926,66 +1272,133 @@ impl Worker {
             Some(429) => {
                 let until = Instant::now() + DEFAULT_BACKOFF;
                 self.netease_blocked_until = Some(until);
-                Err(Halt::Failed { msg: "网易云音乐请求过于频繁，请稍后重试".into(), retry_at: Some(until) })
+                Err(Halt::Failed {
+                    msg: "网易云音乐请求过于频繁，请稍后重试".into(),
+                    retry_at: Some(until),
+                })
             }
             _ => Err(netease_bad_reply(job, stage)),
         }
     }
 
-    fn qq_call(&mut self, job: &Job, body: &serde_json::Value, service: &str, search_query: Option<&str>) -> Result<serde_json::Value, Halt> {
-        let reply = self.qq_request(job, service, http::Method::Post, "https://u.y.qq.com/cgi-bin/musicu.fcg", Some(&body.to_string()))?;
+    fn qq_call(
+        &mut self,
+        job: &Job,
+        body: &serde_json::Value,
+        service: &str,
+        search_query: Option<&str>,
+    ) -> Result<serde_json::Value, Halt> {
+        let reply = self.qq_request(
+            job,
+            service,
+            http::Method::Post,
+            "https://u.y.qq.com/cgi-bin/musicu.fcg",
+            Some(&body.to_string()),
+        )?;
         let top_code = reply.get("code").and_then(|value| value.as_i64());
         let service_code = reply[service].get("code").and_then(|value| value.as_i64());
-        job.diagnostic(service, format_args!("api_code={top_code:?} service_code={service_code:?}"));
+        job.diagnostic(
+            service,
+            format_args!("api_code={top_code:?} service_code={service_code:?}"),
+        );
         if top_code != Some(0) || service_code != Some(0) {
             crate::pwarn!("lyrics: QQ Music {service} rejected: top code {top_code:?}, service code {service_code:?}");
-            if let Some(query) = search_query.filter(|_| service == "search" && (top_code == Some(2001) || service_code == Some(2001))) {
+            if let Some(query) = search_query.filter(|_| {
+                service == "search" && (top_code == Some(2001) || service_code == Some(2001))
+            }) {
                 // One alternate QQ search request; metadata matching stays unchanged.
                 let url = poni_core::urlenc::with_query(
                     "https://c.y.qq.com/soso/fcgi-bin/client_search_cp",
-                    &[("w", query), ("p", "1"), ("n", "10"), ("format", "json"), ("g_tk", "5381"), ("t", "0")],
+                    &[
+                        ("w", query),
+                        ("p", "1"),
+                        ("n", "10"),
+                        ("format", "json"),
+                        ("g_tk", "5381"),
+                        ("t", "0"),
+                    ],
                 );
-                job.diagnostic("search", format_args!("path=legacy_fallback reason=api_code_2001"));
-                let legacy = self.qq_request(job, "legacy search", http::Method::Get, &url, None)?;
+                job.diagnostic(
+                    "search",
+                    format_args!("path=legacy_fallback reason=api_code_2001"),
+                );
+                let legacy =
+                    self.qq_request(job, "legacy search", http::Method::Get, &url, None)?;
                 let code = legacy.get("code").and_then(|value| value.as_i64());
                 job.diagnostic("legacy_search", format_args!("api_code={code:?}"));
                 if code != Some(0) {
                     crate::pwarn!("lyrics: QQ Music legacy search rejected: code {code:?}");
-                    return Err(Halt::Failed { msg: "QQ 音乐暂时无法提供歌词".into(), retry_at: Some(Instant::now() + DEFAULT_BACKOFF) });
+                    return Err(Halt::Failed {
+                        msg: "QQ 音乐暂时无法提供歌词".into(),
+                        retry_at: Some(Instant::now() + DEFAULT_BACKOFF),
+                    });
                 }
-                let songs = legacy.pointer("/data/song/list").and_then(|value| value.as_array()).ok_or_else(|| qq_bad_reply(job, "legacy search"))?;
-                let songs: Vec<_> = songs.iter().map(|song| serde_json::json!({
-                    "id": song["songid"],
-                    "mid": song["songmid"],
-                    "name": song["songname"],
-                    "title": song["songname"],
-                    "album": { "name": song["albumname"] },
-                    "interval": song["interval"],
-                    "singer": song["singer"]
-                })).collect();
+                let songs = legacy
+                    .pointer("/data/song/list")
+                    .and_then(|value| value.as_array())
+                    .ok_or_else(|| qq_bad_reply(job, "legacy search"))?;
+                let songs: Vec<_> = songs
+                    .iter()
+                    .map(|song| {
+                        serde_json::json!({
+                            "id": song["songid"],
+                            "mid": song["songmid"],
+                            "name": song["songname"],
+                            "title": song["songname"],
+                            "album": { "name": song["albumname"] },
+                            "interval": song["interval"],
+                            "singer": song["singer"]
+                        })
+                    })
+                    .collect();
                 crate::pinfo!("lyrics: QQ Music legacy search returned code 0");
                 return Ok(serde_json::json!({ "body": { "song": { "list": songs } } }));
             }
-            return Err(Halt::Failed { msg: "QQ 音乐暂时无法提供歌词".into(), retry_at: Some(Instant::now() + DEFAULT_BACKOFF) });
+            return Err(Halt::Failed {
+                msg: "QQ 音乐暂时无法提供歌词".into(),
+                retry_at: Some(Instant::now() + DEFAULT_BACKOFF),
+            });
         }
-        reply[service].get("data").cloned().ok_or_else(|| qq_bad_reply(job, service))
+        reply[service]
+            .get("data")
+            .cloned()
+            .ok_or_else(|| qq_bad_reply(job, service))
     }
 
-    fn qq_request(&mut self, job: &Job, service: &str, method: http::Method, url: &str, body: Option<&str>) -> Result<serde_json::Value, Halt> {
+    fn qq_request(
+        &mut self,
+        job: &Job,
+        service: &str,
+        method: http::Method,
+        url: &str,
+        body: Option<&str>,
+    ) -> Result<serde_json::Value, Halt> {
         if !self.is_current(job) {
             return Err(Halt::Abandoned);
         }
         if let Some(until) = self.qq_blocked_until {
             if Instant::now() < until {
-                job.diagnostic(service, format_args!("reason=rate_limit_backoff wait_ms={}", until.saturating_duration_since(Instant::now()).as_millis()));
-                return Err(Halt::Failed { msg: "QQ 音乐请求过于频繁，请稍后重试".into(), retry_at: Some(until) });
+                job.diagnostic(
+                    service,
+                    format_args!(
+                        "reason=rate_limit_backoff wait_ms={}",
+                        until.saturating_duration_since(Instant::now()).as_millis()
+                    ),
+                );
+                return Err(Halt::Failed {
+                    msg: "QQ 音乐请求过于频繁，请稍后重试".into(),
+                    retry_at: Some(until),
+                });
             }
             self.qq_blocked_until = None;
         }
         if self.qq_client.is_none() {
             self.qq_client = Some(Client::private(WEB_USER_AGENT).map_err(|error| {
                 crate::pwarn!("lyrics: QQ Music HTTP client failed: {error}");
-                Halt::Failed { msg: "暂时无法连接 QQ 音乐歌词服务".into(), retry_at: Some(Instant::now() + retry_delay(job.attempt)) }
+                Halt::Failed {
+                    msg: "暂时无法连接 QQ 音乐歌词服务".into(),
+                    retry_at: Some(Instant::now() + retry_delay(job.attempt)),
+                }
             })?);
         }
         let response = self.qq_client.as_ref().unwrap().send(
@@ -998,7 +1411,11 @@ impl Worker {
         // A stale request can still be rate-limited; keep its window for the next job.
         if let Ok(reply) = &response {
             if reply.status == 429 {
-                let delay = reply.retry_after_s.map(Duration::from_secs).unwrap_or(DEFAULT_BACKOFF).min(MAX_BACKOFF);
+                let delay = reply
+                    .retry_after_s
+                    .map(Duration::from_secs)
+                    .unwrap_or(DEFAULT_BACKOFF)
+                    .min(MAX_BACKOFF);
                 self.qq_blocked_until = Some(Instant::now() + delay);
             }
         }
@@ -1018,17 +1435,26 @@ impl Worker {
             };
             // GET search URLs contain song metadata; don't log system errors with URLs.
             crate::pwarn!("lyrics: QQ Music {service} request failed: {msg}");
-            Halt::Failed { msg: msg.into(), retry_at: Some(Instant::now() + retry_delay(job.attempt)) }
+            Halt::Failed {
+                msg: msg.into(),
+                retry_at: Some(Instant::now() + retry_delay(job.attempt)),
+            }
         })?;
         job.diagnostic(service, format_args!("http_status={}", response.status));
         if response.status != 200 {
-            crate::pwarn!("lyrics: QQ Music {service} answered HTTP {}", response.status);
+            crate::pwarn!(
+                "lyrics: QQ Music {service} answered HTTP {}",
+                response.status
+            );
             let retry_at = if response.status == 429 {
                 self.qq_blocked_until
             } else {
                 (response.status >= 500).then(|| Instant::now() + retry_delay(job.attempt))
             };
-            return Err(Halt::Failed { msg: format!("QQ 音乐歌词服务错误 {}", response.status), retry_at });
+            return Err(Halt::Failed {
+                msg: format!("QQ 音乐歌词服务错误 {}", response.status),
+                retry_at,
+            });
         }
         serde_json::from_str(&response.body).map_err(|_| qq_bad_reply(job, service))
     }
@@ -1098,7 +1524,12 @@ impl NeteaseSong {
         LrclibRecord {
             id: self.id,
             track_name: self.name,
-            artist_name: self.artists.iter().map(|artist| artist.name.trim()).collect::<Vec<_>>().join(" / "),
+            artist_name: self
+                .artists
+                .iter()
+                .map(|artist| artist.name.trim())
+                .collect::<Vec<_>>()
+                .join(" / "),
             album_name: Some(self.album.name),
             duration: Some(self.duration as f64 / 1000.0),
             ..Default::default()
@@ -1109,7 +1540,10 @@ impl NeteaseSong {
 fn netease_bad_reply(job: &Job, stage: &str) -> Halt {
     job.diagnostic(stage, format_args!("reason=invalid_response"));
     crate::pwarn!("lyrics: NetEase Music returned an invalid response");
-    Halt::Failed { msg: "无法读取网易云音乐歌词服务的响应".into(), retry_at: Some(Instant::now() + retry_delay(job.attempt)) }
+    Halt::Failed {
+        msg: "无法读取网易云音乐歌词服务的响应".into(),
+        retry_at: Some(Instant::now() + retry_delay(job.attempt)),
+    }
 }
 
 fn qq_bad_reply(job: &Job, service: &str) -> Halt {
@@ -1132,9 +1566,17 @@ fn recording_mismatch(q: &TrackQuery, record: &LrclibRecord) -> Option<&'static 
         return Some(reason);
     }
     let album = lrclib::fold(&q.album);
-    let same_album = !album.is_empty() && record.album_name.as_deref().is_some_and(|name| lrclib::fold(name) == album);
+    let same_album = !album.is_empty()
+        && record
+            .album_name
+            .as_deref()
+            .is_some_and(|name| lrclib::fold(name) == album);
     if q.duration_s > 0 {
-        let max_drift = if same_album { lrclib::MAX_SYNC_DRIFT_S } else { ALIAS_MAX_DRIFT_S };
+        let max_drift = if same_album {
+            lrclib::MAX_SYNC_DRIFT_S
+        } else {
+            ALIAS_MAX_DRIFT_S
+        };
         let Some(duration) = record.duration.filter(|duration| *duration > 0.0) else {
             return Some("candidate_duration_missing");
         };
@@ -1162,7 +1604,11 @@ fn recording_identity_mismatch(q: &TrackQuery, record: &LrclibRecord) -> Option<
     }
     let artist = lrclib::fold(&q.artist);
     if artist.is_empty()
-        || (artist != lrclib::fold(&record.artist_name) && !record.artist_name.split(" / ").any(|name| lrclib::fold(name) == artist))
+        || (artist != lrclib::fold(&record.artist_name)
+            && !record
+                .artist_name
+                .split(" / ")
+                .any(|name| lrclib::fold(name) == artist))
     {
         return Some("artist_mismatch");
     }
@@ -1173,8 +1619,16 @@ fn recording_identity_mismatch(q: &TrackQuery, record: &LrclibRecord) -> Option<
 fn recording_title(title: &str) -> String {
     let title = title.trim();
     for (open, close) in [('(', ')'), ('（', '）'), ('[', ']'), ('【', '】')] {
-        if let Some((name, version)) = title.strip_suffix(close).and_then(|text| text.rsplit_once(open)) {
-            if !name.trim().is_empty() && matches!(lrclib::fold(version).as_str(), "live" | "live版" | "现场" | "现场版") {
+        if let Some((name, version)) = title
+            .strip_suffix(close)
+            .and_then(|text| text.rsplit_once(open))
+        {
+            if !name.trim().is_empty()
+                && matches!(
+                    lrclib::fold(version).as_str(),
+                    "live" | "live版" | "现场" | "现场版"
+                )
+            {
                 return format!("{} live", lrclib::fold(name));
             }
         }
@@ -1186,7 +1640,9 @@ fn to_result(record: &LrclibRecord, lyrics: poni_core::lrc::Lyrics, job: &Job) -
     if record.instrumental {
         return LyricsResult::Instrumental;
     }
-    LyricsResult::Found { lyrics: lyrics_for(record, lyrics, job.query.duration_s) }
+    LyricsResult::Found {
+        lyrics: lyrics_for(record, lyrics, job.query.duration_s),
+    }
 }
 
 // ------------------------------------------------------------------ cache
@@ -1224,7 +1680,9 @@ fn write_cache(path: &Path, entry: &CacheEntry) {
 /// Remove leftovers of interrupted writes and keep the folder bounded
 /// (oldest entries go first).
 fn prune_cache(dir: &Path) {
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     let mut files = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
@@ -1272,7 +1730,11 @@ mod pure {
     impl CacheEntry {
         pub const VERSION: u32 = 1;
         pub fn new(record: Option<LrclibRecord>, now: i64) -> Self {
-            Self { v: Self::VERSION, fetched_at: now, record }
+            Self {
+                v: Self::VERSION,
+                fetched_at: now,
+                record,
+            }
         }
     }
 
@@ -1290,8 +1752,18 @@ mod pure {
                 return plain;
             }
         }
-        let lines = l.lines.into_iter().map(|x| LyricLine { time_s: 0.0, text: x.text }).collect();
-        trim_blank_edges(Lyrics { lines, synced: false })
+        let lines = l
+            .lines
+            .into_iter()
+            .map(|x| LyricLine {
+                time_s: 0.0,
+                text: x.text,
+            })
+            .collect();
+        trim_blank_edges(Lyrics {
+            lines,
+            synced: false,
+        })
     }
 
     /// Drop blank rows at the start and end of unsynced lyrics (blank rows
@@ -1301,7 +1773,11 @@ mod pure {
             while l.lines.last().is_some_and(|x| x.text.trim().is_empty()) {
                 l.lines.pop();
             }
-            let lead = l.lines.iter().take_while(|x| x.text.trim().is_empty()).count();
+            let lead = l
+                .lines
+                .iter()
+                .take_while(|x| x.text.trim().is_empty())
+                .count();
             l.lines.drain(..lead);
         }
         l
@@ -1323,7 +1799,11 @@ mod pure {
 
     /// Which cache files to delete: none while `files.len() <= max`, else the
     /// oldest ones (unknown times first) down to `keep`.
-    pub fn prune_victims(mut files: Vec<(Option<SystemTime>, PathBuf)>, max: usize, keep: usize) -> Vec<PathBuf> {
+    pub fn prune_victims(
+        mut files: Vec<(Option<SystemTime>, PathBuf)>,
+        max: usize,
+        keep: usize,
+    ) -> Vec<PathBuf> {
         if files.len() <= max {
             return Vec::new();
         }
@@ -1378,7 +1858,8 @@ mod pure {
             let back: CacheEntry = serde_json::from_str(&json).unwrap();
             assert_eq!(back, e);
             // 旧缓存多余的 lookup 字段仍能读取，不改变版本与命中记录。
-            let miss: CacheEntry = serde_json::from_str(r#"{"v":1,"lookup":2,"fetched_at":7,"record":null}"#).unwrap();
+            let miss: CacheEntry =
+                serde_json::from_str(r#"{"v":1,"lookup":2,"fetched_at":7,"record":null}"#).unwrap();
             assert_eq!(miss, CacheEntry::new(None, 7));
         }
 
@@ -1409,7 +1890,10 @@ mod pure {
                 (at(20), PathBuf::from("b")),
             ];
             assert!(prune_victims(files.clone(), 4, 2).is_empty());
-            assert_eq!(prune_victims(files, 3, 2), vec![PathBuf::from("unknown"), PathBuf::from("a")]);
+            assert_eq!(
+                prune_victims(files, 3, 2),
+                vec![PathBuf::from("unknown"), PathBuf::from("a")]
+            );
         }
     }
 }

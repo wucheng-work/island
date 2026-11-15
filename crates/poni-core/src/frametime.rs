@@ -41,7 +41,12 @@ impl VsyncTimeline {
     /// `period` in seconds (e.g. 1/144). Non-finite or silly values fall back to 60 Hz.
     pub fn new(period: f64) -> Self {
         let p = sane_period(period);
-        Self { period: p, nominal: p, last: None, off_rhythm: 0 }
+        Self {
+            period: p,
+            nominal: p,
+            last: None,
+            off_rhythm: 0,
+        }
     }
 
     pub fn period(&self) -> f64 {
@@ -94,10 +99,15 @@ impl VsyncTimeline {
         }
         let predicted = last + n * self.period;
         let err = raw - predicted;
-        self.off_rhythm = if err.abs() > 0.3 * self.period { self.off_rhythm + 1 } else { self.off_rhythm.saturating_sub(1) };
+        self.off_rhythm = if err.abs() > 0.3 * self.period {
+            self.off_rhythm + 1
+        } else {
+            self.off_rhythm.saturating_sub(1)
+        };
         // Track slow drift (a 59.94 Hz display reporting 60, clock skew)
         // without passing the per-frame jitter on.
-        self.period = (self.period + PERIOD_GAIN * err / n).clamp(self.nominal * 0.97, self.nominal * 1.03);
+        self.period =
+            (self.period + PERIOD_GAIN * err / n).clamp(self.nominal * 0.97, self.nominal * 1.03);
         let locked = predicted + PHASE_GAIN * err;
         self.last = Some(locked);
         (locked, n as u32)
@@ -151,7 +161,16 @@ pub struct MotionStats {
 
 impl MotionStats {
     pub fn begin(name: &'static str, t: f64, period: f64, first_step: f64) -> Self {
-        Self { name, period, start: t, last: t, frames: 1, hitches: 0, worst_gap: 0.0, first_step }
+        Self {
+            name,
+            period,
+            start: t,
+            last: t,
+            frames: 1,
+            hitches: 0,
+            worst_gap: 0.0,
+            first_step,
+        }
     }
 
     pub fn frame(&mut self, t: f64) {
@@ -200,7 +219,9 @@ mod tests {
 
     /// Deterministic pseudo-random jitter in 0..1.
     fn jitter(i: u64) -> f64 {
-        let x = i.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let x = i
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         ((x >> 33) % 10_000) as f64 / 10_000.0
     }
 
@@ -218,12 +239,23 @@ mod tests {
             }
             if let (Some(pt), true) = (prev, i > 200) {
                 let step: f64 = t - pt;
-                assert!((step - p).abs() < 0.00012, "step {step} vs period {p} at {i}");
+                assert!(
+                    (step - p).abs() < 0.00012,
+                    "step {step} vs period {p} at {i}"
+                );
             }
             prev = Some(t);
         }
-        assert!((tl.period() - p).abs() < 1e-5, "period drifted to {}", tl.period());
-        assert!(tl.off_rhythm() < 5, "steady display scored {} off rhythm", tl.off_rhythm());
+        assert!(
+            (tl.period() - p).abs() < 1e-5,
+            "period drifted to {}",
+            tl.period()
+        );
+        assert!(
+            tl.off_rhythm() < 5,
+            "steady display scored {} off rhythm",
+            tl.off_rhythm()
+        );
     }
 
     #[test]
@@ -264,7 +296,11 @@ mod tests {
         for i in 1..=144 {
             tl.lock(t0 + i as f64 / 144.0);
         }
-        assert!(tl.off_rhythm() >= OFF_RHYTHM_LIMIT, "off rhythm {}", tl.off_rhythm());
+        assert!(
+            tl.off_rhythm() >= OFF_RHYTHM_LIMIT,
+            "off rhythm {}",
+            tl.off_rhythm()
+        );
         tl.set_nominal_period(1.0 / 144.0);
         assert_eq!(tl.off_rhythm(), 0);
     }
@@ -303,7 +339,11 @@ mod tests {
             assert!(i == 0 || n == 1, "frame {i} counted {n} periods");
         }
         // Within the noise of the jitter (0.3 ms), far from the 60 Hz it reported.
-        assert!((tl.period() - real).abs() < 1e-5, "period {} vs {real}", tl.period());
+        assert!(
+            (tl.period() - real).abs() < 1e-5,
+            "period {} vs {real}",
+            tl.period()
+        );
     }
 
     #[test]

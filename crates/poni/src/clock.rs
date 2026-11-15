@@ -30,12 +30,18 @@ pub fn hold(t: Option<f64>) {
 }
 
 pub fn unix_now() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// 100-ns ticks since 1601-01-01 UTC (Windows FILETIME / WinRT DateTime).
 pub fn filetime_now() -> i64 {
-    let unix_100ns = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as i64 / 100).unwrap_or(0);
+    let unix_100ns = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as i64 / 100)
+        .unwrap_or(0);
     unix_100ns + 116_444_736_000_000_000
 }
 
@@ -57,7 +63,10 @@ pub fn local_at(unix: i64) -> LocalDateTime {
     use windows::Win32::System::Time::{FileTimeToSystemTime, SystemTimeToTzSpecificLocalTimeEx};
 
     let ticks = ((unix + 11_644_473_600) as u64) * 10_000_000;
-    let filetime = FILETIME { dwLowDateTime: ticks as u32, dwHighDateTime: (ticks >> 32) as u32 };
+    let filetime = FILETIME {
+        dwLowDateTime: ticks as u32,
+        dwHighDateTime: (ticks >> 32) as u32,
+    };
     let mut utc = SYSTEMTIME::default();
     let mut local = SYSTEMTIME::default();
     if unsafe { FileTimeToSystemTime(&filetime, &mut utc) }.is_err()
@@ -95,12 +104,24 @@ pub fn hold_local(t: Option<LocalDateTime>) {
 
 /// A date and time as [`HELD_LOCAL`] keeps it.
 fn pack(t: LocalDateTime) -> u64 {
-    (t.year.clamp(0, 9999) as u64) << 40 | (t.month as u64) << 32 | (t.day as u64) << 24 | (t.hour as u64) << 16 | (t.minute as u64) << 8 | t.second as u64
+    (t.year.clamp(0, 9999) as u64) << 40
+        | (t.month as u64) << 32
+        | (t.day as u64) << 24
+        | (t.hour as u64) << 16
+        | (t.minute as u64) << 8
+        | t.second as u64
 }
 
 fn unpack(held: u64) -> LocalDateTime {
     let byte = |shift: u32| (held >> shift) as u8;
-    LocalDateTime { year: (held >> 40) as i32, month: byte(32), day: byte(24), hour: byte(16), minute: byte(8), second: byte(0) }
+    LocalDateTime {
+        year: (held >> 40) as i32,
+        month: byte(32),
+        day: byte(24),
+        hour: byte(16),
+        minute: byte(8),
+        second: byte(0),
+    }
 }
 
 /// Unix timestamp of local midnight today.
@@ -116,9 +137,30 @@ mod tests {
     fn a_held_local_time_reads_back_as_it_was_set() {
         // A picture's time, the last second of a leap day, and year 1.
         for t in [
-            LocalDateTime { year: 2026, month: 10, day: 29, hour: 6, minute: 10, second: 0 },
-            LocalDateTime { year: 2028, month: 2, day: 29, hour: 23, minute: 59, second: 59 },
-            LocalDateTime { year: 1, month: 1, day: 1, hour: 0, minute: 0, second: 0 },
+            LocalDateTime {
+                year: 2026,
+                month: 10,
+                day: 29,
+                hour: 6,
+                minute: 10,
+                second: 0,
+            },
+            LocalDateTime {
+                year: 2028,
+                month: 2,
+                day: 29,
+                hour: 23,
+                minute: 59,
+                second: 59,
+            },
+            LocalDateTime {
+                year: 1,
+                month: 1,
+                day: 1,
+                hour: 0,
+                minute: 0,
+                second: 0,
+            },
         ] {
             assert_eq!(unpack(pack(t)), t, "{t:?}");
             // Never the value that means "not held".

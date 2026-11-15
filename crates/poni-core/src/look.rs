@@ -101,15 +101,51 @@ pub const OYEN: Look = Look {
     material: Material::Solid,
     shape: Shape::Notch,
     swaps: &[
-        Swap { from: OYEN_ORANGE, fill: OYEN_ORANGE, text: OYEN_FOLD },
-        Swap { from: palette::ORANGE, fill: OYEN_ORANGE, text: OYEN_FOLD },
-        Swap { from: palette::GREEN, fill: Color::hex(0x2DB45A), text: Color::hex(0x1B7F3E) },
-        Swap { from: palette::RED, fill: Color::hex(0xE5484D), text: Color::hex(0xC9302C) },
-        Swap { from: palette::BLUE, fill: Color::hex(0x2F7CF6), text: Color::hex(0x1A5FCC) },
-        Swap { from: palette::WARM_ACCENT, fill: Color::hex(0xAC8757), text: Color::hex(0x7A5B35) },
-        Swap { from: palette::PURPLE, fill: Color::hex(0xA552D8), text: Color::hex(0x8337B8) },
-        Swap { from: palette::YELLOW, fill: Color::hex(0xE8A33D), text: Color::hex(0xA8670A) },
-        Swap { from: palette::PINK, fill: Color::hex(0xF0477A), text: Color::hex(0xC92B5E) },
+        Swap {
+            from: OYEN_ORANGE,
+            fill: OYEN_ORANGE,
+            text: OYEN_FOLD,
+        },
+        Swap {
+            from: palette::ORANGE,
+            fill: OYEN_ORANGE,
+            text: OYEN_FOLD,
+        },
+        Swap {
+            from: palette::GREEN,
+            fill: Color::hex(0x2DB45A),
+            text: Color::hex(0x1B7F3E),
+        },
+        Swap {
+            from: palette::RED,
+            fill: Color::hex(0xE5484D),
+            text: Color::hex(0xC9302C),
+        },
+        Swap {
+            from: palette::BLUE,
+            fill: Color::hex(0x2F7CF6),
+            text: Color::hex(0x1A5FCC),
+        },
+        Swap {
+            from: palette::WARM_ACCENT,
+            fill: Color::hex(0xAC8757),
+            text: Color::hex(0x7A5B35),
+        },
+        Swap {
+            from: palette::PURPLE,
+            fill: Color::hex(0xA552D8),
+            text: Color::hex(0x8337B8),
+        },
+        Swap {
+            from: palette::YELLOW,
+            fill: Color::hex(0xE8A33D),
+            text: Color::hex(0xA8670A),
+        },
+        Swap {
+            from: palette::PINK,
+            fill: Color::hex(0xF0477A),
+            text: Color::hex(0xC92B5E),
+        },
     ],
 };
 
@@ -129,8 +165,16 @@ pub const OYEN_NIGHT: Look = Look {
     // His orange reads on black as it is, in fills and in text alike; the
     // palette's other accents are made for a dark ground already.
     swaps: &[
-        Swap { from: OYEN_ORANGE, fill: OYEN_ORANGE, text: OYEN_ORANGE },
-        Swap { from: palette::ORANGE, fill: OYEN_ORANGE, text: OYEN_ORANGE },
+        Swap {
+            from: OYEN_ORANGE,
+            fill: OYEN_ORANGE,
+            text: OYEN_ORANGE,
+        },
+        Swap {
+            from: palette::ORANGE,
+            fill: OYEN_ORANGE,
+            text: OYEN_ORANGE,
+        },
     ],
 };
 
@@ -160,14 +204,46 @@ pub const GLASS_LIGHT: Look = Look {
     material: Material::Glass,
     shape: Shape::Notch,
     swaps: &[
-        Swap { from: palette::GREEN, fill: Color::hex(0x34C759), text: Color::hex(0x248A3D) },
-        Swap { from: palette::ORANGE, fill: Color::hex(0xFF9500), text: Color::hex(0xC93400) },
-        Swap { from: palette::RED, fill: Color::hex(0xFF3B30), text: Color::hex(0xD70015) },
-        Swap { from: palette::BLUE, fill: Color::hex(0x007AFF), text: Color::hex(0x0040DD) },
-        Swap { from: palette::WARM_ACCENT, fill: Color::hex(0xAC8757), text: Color::hex(0x7A5B35) },
-        Swap { from: palette::PURPLE, fill: Color::hex(0xAF52DE), text: Color::hex(0x8944AB) },
-        Swap { from: palette::YELLOW, fill: Color::hex(0xFFCC00), text: Color::hex(0xA05A00) },
-        Swap { from: palette::PINK, fill: Color::hex(0xFF2D55), text: Color::hex(0xD30F45) },
+        Swap {
+            from: palette::GREEN,
+            fill: Color::hex(0x34C759),
+            text: Color::hex(0x248A3D),
+        },
+        Swap {
+            from: palette::ORANGE,
+            fill: Color::hex(0xFF9500),
+            text: Color::hex(0xC93400),
+        },
+        Swap {
+            from: palette::RED,
+            fill: Color::hex(0xFF3B30),
+            text: Color::hex(0xD70015),
+        },
+        Swap {
+            from: palette::BLUE,
+            fill: Color::hex(0x007AFF),
+            text: Color::hex(0x0040DD),
+        },
+        Swap {
+            from: palette::WARM_ACCENT,
+            fill: Color::hex(0xAC8757),
+            text: Color::hex(0x7A5B35),
+        },
+        Swap {
+            from: palette::PURPLE,
+            fill: Color::hex(0xAF52DE),
+            text: Color::hex(0x8944AB),
+        },
+        Swap {
+            from: palette::YELLOW,
+            fill: Color::hex(0xFFCC00),
+            text: Color::hex(0xA05A00),
+        },
+        Swap {
+            from: palette::PINK,
+            fill: Color::hex(0xFF2D55),
+            text: Color::hex(0xD30F45),
+        },
     ],
 };
 
@@ -260,7 +336,13 @@ mod tests {
 
     #[test]
     fn classic_paints_what_it_is_given() {
-        for c in [Color::white(0.62), Color::black(1.0), palette::GREEN, Color::rgba(0.16, 0.16, 0.16, 1.0), Color::hex(0x123456)] {
+        for c in [
+            Color::white(0.62),
+            Color::black(1.0),
+            palette::GREEN,
+            Color::rgba(0.16, 0.16, 0.16, 1.0),
+            Color::hex(0x123456),
+        ] {
             assert_eq!(CLASSIC.paint(c), c);
             assert_eq!(CLASSIC.paint_text(c), c);
         }
@@ -302,14 +384,20 @@ mod tests {
         assert_eq!(OYEN_NIGHT.ground, CLASSIC.ground);
         // White content becomes Oyen's cream, at the opacity it asked for.
         assert_eq!(OYEN_NIGHT.paint(Color::white(1.0)), OYEN.ground);
-        assert_eq!(OYEN_NIGHT.paint(palette::TEXT_DIM), OYEN.ground.with_alpha(0.62));
+        assert_eq!(
+            OYEN_NIGHT.paint(palette::TEXT_DIM),
+            OYEN.ground.with_alpha(0.62)
+        );
         // His orange in fills and text, bright enough on black.
         assert_eq!(OYEN_NIGHT.paint(palette::ORANGE), OYEN_ORANGE);
         assert_eq!(OYEN_NIGHT.paint_text(palette::ORANGE), OYEN_ORANGE);
         assert!(OYEN_ORANGE.luminance() > 0.3);
         // The palette's dark-ground accents and the content on them stay.
         assert_eq!(OYEN_NIGHT.paint(palette::GREEN), palette::GREEN);
-        assert_eq!(OYEN_NIGHT.paint_text(palette::ON_ACCENT), palette::ON_ACCENT);
+        assert_eq!(
+            OYEN_NIGHT.paint_text(palette::ON_ACCENT),
+            palette::ON_ACCENT
+        );
         assert!(!OYEN_NIGHT.light);
         assert_eq!(OYEN_NIGHT.font, OYEN.font);
         assert_eq!(OYEN_NIGHT.material, Material::Solid);
@@ -335,7 +423,12 @@ mod tests {
             assert_eq!(look.shape, Shape::Notch);
         }
         // Black and white like Classic: what a page asks for is what it gets.
-        for c in [Color::white(0.62), Color::black(1.0), palette::GREEN, Color::hex(0x123456)] {
+        for c in [
+            Color::white(0.62),
+            Color::black(1.0),
+            palette::GREEN,
+            Color::hex(0x123456),
+        ] {
             assert_eq!(PILL.paint(c), c);
             assert_eq!(PILL.paint_text(c), c);
         }
@@ -356,7 +449,10 @@ mod tests {
     #[test]
     fn light_glass_writes_dark_ink_and_deepens_accent_text() {
         assert_eq!(GLASS_LIGHT.paint(Color::white(1.0)), GLASS_LIGHT.ink);
-        assert_eq!(GLASS_LIGHT.paint(palette::TEXT_DIM), GLASS_LIGHT.ink.with_alpha(0.62));
+        assert_eq!(
+            GLASS_LIGHT.paint(palette::TEXT_DIM),
+            GLASS_LIGHT.ink.with_alpha(0.62)
+        );
         // Black content (a glyph cut out of a white disc) takes the glass's ground.
         assert_eq!(GLASS_LIGHT.paint(Color::black(1.0)), GLASS_LIGHT.ground);
         let fill = GLASS_LIGHT.paint(palette::BLUE);
@@ -365,6 +461,9 @@ mod tests {
         // Dark glass keeps the palette's accents, made for dark grounds.
         assert_eq!(GLASS_DARK.paint(palette::GREEN), palette::GREEN);
         assert_eq!(GLASS_DARK.paint(Color::white(0.5)), Color::white(0.5));
-        assert_eq!(GLASS_DARK.paint_text(palette::ON_ACCENT), palette::ON_ACCENT);
+        assert_eq!(
+            GLASS_DARK.paint_text(palette::ON_ACCENT),
+            palette::ON_ACCENT
+        );
     }
 }

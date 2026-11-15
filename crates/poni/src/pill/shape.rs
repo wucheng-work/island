@@ -67,7 +67,12 @@ pub fn snap(body: Rect, scale: f32) -> Rect {
     let s = scale.max(0.25);
     let px = |v: f32| (v * s).round() / s;
     let (x0, y0) = (px(body.x), px(body.y));
-    Rect::new(x0, y0, (px(body.right()) - x0).max(0.0), (px(body.bottom()) - y0).max(0.0))
+    Rect::new(
+        x0,
+        y0,
+        (px(body.right()) - x0).max(0.0),
+        (px(body.bottom()) - y0).max(0.0),
+    )
 }
 
 /// The hairline's width in DIPs: whole pixels, one up to 150 % and two from
@@ -96,13 +101,22 @@ pub fn draw_body(c: &mut Canvas, body: Rect, radius: f32, fill: Color, border: O
     let body = snap(body, s);
     let r = radius.min(body.h / 2.0).min(body.w / 2.0).max(0.0);
     if c.on_gpu() && casts_shadow(fill) {
-        c.rrect_shadow(body.offset(0.0, SHADOW_DROP), r, Color::black(fill.a), &SHADOW_RAMP);
+        c.rrect_shadow(
+            body.offset(0.0, SHADOW_DROP),
+            r,
+            Color::black(fill.a),
+            &SHADOW_RAMP,
+        );
     }
     c.path(&segments(body, r), Some(fill), None);
     if let Some(b) = border {
         let w = hairline(s);
         let ink = b.with_alpha((b.a / w).min(1.0));
-        c.path(&segments(body.inset(w / 2.0, w / 2.0), r - w / 2.0), None, Some((ink, w)));
+        c.path(
+            &segments(body.inset(w / 2.0, w / 2.0), r - w / 2.0),
+            None,
+            Some((ink, w)),
+        );
     }
 }
 
@@ -163,7 +177,11 @@ pub fn shadow_plan(r: Rect, radius: f32, ramp: &[(f32, f32)], scale: f32) -> Opt
     if first < -rq {
         stops.push((0.0, ramp_at(ramp, -rq)));
     }
-    stops.extend(ramp.iter().filter(|&&(d, _)| d >= -rq).map(|&(d, a)| ((d + rq) / reach, a)));
+    stops.extend(
+        ramp.iter()
+            .filter(|&&(d, _)| d >= -rq)
+            .map(|&(d, a)| ((d + rq) / reach, a)),
+    );
 
     let (x0, y0, x1, y1) = (r.x, r.y, r.right(), r.bottom());
     let (cl, cr, ct, cb) = (x0 + rad, x1 - rad, y0 + rad, y1 - rad);
@@ -193,24 +211,62 @@ pub fn shadow_plan(r: Rect, radius: f32, ramp: &[(f32, f32)], scale: f32) -> Opt
             None,
             None,
         ],
-        (false, false) => [Some((Rect::new(ol, ot, or - ol, ob - ot), Point::new(mx, my))), None, None, None],
+        (false, false) => [
+            Some((Rect::new(ol, ot, or - ol, ob - ot), Point::new(mx, my))),
+            None,
+            None,
+            None,
+        ],
     };
     // Sides reach `depth` inside the edge, or the corners' lines if nearer.
     let (it, ib) = ((y0 + depth).min(bt), (y1 - depth).max(bb));
     let (il, ir) = ((x0 + depth).min(bl), (x1 - depth).max(br));
     let sides = [
-        wide.then(|| (Rect::new(bl, ot, br - bl, it - ot), Point::new(cl, ct), Point::new(cl, ct - reach))),
-        wide.then(|| (Rect::new(bl, ib, br - bl, ob - ib), Point::new(cl, cb), Point::new(cl, cb + reach))),
-        tall.then(|| (Rect::new(ol, bt, il - ol, bb - bt), Point::new(cl, ct), Point::new(cl - reach, ct))),
-        tall.then(|| (Rect::new(ir, bt, or - ir, bb - bt), Point::new(cr, ct), Point::new(cr + reach, ct))),
+        wide.then(|| {
+            (
+                Rect::new(bl, ot, br - bl, it - ot),
+                Point::new(cl, ct),
+                Point::new(cl, ct - reach),
+            )
+        }),
+        wide.then(|| {
+            (
+                Rect::new(bl, ib, br - bl, ob - ib),
+                Point::new(cl, cb),
+                Point::new(cl, cb + reach),
+            )
+        }),
+        tall.then(|| {
+            (
+                Rect::new(ol, bt, il - ol, bb - bt),
+                Point::new(cl, ct),
+                Point::new(cl - reach, ct),
+            )
+        }),
+        tall.then(|| {
+            (
+                Rect::new(ir, bt, or - ir, bb - bt),
+                Point::new(cr, ct),
+                Point::new(cr + reach, ct),
+            )
+        }),
     ];
-    let middle = (depth >= rad && wide && tall).then(|| (Rect::new(bl, bt, br - bl, bb - bt), stops[0].1));
-    Some(ShadowPlan { stops, reach, corners, sides, middle })
+    let middle =
+        (depth >= rad && wide && tall).then(|| (Rect::new(bl, bt, br - bl, bb - bt), stops[0].1));
+    Some(ShadowPlan {
+        stops,
+        reach,
+        corners,
+        sides,
+        middle,
+    })
 }
 
 /// The ramp's opacity at distance `d`, straight between its stops.
 fn ramp_at(ramp: &[(f32, f32)], d: f32) -> f32 {
-    let Some(i) = ramp.iter().position(|&(x, _)| x >= d) else { return ramp.last().map_or(0.0, |s| s.1) };
+    let Some(i) = ramp.iter().position(|&(x, _)| x >= d) else {
+        return ramp.last().map_or(0.0, |s| s.1);
+    };
     if i == 0 {
         return ramp[0].1;
     }
@@ -259,8 +315,12 @@ mod tests {
                         for i in 1..=16 {
                             let t = i as f32 / 16.0;
                             let u = 1.0 - t;
-                            let (a, b, c2, d) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
-                            pts.push((a * cur.0 + b * c[0] + c2 * c[2] + d * c[4], a * cur.1 + b * c[1] + c2 * c[3] + d * c[5]));
+                            let (a, b, c2, d) =
+                                (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
+                            pts.push((
+                                a * cur.0 + b * c[0] + c2 * c[2] + d * c[4],
+                                a * cur.1 + b * c[1] + c2 * c[3] + d * c[5],
+                            ));
                         }
                         cur = (c[4], c[5]);
                     }
@@ -286,11 +346,22 @@ mod tests {
     fn outline_is_one_closed_figure() {
         for (b, r) in bodies() {
             let segs = segments(b, r);
-            let Seg::MoveTo(sx, sy) = segs[0] else { panic!("starts with a move") };
+            let Seg::MoveTo(sx, sy) = segs[0] else {
+                panic!("starts with a move")
+            };
             assert!(matches!(segs.last(), Some(Seg::Close)), "{b:?} ends closed");
-            assert_eq!(segs.iter().filter(|s| matches!(s, Seg::MoveTo(..))).count(), 1, "{b:?} is one figure");
-            let Some(Seg::ArcTo(.., ex, ey)) = segs.get(segs.len() - 2) else { panic!("the last corner closes it") };
-            assert!((ex - sx).abs() < 1e-4 && (ey - sy).abs() < 1e-4, "{b:?} ends where it starts");
+            assert_eq!(
+                segs.iter().filter(|s| matches!(s, Seg::MoveTo(..))).count(),
+                1,
+                "{b:?} is one figure"
+            );
+            let Some(Seg::ArcTo(.., ex, ey)) = segs.get(segs.len() - 2) else {
+                panic!("the last corner closes it")
+            };
+            assert!(
+                (ex - sx).abs() < 1e-4 && (ey - sy).abs() < 1e-4,
+                "{b:?} ends where it starts"
+            );
         }
     }
 
@@ -300,8 +371,18 @@ mod tests {
             // Cubic arcs stray from a true circle by up to 0.03 % of the radius.
             let tol = 3e-4 * r.min(b.h / 2.0).min(b.w / 2.0).max(0.0) + 2e-3;
             for p in trace(&segments(b, r)) {
-                assert!(p.0 >= b.x - 1e-3 && p.0 <= b.right() + 1e-3 && p.1 >= b.y - 1e-3 && p.1 <= b.bottom() + 1e-3, "{b:?} r {r}: {p:?} outside");
-                assert!(sdf(b, r, p).abs() < tol, "{b:?} r {r}: {p:?} off the edge by {}", sdf(b, r, p));
+                assert!(
+                    p.0 >= b.x - 1e-3
+                        && p.0 <= b.right() + 1e-3
+                        && p.1 >= b.y - 1e-3
+                        && p.1 <= b.bottom() + 1e-3,
+                    "{b:?} r {r}: {p:?} outside"
+                );
+                assert!(
+                    sdf(b, r, p).abs() < tol,
+                    "{b:?} r {r}: {p:?} off the edge by {}",
+                    sdf(b, r, p)
+                );
             }
         }
     }
@@ -311,15 +392,24 @@ mod tests {
         let b = rect(458.0, 8.0, 84.0, 32.0);
         for asked in [16.0, 20.0, 40.0, 1000.0] {
             let segs = segments(b, asked);
-            assert!(segs.iter().all(|s| !matches!(s, Seg::ArcTo(rx, ..) if (*rx - 16.0).abs() > 1e-4)), "radius {asked} clamps to h / 2");
+            assert!(
+                segs.iter()
+                    .all(|s| !matches!(s, Seg::ArcTo(rx, ..) if (*rx - 16.0).abs() > 1e-4)),
+                "radius {asked} clamps to h / 2"
+            );
             // The ends are half circles: the straight sides have no length.
             let Seg::LineTo(_, a) = segs[3] else { panic!() };
-            let Seg::ArcTo(.., b1) = segs[2] else { panic!() };
+            let Seg::ArcTo(.., b1) = segs[2] else {
+                panic!()
+            };
             assert!((a - b1).abs() < 1e-4, "no straight end");
             for p in trace(&segs) {
                 let cx = if p.0 < 500.0 { 474.0 } else { 526.0 };
                 if (p.0 - cx).abs() > 1e-3 && (p.0 < 474.0 || p.0 > 526.0) {
-                    assert!(((p.0 - cx).hypot(p.1 - 24.0) - 16.0).abs() < 0.01, "{p:?} on the end's circle");
+                    assert!(
+                        ((p.0 - cx).hypot(p.1 - 24.0) - 16.0).abs() < 0.01,
+                        "{p:?} on the end's circle"
+                    );
                 }
             }
         }
@@ -327,8 +417,12 @@ mod tests {
         let tall = segments(rect(0.0, 8.0, 30.0, 90.0), 40.0);
         assert!(matches!(tall[2], Seg::ArcTo(rx, ..) if (rx - 15.0).abs() < 1e-4));
         // The open card keeps the radius it asks for; a negative one is square.
-        assert!(matches!(segments(rect(190.0, 8.0, 620.0, 216.0), 40.0)[2], Seg::ArcTo(rx, ..) if (rx - 40.0).abs() < 1e-4));
-        assert!(matches!(segments(rect(0.0, 8.0, 60.0, 30.0), -3.0)[2], Seg::ArcTo(rx, ..) if rx == 0.0));
+        assert!(
+            matches!(segments(rect(190.0, 8.0, 620.0, 216.0), 40.0)[2], Seg::ArcTo(rx, ..) if (rx - 40.0).abs() < 1e-4)
+        );
+        assert!(
+            matches!(segments(rect(0.0, 8.0, 60.0, 30.0), -3.0)[2], Seg::ArcTo(rx, ..) if rx == 0.0)
+        );
     }
 
     #[test]
@@ -336,13 +430,27 @@ mod tests {
         for s in SCALES {
             for (b, _) in bodies() {
                 let n = snap(b, s);
-                for (v, was) in [(n.x, b.x), (n.y, b.y), (n.right(), b.right()), (n.bottom(), b.bottom())] {
-                    assert!(((v * s) - (v * s).round()).abs() < 1e-3, "{s}: {v} is a whole pixel");
-                    assert!(((v - was) * s).abs() <= 0.5 + 1e-3, "{s}: moved under half a pixel");
+                for (v, was) in [
+                    (n.x, b.x),
+                    (n.y, b.y),
+                    (n.right(), b.right()),
+                    (n.bottom(), b.bottom()),
+                ] {
+                    assert!(
+                        ((v * s) - (v * s).round()).abs() < 1e-3,
+                        "{s}: {v} is a whole pixel"
+                    );
+                    assert!(
+                        ((v - was) * s).abs() <= 0.5 + 1e-3,
+                        "{s}: moved under half a pixel"
+                    );
                 }
             }
             let h = hairline(s);
-            assert!(((h * s) - (h * s).round()).abs() < 1e-4 && h * s >= 1.0, "{s}: hairline is whole pixels");
+            assert!(
+                ((h * s) - (h * s).round()).abs() < 1e-4 && h * s >= 1.0,
+                "{s}: hairline is whole pixels"
+            );
             assert!((h - 1.0).abs() <= 0.34, "{s}: hairline about a DIP ({h})");
         }
     }
@@ -351,7 +459,10 @@ mod tests {
     fn q(x: f64) -> f64 {
         let z = x / std::f64::consts::SQRT_2;
         let t = 1.0 / (1.0 + 0.327_591_1 * z.abs());
-        let poly = t * (0.254_829_592 + t * (-0.284_496_736 + t * (1.421_413_741 + t * (-1.453_152_027 + t * 1.061_405_429))));
+        let poly = t
+            * (0.254_829_592
+                + t * (-0.284_496_736
+                    + t * (1.421_413_741 + t * (-1.453_152_027 + t * 1.061_405_429))));
         let erfc = poly * (-z * z).exp();
         if z >= 0.0 {
             erfc / 2.0
@@ -362,17 +473,32 @@ mod tests {
 
     fn spec_shadow(d: f32) -> f32 {
         let d = d as f64;
-        (1.0 - (1.0 - 0.32 * q(d / 6.0)) * (1.0 - 0.20 * q((d + (SHADOW_DROP as f64 - 1.0)) / 1.5))) as f32
+        (1.0 - (1.0 - 0.32 * q(d / 6.0)) * (1.0 - 0.20 * q((d + (SHADOW_DROP as f64 - 1.0)) / 1.5)))
+            as f32
     }
 
     #[test]
     fn shadow_ramp_is_the_spec_shadow() {
         let (first, last) = (SHADOW_RAMP[0].0, SHADOW_RAMP[SHADOW_RAMP.len() - 1].0);
-        assert_eq!(SHADOW_RAMP[SHADOW_RAMP.len() - 1].1, 0.0, "fades out completely");
-        assert!(SHADOW_RAMP.windows(2).all(|w| w[0].0 < w[1].0 && w[0].1 > w[1].1), "ordered, fading outwards");
+        assert_eq!(
+            SHADOW_RAMP[SHADOW_RAMP.len() - 1].1,
+            0.0,
+            "fades out completely"
+        );
+        assert!(
+            SHADOW_RAMP
+                .windows(2)
+                .all(|w| w[0].0 < w[1].0 && w[0].1 > w[1].1),
+            "ordered, fading outwards"
+        );
         let mut d = first;
         while d < last - 3.0 {
-            assert!((ramp_at(&SHADOW_RAMP, d) - spec_shadow(d)).abs() < 0.0025, "at {d}: {} vs {}", ramp_at(&SHADOW_RAMP, d), spec_shadow(d));
+            assert!(
+                (ramp_at(&SHADOW_RAMP, d) - spec_shadow(d)).abs() < 0.0025,
+                "at {d}: {} vs {}",
+                ramp_at(&SHADOW_RAMP, d),
+                spec_shadow(d)
+            );
             d += 0.05;
         }
         // Reaches under the body's bottom edge with a pixel to spare, and
@@ -390,7 +516,11 @@ mod tests {
             match st.iter().position(|s| s.0 >= t) {
                 None => st[st.len() - 1].1,
                 Some(0) => st[0].1,
-                Some(i) => st[i - 1].1 + (st[i].1 - st[i - 1].1) * (t - st[i - 1].0) / (st[i].0 - st[i - 1].0).max(1e-6),
+                Some(i) => {
+                    st[i - 1].1
+                        + (st[i].1 - st[i - 1].1) * (t - st[i - 1].0)
+                            / (st[i].0 - st[i - 1].0).max(1e-6)
+                }
             }
         };
         let mut hits = Vec::new();
@@ -402,7 +532,9 @@ mod tests {
         for (strip, a, b) in plan.sides.iter().flatten() {
             if inside(strip) {
                 let (dx, dy) = (b.x - a.x, b.y - a.y);
-                hits.push(along(((p.0 - a.x) * dx + (p.1 - a.y) * dy) / (dx * dx + dy * dy)));
+                hits.push(along(
+                    ((p.0 - a.x) * dx + (p.1 - a.y) * dy) / (dx * dx + dy * dy),
+                ));
             }
         }
         if let Some((m, a)) = &plan.middle {
@@ -421,11 +553,20 @@ mod tests {
             for (b, r) in bodies() {
                 let b = snap(b, s).offset(0.0, SHADOW_DROP);
                 let plan = shadow_plan(b, r, &ramp, s).expect("a plan");
-                assert!(plan.stops.windows(2).all(|w| w[0].0 <= w[1].0) && plan.stops.iter().all(|st| (0.0..=1.0).contains(&st.0)));
+                assert!(
+                    plan.stops.windows(2).all(|w| w[0].0 <= w[1].0)
+                        && plan.stops.iter().all(|st| (0.0..=1.0).contains(&st.0))
+                );
                 // Every pixel centre in the band is painted once, at the
                 // ramp's opacity for its distance from the edge.
-                let (x0, x1) = (((b.x - last) * s).floor() as i32, ((b.right() + last) * s).ceil() as i32);
-                let (y0, y1) = (((b.y - last) * s).floor() as i32, ((b.bottom() + last) * s).ceil() as i32);
+                let (x0, x1) = (
+                    ((b.x - last) * s).floor() as i32,
+                    ((b.right() + last) * s).ceil() as i32,
+                );
+                let (y0, y1) = (
+                    ((b.y - last) * s).floor() as i32,
+                    ((b.bottom() + last) * s).ceil() as i32,
+                );
                 for py in y0..y1 {
                     for pxl in x0..x1 {
                         let p = ((pxl as f32 + 0.5) / s, (py as f32 + 0.5) / s);
@@ -439,17 +580,32 @@ mod tests {
                         // an approximation; elsewhere the radius in half DIPs
                         // moves the ramp under 0.25 DIP, and it is never
                         // steeper than 0.06 a DIP.
-                        let flat = plan.middle.is_some_and(|(m, _)| p.0 >= m.x && p.0 < m.right() && p.1 >= m.y && p.1 < m.bottom());
-                        assert!(flat || (a - ramp_at(&ramp, d)).abs() < 0.016, "{s}: {b:?} r {r}: {p:?} (d {d}) {a} vs {}", ramp_at(&ramp, d));
+                        let flat = plan.middle.is_some_and(|(m, _)| {
+                            p.0 >= m.x && p.0 < m.right() && p.1 >= m.y && p.1 < m.bottom()
+                        });
+                        assert!(
+                            flat || (a - ramp_at(&ramp, d)).abs() < 0.016,
+                            "{s}: {b:?} r {r}: {p:?} (d {d}) {a} vs {}",
+                            ramp_at(&ramp, d)
+                        );
                     }
                 }
                 // Seams on whole pixels, and nothing past the ramp's reach.
                 for (sq, _) in plan.corners.iter().flatten() {
                     for v in [sq.x, sq.right(), sq.y, sq.bottom()] {
-                        let edge = [b.x - last, b.right() + last, b.y - last, b.bottom() + last].iter().any(|e| (e - v).abs() < 1e-4);
-                        assert!(edge || ((v * s) - (v * s).round()).abs() < 1e-3, "{s}: seam {v} off the pixel grid");
+                        let edge = [b.x - last, b.right() + last, b.y - last, b.bottom() + last]
+                            .iter()
+                            .any(|e| (e - v).abs() < 1e-4);
+                        assert!(
+                            edge || ((v * s) - (v * s).round()).abs() < 1e-3,
+                            "{s}: seam {v} off the pixel grid"
+                        );
                     }
-                    assert!(sq.x >= b.x - last - 1e-3 && sq.right() <= b.right() + last + 1e-3 && sq.bottom() <= b.bottom() + last + 1e-3);
+                    assert!(
+                        sq.x >= b.x - last - 1e-3
+                            && sq.right() <= b.right() + last + 1e-3
+                            && sq.bottom() <= b.bottom() + last + 1e-3
+                    );
                 }
             }
         }
@@ -461,10 +617,23 @@ mod tests {
             for (b, r) in bodies() {
                 let body = snap(b, s);
                 let plan = shadow_plan(body.offset(0.0, SHADOW_DROP), r, &SHADOW_RAMP, s).unwrap();
-                let room = Rect::new(body.x - MARGIN, 0.0, body.w + 2.0 * MARGIN, body.bottom() + MARGIN);
-                let pieces = plan.corners.iter().flatten().map(|c| c.0).chain(plan.sides.iter().flatten().map(|p| p.0));
+                let room = Rect::new(
+                    body.x - MARGIN,
+                    0.0,
+                    body.w + 2.0 * MARGIN,
+                    body.bottom() + MARGIN,
+                );
+                let pieces = plan
+                    .corners
+                    .iter()
+                    .flatten()
+                    .map(|c| c.0)
+                    .chain(plan.sides.iter().flatten().map(|p| p.0));
                 for p in pieces {
-                    assert!(p.x >= room.x && p.right() <= room.right() && p.bottom() <= room.bottom(), "{s}: {p:?} outside {room:?}");
+                    assert!(
+                        p.x >= room.x && p.right() <= room.right() && p.bottom() <= room.bottom(),
+                        "{s}: {p:?} outside {room:?}"
+                    );
                 }
             }
         }
@@ -472,12 +641,55 @@ mod tests {
 
     #[test]
     fn a_capsule_takes_four_fills_and_a_card_eight() {
-        let count = |p: &ShadowPlan| (p.corners.iter().flatten().count(), p.sides.iter().flatten().count());
+        let count = |p: &ShadowPlan| {
+            (
+                p.corners.iter().flatten().count(),
+                p.sides.iter().flatten().count(),
+            )
+        };
         for s in SCALES {
-            assert_eq!(count(&shadow_plan(snap(rect(458.0, 12.0, 84.0, 32.0), s), 16.0, &SHADOW_RAMP, s).unwrap()), (2, 2), "{s}: capsule");
-            assert_eq!(count(&shadow_plan(snap(rect(190.0, 12.0, 620.0, 216.0), s), 40.0, &SHADOW_RAMP, s).unwrap()), (4, 4), "{s}: card");
-            assert_eq!(count(&shadow_plan(snap(rect(10.0, 12.0, 30.0, 90.0), s), 40.0, &SHADOW_RAMP, s).unwrap()), (2, 2), "{s}: upright");
-            assert_eq!(count(&shadow_plan(snap(rect(10.0, 12.0, 40.0, 40.0), s), 20.0, &SHADOW_RAMP, s).unwrap()), (1, 0), "{s}: circle");
+            assert_eq!(
+                count(
+                    &shadow_plan(
+                        snap(rect(458.0, 12.0, 84.0, 32.0), s),
+                        16.0,
+                        &SHADOW_RAMP,
+                        s
+                    )
+                    .unwrap()
+                ),
+                (2, 2),
+                "{s}: capsule"
+            );
+            assert_eq!(
+                count(
+                    &shadow_plan(
+                        snap(rect(190.0, 12.0, 620.0, 216.0), s),
+                        40.0,
+                        &SHADOW_RAMP,
+                        s
+                    )
+                    .unwrap()
+                ),
+                (4, 4),
+                "{s}: card"
+            );
+            assert_eq!(
+                count(
+                    &shadow_plan(snap(rect(10.0, 12.0, 30.0, 90.0), s), 40.0, &SHADOW_RAMP, s)
+                        .unwrap()
+                ),
+                (2, 2),
+                "{s}: upright"
+            );
+            assert_eq!(
+                count(
+                    &shadow_plan(snap(rect(10.0, 12.0, 40.0, 40.0), s), 20.0, &SHADOW_RAMP, s)
+                        .unwrap()
+                ),
+                (1, 0),
+                "{s}: circle"
+            );
         }
     }
 
@@ -485,7 +697,10 @@ mod tests {
     fn only_a_visible_body_casts_a_shadow() {
         assert!(casts_shadow(Color::black(1.0)));
         assert!(casts_shadow(Color::black(0.5)));
-        assert!(!casts_shadow(Color::black(1.0 / 255.0)), "the Hidden idle style casts none");
+        assert!(
+            !casts_shadow(Color::black(1.0 / 255.0)),
+            "the Hidden idle style casts none"
+        );
         assert!(!casts_shadow(Color::black(0.0)));
     }
 
@@ -494,7 +709,12 @@ mod tests {
         let plan = shadow_plan(rect(10.0, 10.0, 100.0, 60.0), 2.0, &SHADOW_RAMP, 1.0).unwrap();
         let (m, a) = plan.middle.expect("a middle under the ramp's depth");
         assert!(m.w > 0.0 && m.h > 0.0 && (a - ramp_at(&SHADOW_RAMP, -2.0)).abs() < 1e-3);
-        assert!(shadow_plan(rect(10.0, 10.0, 100.0, 60.0), 16.0, &SHADOW_RAMP, 1.0).unwrap().middle.is_none());
+        assert!(
+            shadow_plan(rect(10.0, 10.0, 100.0, 60.0), 16.0, &SHADOW_RAMP, 1.0)
+                .unwrap()
+                .middle
+                .is_none()
+        );
         assert!(shadow_plan(rect(10.0, 10.0, 0.0, 60.0), 16.0, &SHADOW_RAMP, 1.0).is_none());
         assert!(shadow_plan(rect(10.0, 10.0, 50.0, 60.0), 16.0, &SHADOW_RAMP[..1], 1.0).is_none());
     }

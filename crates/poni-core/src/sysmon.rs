@@ -33,7 +33,16 @@ pub enum Module {
 }
 
 impl Module {
-    pub const ALL: [Module; 8] = [Module::Cpu, Module::Gpu, Module::Memory, Module::Drives, Module::Network, Module::Power, Module::Battery, Module::Games];
+    pub const ALL: [Module; 8] = [
+        Module::Cpu,
+        Module::Gpu,
+        Module::Memory,
+        Module::Drives,
+        Module::Network,
+        Module::Power,
+        Module::Battery,
+        Module::Games,
+    ];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -96,14 +105,27 @@ pub struct CpuReading {
 impl CpuReading {
     /// (performance, efficiency) core counts on a hybrid CPU.
     pub fn hybrid(&self) -> Option<(usize, usize)> {
-        let p = self.cores.iter().filter(|c| c.kind == CoreKind::Performance).count();
-        let e = self.cores.iter().filter(|c| c.kind == CoreKind::Efficiency).count();
+        let p = self
+            .cores
+            .iter()
+            .filter(|c| c.kind == CoreKind::Performance)
+            .count();
+        let e = self
+            .cores
+            .iter()
+            .filter(|c| c.kind == CoreKind::Efficiency)
+            .count();
         (p > 0 && e > 0).then_some((p, e))
     }
 
     /// Average load of one kind of core.
     pub fn kind_load(&self, kind: CoreKind) -> Option<f32> {
-        let v: Vec<f32> = self.cores.iter().filter(|c| c.kind == kind).map(|c| c.load).collect();
+        let v: Vec<f32> = self
+            .cores
+            .iter()
+            .filter(|c| c.kind == kind)
+            .map(|c| c.load)
+            .collect();
         (!v.is_empty()).then(|| v.iter().sum::<f32>() / v.len() as f32)
     }
 }
@@ -159,7 +181,13 @@ impl MemoryReading {
         let cached = self.cached.min(self.total - wired - compressed);
         let free = self.free.min(self.total - wired - compressed - cached);
         let app = self.total - wired - compressed - cached - free;
-        [(MemPart::App, app), (MemPart::Wired, wired), (MemPart::Compressed, compressed), (MemPart::Cached, cached), (MemPart::Free, free)]
+        [
+            (MemPart::App, app),
+            (MemPart::Wired, wired),
+            (MemPart::Compressed, compressed),
+            (MemPart::Cached, cached),
+            (MemPart::Free, free),
+        ]
     }
 }
 
@@ -316,7 +344,10 @@ pub struct Reading {
 impl Reading {
     /// The drive Windows runs from, else the first one.
     pub fn system_drive(&self) -> Option<&Drive> {
-        self.drives.iter().find(|d| d.system).or(self.drives.first())
+        self.drives
+            .iter()
+            .find(|d| d.system)
+            .or(self.drives.first())
     }
 }
 
@@ -340,7 +371,8 @@ impl Series {
         if self.0.len() == HISTORY_LEN {
             self.0.pop_front();
         }
-        self.0.push_back(v.filter(|v| v.is_finite()).unwrap_or(f32::NAN));
+        self.0
+            .push_back(v.filter(|v| v.is_finite()).unwrap_or(f32::NAN));
     }
 
     pub fn len(&self) -> usize {
@@ -357,7 +389,11 @@ impl Series {
 
     /// The largest value in the minute (0 when there is none).
     pub fn max(&self) -> f32 {
-        self.0.iter().copied().filter(|v| v.is_finite()).fold(0.0, f32::max)
+        self.0
+            .iter()
+            .copied()
+            .filter(|v| v.is_finite())
+            .fold(0.0, f32::max)
     }
 }
 
@@ -379,7 +415,8 @@ impl History {
     pub fn record(&mut self, r: &Reading) {
         self.cpu.push(r.cpu.as_ref().map(|c| c.load));
         self.gpu.push(r.gpu.as_ref().map(|g| g.util));
-        self.memory.push(r.memory.as_ref().map(MemoryReading::used_frac));
+        self.memory
+            .push(r.memory.as_ref().map(MemoryReading::used_frac));
         self.disk_read.push(r.disk.map(|d| d.read_bps as f32));
         self.disk_write.push(r.disk.map(|d| d.write_bps as f32));
         let net = r.network.as_ref().filter(|n| n.online);
@@ -472,7 +509,13 @@ const CORE_RECORD: usize = 48;
 /// Read a `SystemProcessorPerformanceInformation` buffer, one entry per logical processor.
 pub fn parse_core_times(buf: &[u8]) -> Vec<CoreTimes> {
     buf.chunks_exact(CORE_RECORD)
-        .map(|r| CoreTimes { idle: read_u64(r, 0), kernel: read_u64(r, 8), user: read_u64(r, 16), dpc: read_u64(r, 24), interrupt: read_u64(r, 32) })
+        .map(|r| CoreTimes {
+            idle: read_u64(r, 0),
+            kernel: read_u64(r, 8),
+            user: read_u64(r, 16),
+            dpc: read_u64(r, 24),
+            interrupt: read_u64(r, 32),
+        })
         .collect()
 }
 
@@ -501,11 +544,18 @@ pub fn core_split(prev: &[CoreTimes], now: &[CoreTimes]) -> Option<CoreSplit> {
         let u = b.user.saturating_sub(a.user);
         let t = k.saturating_add(u);
         let i = b.idle.saturating_sub(a.idle).min(t);
-        cores.push(if t == 0 { 0.0 } else { (1.0 - i as f64 / t as f64) as f32 });
+        cores.push(if t == 0 {
+            0.0
+        } else {
+            (1.0 - i as f64 / t as f64) as f32
+        });
         total += t;
         idle += i;
         user += u;
-        hw += b.dpc.saturating_sub(a.dpc).saturating_add(b.interrupt.saturating_sub(a.interrupt));
+        hw += b
+            .dpc
+            .saturating_sub(a.dpc)
+            .saturating_add(b.interrupt.saturating_sub(a.interrupt));
     }
     if total == 0 {
         return None;
@@ -515,18 +565,35 @@ pub fn core_split(prev: &[CoreTimes], now: &[CoreTimes]) -> Option<CoreSplit> {
     let user = ((user as f64 / t) as f32).min(load);
     let kernel = (load - user).max(0.0);
     let interrupt = ((hw as f64 / t) as f32).min(kernel);
-    Some(CoreSplit { cores, load, user, kernel, interrupt })
+    Some(CoreSplit {
+        cores,
+        load,
+        user,
+        kernel,
+        interrupt,
+    })
 }
 
 /// Core kinds from each logical processor's efficiency class
 /// (`GetSystemCpuSetInformation`): on a hybrid CPU the highest class is the
 /// performance cores, the rest efficiency cores; one class means one kind.
 pub fn core_kinds(classes: &[u8]) -> Vec<CoreKind> {
-    let (Some(lo), Some(hi)) = (classes.iter().min(), classes.iter().max()) else { return Vec::new() };
+    let (Some(lo), Some(hi)) = (classes.iter().min(), classes.iter().max()) else {
+        return Vec::new();
+    };
     if lo == hi {
         return vec![CoreKind::Any; classes.len()];
     }
-    classes.iter().map(|c| if c == hi { CoreKind::Performance } else { CoreKind::Efficiency }).collect()
+    classes
+        .iter()
+        .map(|c| {
+            if c == hi {
+                CoreKind::Performance
+            } else {
+                CoreKind::Efficiency
+            }
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------- GPU engines
@@ -607,7 +674,14 @@ pub struct ProcSample {
 
 /// Entries of the process list that aren't apps: the idle counter and
 /// Windows' own memory bookkeeping (Task Manager's Processes tab leaves them out too).
-const NOT_APPS: [&str; 6] = ["", "idle", "system idle process", "memory compression", "registry", "secure system"];
+const NOT_APPS: [&str; 6] = [
+    "",
+    "idle",
+    "system idle process",
+    "memory compression",
+    "registry",
+    "secure system",
+];
 
 /// Turns successive process lists into per-app usage.
 #[derive(Debug, Default)]
@@ -636,16 +710,21 @@ impl AppTracker {
             }
             let before = self.prev.get(&p.pid).filter(|(img, _, _)| *img == image);
             let cpu = match (ticks, before) {
-                (Some(t), Some((_, c, _))) if p.cpu_time >= *c => ((p.cpu_time - c) as f64 / t) as f32,
+                (Some(t), Some((_, c, _))) if p.cpu_time >= *c => {
+                    ((p.cpu_time - c) as f64 / t) as f32
+                }
                 _ => 0.0,
             };
             let io = match (span, before) {
                 (Some(d), Some((_, _, io))) if p.io >= *io => (p.io - io) as f64 / d,
                 _ => 0.0,
             };
-            let g = groups
-                .entry(image.clone())
-                .or_insert_with(|| AppUse { image: image.clone(), name: display_name(&p.image), pid: p.pid, ..AppUse::default() });
+            let g = groups.entry(image.clone()).or_insert_with(|| AppUse {
+                image: image.clone(),
+                name: display_name(&p.image),
+                pid: p.pid,
+                ..AppUse::default()
+            });
             let biggest = lead.entry(image).or_insert(0);
             if p.memory >= *biggest {
                 *biggest = p.memory;
@@ -671,7 +750,12 @@ impl AppTracker {
 /// The `n` apps using the most CPU (equal ones by memory, then by name).
 pub fn top_cpu(apps: &[AppUse], n: usize) -> Vec<AppUse> {
     let mut v: Vec<&AppUse> = apps.iter().collect();
-    v.sort_by(|a, b| b.cpu.total_cmp(&a.cpu).then(b.memory.cmp(&a.memory)).then(a.image.cmp(&b.image)));
+    v.sort_by(|a, b| {
+        b.cpu
+            .total_cmp(&a.cpu)
+            .then(b.memory.cmp(&a.memory))
+            .then(a.image.cmp(&b.image))
+    });
     v.into_iter().take(n).cloned().collect()
 }
 
@@ -728,13 +812,24 @@ pub fn parse_process_list(buf: &[u8], base: usize) -> Vec<ProcSample> {
         let name_ptr = read_u64(e, P_NAME_PTR) as usize;
         let image = name_ptr
             .checked_sub(base)
-            .filter(|start| name_len > 0 && start.checked_add(name_len).is_some_and(|end| end <= buf.len()))
+            .filter(|start| {
+                name_len > 0
+                    && start
+                        .checked_add(name_len)
+                        .is_some_and(|end| end <= buf.len())
+            })
             .map(|start| utf16le(&buf[start..start + name_len]))
             .unwrap_or_default();
         let user = read_u64(e, P_USER_TIME);
         let kernel = read_u64(e, P_KERNEL_TIME);
         let io = read_u64(e, P_IO_READ).saturating_add(read_u64(e, P_IO_WRITE));
-        out.push(ProcSample { pid: read_u64(e, P_PID), image, cpu_time: user.saturating_add(kernel), memory: read_u64(e, P_PRIVATE_WS), io });
+        out.push(ProcSample {
+            pid: read_u64(e, P_PID),
+            image,
+            cpu_time: user.saturating_add(kernel),
+            memory: read_u64(e, P_PRIVATE_WS),
+            io,
+        });
         if next < P_MIN {
             break;
         }
@@ -756,7 +851,10 @@ fn read_u64(b: &[u8], at: usize) -> u64 {
 }
 
 fn utf16le(b: &[u8]) -> String {
-    let units: Vec<u16> = b.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    let units: Vec<u16> = b
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
     String::from_utf16_lossy(&units)
 }
 
@@ -804,7 +902,11 @@ pub fn fmt_bytes(bytes: u64) -> String {
 
 /// Transfer speeds: "0 KB/s", "4.2 KB/s", "84 KB/s", "1.2 MB/s", "120 MB/s", "1.1 GB/s".
 pub fn fmt_rate(bytes_per_s: f64) -> String {
-    let b = if bytes_per_s.is_finite() { bytes_per_s.max(0.0) } else { 0.0 };
+    let b = if bytes_per_s.is_finite() {
+        bytes_per_s.max(0.0)
+    } else {
+        0.0
+    };
     let kb = b / KIB;
     if kb < 0.5 {
         "0 KB/s".into()
@@ -954,8 +1056,14 @@ pub fn app_bundle(path: &str) -> Option<&str> {
 /// What an app is called, from its bundle's path: "/Applications/Google
 /// Chrome.app" → "Google Chrome".
 pub fn bundle_name(bundle: &str) -> &str {
-    let file = bundle.trim_end_matches('/').rsplit('/').next().unwrap_or(bundle);
-    file.strip_suffix(".app").filter(|n| !n.is_empty()).unwrap_or(file)
+    let file = bundle
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(bundle);
+    file.strip_suffix(".app")
+        .filter(|n| !n.is_empty())
+        .unwrap_or(file)
 }
 
 /// Energy (mWh) in a battery holding `mah`, at its pack's nominal voltage:
@@ -1038,7 +1146,11 @@ pub fn parse_if_list(buf: &[u8]) -> Vec<IfStats> {
             if nlen <= data.len() {
                 i.name = String::from_utf8_lossy(&data[..nlen]).into_owned();
                 if alen == 6 && nlen + alen <= data.len() {
-                    i.mac = data[nlen..nlen + alen].iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(":");
+                    i.mac = data[nlen..nlen + alen]
+                        .iter()
+                        .map(|b| format!("{b:02X}"))
+                        .collect::<Vec<_>>()
+                        .join(":");
                 }
             }
         }
@@ -1058,7 +1170,8 @@ mod tests {
     #[test]
     fn cpu_split_separates_apps_from_windows() {
         // kernel 100 (of which idle 50) + user 100: busy 150 of 200, apps 100, Windows 50.
-        let (load, user, kernel) = cpu_split(times(1_000, 2_000, 3_000), times(1_050, 2_100, 3_100)).unwrap();
+        let (load, user, kernel) =
+            cpu_split(times(1_000, 2_000, 3_000), times(1_050, 2_100, 3_100)).unwrap();
         assert!((load - 0.75).abs() < 1e-6, "{load}");
         assert!((user - 0.5).abs() < 1e-6, "{user}");
         assert!((kernel - 0.25).abs() < 1e-6, "{kernel}");
@@ -1070,40 +1183,77 @@ mod tests {
         assert_eq!(cpu_split(a, a), None);
         assert_eq!(cpu_split(times(100, 200, 300), a), None);
         // An idle machine: kernel time is all idle.
-        assert_eq!(cpu_split(times(0, 0, 0), times(40, 40, 0)), Some((0.0, 0.0, 0.0)));
+        assert_eq!(
+            cpu_split(times(0, 0, 0), times(40, 40, 0)),
+            Some((0.0, 0.0, 0.0))
+        );
         // Inconsistent counters never go past 0..=1.
         let (load, _, _) = cpu_split(times(0, 0, 0), times(500, 100, 100)).unwrap();
         assert!((0.0..=1.0).contains(&load));
     }
 
     fn proc(pid: u64, image: &str, cpu_time: u64, memory: u64) -> ProcSample {
-        ProcSample { pid, image: image.into(), cpu_time, memory, io: 0 }
+        ProcSample {
+            pid,
+            image: image.into(),
+            cpu_time,
+            memory,
+            io: 0,
+        }
     }
 
     #[test]
     fn apps_group_processes_by_executable() {
         let mut t = AppTracker::default();
-        let first = [proc(0, "", 0, 0), proc(4, "System", 100, 1), proc(10, "chrome.exe", 1_000, 300), proc(11, "Chrome.exe", 2_000, 500), proc(20, "Code.exe", 0, 50)];
+        let first = [
+            proc(0, "", 0, 0),
+            proc(4, "System", 100, 1),
+            proc(10, "chrome.exe", 1_000, 300),
+            proc(11, "Chrome.exe", 2_000, 500),
+            proc(20, "Code.exe", 0, 50),
+        ];
         let apps = t.update(10.0, 4, &first);
         // The first list has nothing to compare with: memory only.
         let chrome = apps.iter().find(|a| a.image == "chrome.exe").unwrap();
-        assert_eq!((chrome.processes, chrome.memory, chrome.cpu, chrome.pid), (2, 800, 0.0, 11));
+        assert_eq!(
+            (chrome.processes, chrome.memory, chrome.cpu, chrome.pid),
+            (2, 800, 0.0, 11)
+        );
         assert_eq!(chrome.name, "chrome");
-        assert!(apps.iter().all(|a| a.image != ""), "the idle counter is not an app");
+        assert!(
+            apps.iter().all(|a| a.image != ""),
+            "the idle counter is not an app"
+        );
 
         // One second later on 4 logical processors: 4e7 ticks of capacity.
-        let second = [proc(4, "System", 100, 1), proc(10, "chrome.exe", 1_000 + 2_000_000, 300), proc(11, "chrome.exe", 2_000 + 2_000_000, 500), proc(20, "Code.exe", 1_000_000, 50), proc(30, "new.exe", 9_999_999, 5)];
+        let second = [
+            proc(4, "System", 100, 1),
+            proc(10, "chrome.exe", 1_000 + 2_000_000, 300),
+            proc(11, "chrome.exe", 2_000 + 2_000_000, 500),
+            proc(20, "Code.exe", 1_000_000, 50),
+            proc(30, "new.exe", 9_999_999, 5),
+        ];
         let apps = t.update(11.0, 4, &second);
         let get = |img: &str| apps.iter().find(|a| a.image == img).unwrap().cpu;
         assert!((get("chrome.exe") - 0.1).abs() < 1e-6);
         assert!((get("code.exe") - 0.025).abs() < 1e-6);
-        assert_eq!(get("new.exe"), 0.0, "a new process has no earlier time to compare with");
+        assert_eq!(
+            get("new.exe"),
+            0.0,
+            "a new process has no earlier time to compare with"
+        );
         assert_eq!(get("system"), 0.0);
 
         let top = top_cpu(&apps, 2);
-        assert_eq!(top.iter().map(|a| a.image.as_str()).collect::<Vec<_>>(), ["chrome.exe", "code.exe"]);
+        assert_eq!(
+            top.iter().map(|a| a.image.as_str()).collect::<Vec<_>>(),
+            ["chrome.exe", "code.exe"]
+        );
         let top = top_memory(&apps, 3);
-        assert_eq!(top.iter().map(|a| a.image.as_str()).collect::<Vec<_>>(), ["chrome.exe", "code.exe", "new.exe"]);
+        assert_eq!(
+            top.iter().map(|a| a.image.as_str()).collect::<Vec<_>>(),
+            ["chrome.exe", "code.exe", "new.exe"]
+        );
     }
 
     #[test]
@@ -1123,13 +1273,21 @@ mod tests {
     }
 
     /// A process list the way Windows lays it out, with names after the entries.
-    fn process_buffer(entries: &[(u64, &str, u64, u64, u64)], base: usize, entry_size: usize) -> Vec<u8> {
+    fn process_buffer(
+        entries: &[(u64, &str, u64, u64, u64)],
+        base: usize,
+        entry_size: usize,
+    ) -> Vec<u8> {
         let names_at = entries.len() * entry_size;
         let mut buf = vec![0u8; names_at + 256];
         let mut name_off = names_at;
         for (i, (pid, name, user, kernel, private)) in entries.iter().enumerate() {
             let at = i * entry_size;
-            let next = if i + 1 == entries.len() { 0 } else { entry_size as u32 };
+            let next = if i + 1 == entries.len() {
+                0
+            } else {
+                entry_size as u32
+            };
             buf[at..at + 4].copy_from_slice(&next.to_le_bytes());
             buf[at + P_PRIVATE_WS..at + P_PRIVATE_WS + 8].copy_from_slice(&private.to_le_bytes());
             // Reads of 1 KB per pid, writes of 2 KB per pid.
@@ -1142,7 +1300,8 @@ mod tests {
             if !units.is_empty() {
                 let len = (units.len() * 2) as u16;
                 buf[at + P_NAME_LEN..at + P_NAME_LEN + 2].copy_from_slice(&len.to_le_bytes());
-                buf[at + P_NAME_PTR..at + P_NAME_PTR + 8].copy_from_slice(&((base + name_off) as u64).to_le_bytes());
+                buf[at + P_NAME_PTR..at + P_NAME_PTR + 8]
+                    .copy_from_slice(&((base + name_off) as u64).to_le_bytes());
                 for u in units {
                     buf[name_off..name_off + 2].copy_from_slice(&u.to_le_bytes());
                     name_off += 2;
@@ -1155,12 +1314,47 @@ mod tests {
     #[test]
     fn process_list_reads_every_entry() {
         let base = 0x7ff0_0000_0000;
-        let buf = process_buffer(&[(0, "", 0, 0, 0), (4, "System", 10, 20, 4096), (1234, "chrome.exe", 300, 400, 512 << 20)], base, 256);
+        let buf = process_buffer(
+            &[
+                (0, "", 0, 0, 0),
+                (4, "System", 10, 20, 4096),
+                (1234, "chrome.exe", 300, 400, 512 << 20),
+            ],
+            base,
+            256,
+        );
         let list = parse_process_list(&buf, base);
         assert_eq!(list.len(), 3);
-        assert_eq!(list[0], ProcSample { pid: 0, image: String::new(), cpu_time: 0, memory: 0, io: 0 });
-        assert_eq!(list[1], ProcSample { pid: 4, image: "System".into(), cpu_time: 30, memory: 4096, io: 4 * 3072 });
-        assert_eq!(list[2], ProcSample { pid: 1234, image: "chrome.exe".into(), cpu_time: 700, memory: 512 << 20, io: 1234 * 3072 });
+        assert_eq!(
+            list[0],
+            ProcSample {
+                pid: 0,
+                image: String::new(),
+                cpu_time: 0,
+                memory: 0,
+                io: 0
+            }
+        );
+        assert_eq!(
+            list[1],
+            ProcSample {
+                pid: 4,
+                image: "System".into(),
+                cpu_time: 30,
+                memory: 4096,
+                io: 4 * 3072
+            }
+        );
+        assert_eq!(
+            list[2],
+            ProcSample {
+                pid: 1234,
+                image: "chrome.exe".into(),
+                cpu_time: 700,
+                memory: 512 << 20,
+                io: 1234 * 3072
+            }
+        );
     }
 
     #[test]
@@ -1170,7 +1364,10 @@ mod tests {
         // A name pointing outside the buffer reads as no name.
         buf[P_NAME_PTR..P_NAME_PTR + 8].copy_from_slice(&0xdead_beef_u64.to_le_bytes());
         let list = parse_process_list(&buf, base);
-        assert_eq!((list.len(), list[0].image.as_str(), list[1].image.as_str()), (2, "", "b.exe"));
+        assert_eq!(
+            (list.len(), list[0].image.as_str(), list[1].image.as_str()),
+            (2, "", "b.exe")
+        );
         // A buffer cut short ends the walk.
         assert_eq!(parse_process_list(&buf[..400], base).len(), 1);
         assert!(parse_process_list(&buf[..200], base).is_empty());
@@ -1183,13 +1380,22 @@ mod tests {
     fn history_keeps_a_minute_with_gaps() {
         let mut m = Monitor::default();
         for i in 0..70 {
-            let cpu = (i % 2 == 0).then(|| CpuReading { load: 0.5, ..CpuReading::default() });
-            m.push(Reading { cpu, ..Reading::default() });
+            let cpu = (i % 2 == 0).then(|| CpuReading {
+                load: 0.5,
+                ..CpuReading::default()
+            });
+            m.push(Reading {
+                cpu,
+                ..Reading::default()
+            });
         }
         assert_eq!(m.history.cpu.len(), HISTORY_LEN);
         let v: Vec<f32> = m.history.cpu.values().collect();
         // Samples 10..=69 remain: the even ones have a value, the odd ones are gaps.
-        assert!(v[0] == 0.5 && v[1].is_nan(), "oldest first, missing samples are gaps");
+        assert!(
+            v[0] == 0.5 && v[1].is_nan(),
+            "oldest first, missing samples are gaps"
+        );
         assert_eq!(m.history.cpu.max(), 0.5);
         assert_eq!(m.history.memory.max(), 0.0);
         m.clear();
@@ -1199,7 +1405,14 @@ mod tests {
     #[test]
     fn offline_network_records_gaps() {
         let mut h = History::default();
-        h.record(&Reading { network: Some(NetReading { online: false, down_bps: 9.0, ..NetReading::default() }), ..Reading::default() });
+        h.record(&Reading {
+            network: Some(NetReading {
+                online: false,
+                down_bps: 9.0,
+                ..NetReading::default()
+            }),
+            ..Reading::default()
+        });
         assert!(h.net_down.values().next().unwrap().is_nan());
     }
 
@@ -1207,7 +1420,10 @@ mod tests {
     fn formats() {
         assert_eq!(fmt_pct(0.234), "23%");
         assert_eq!(fmt_pct(1.7), "100%");
-        assert_eq!((fmt_app_cpu(0.0004), fmt_app_cpu(0.0912), fmt_app_cpu(0.234)), ("0%".into(), "9.1%".into(), "23%".into()));
+        assert_eq!(
+            (fmt_app_cpu(0.0004), fmt_app_cpu(0.0912), fmt_app_cpu(0.234)),
+            ("0%".into(), "9.1%".into(), "23%".into())
+        );
         assert_eq!(fmt_bytes(212 << 30), "212 GB");
         assert_eq!(fmt_bytes(9_600 << 20), "9.4 GB");
         assert_eq!(fmt_bytes(512 << 20), "512 MB");
@@ -1218,14 +1434,33 @@ mod tests {
         assert_eq!(fmt_rate(1_258_291.0), "1.2 MB/s");
         assert_eq!(fmt_rate(125_829_120.0), "120 MB/s");
         assert_eq!(fmt_rate(f64::NAN), "0 KB/s");
-        assert_eq!((fmt_speed(2_600), fmt_speed(800)), ("2.6 GHz".into(), "800 MHz".into()));
+        assert_eq!(
+            (fmt_speed(2_600), fmt_speed(800)),
+            ("2.6 GHz".into(), "800 MHz".into())
+        );
         assert_eq!(fmt_uptime(3 * 86_400 + 4 * 3_600 + 59), "3 d 4 h");
         assert_eq!(fmt_uptime(4 * 3_600 + 12 * 60), "4 h 12 min");
         assert_eq!(fmt_uptime(30), "0 min");
-        assert_eq!((fmt_time_left(8_040), fmt_time_left(20)), ("2 h 14 min left".into(), "1 min left".into()));
-        assert_eq!((fmt_watts(-8_200), fmt_watts(45_000)), ("8.2 W".into(), "45 W".into()));
-        assert_eq!((load_word(0.05), load_word(0.23), load_word(0.95)), ("Idle", "Light load", "Very busy"));
-        assert_eq!((display_name("chrome.exe"), display_name("Code.EXE"), display_name("System")), ("chrome".into(), "Code".into(), "System".into()));
+        assert_eq!(
+            (fmt_time_left(8_040), fmt_time_left(20)),
+            ("2 h 14 min left".into(), "1 min left".into())
+        );
+        assert_eq!(
+            (fmt_watts(-8_200), fmt_watts(45_000)),
+            ("8.2 W".into(), "45 W".into())
+        );
+        assert_eq!(
+            (load_word(0.05), load_word(0.23), load_word(0.95)),
+            ("Idle", "Light load", "Very busy")
+        );
+        assert_eq!(
+            (
+                display_name("chrome.exe"),
+                display_name("Code.EXE"),
+                display_name("System")
+            ),
+            ("chrome".into(), "Code".into(), "System".into())
+        );
     }
 
     fn core_buffer(cores: &[(u64, u64, u64, u64, u64)]) -> Vec<u8> {
@@ -1244,11 +1479,28 @@ mod tests {
         let a = parse_core_times(&core_buffer(&[(0, 0, 0, 0, 0), (0, 0, 0, 0, 0)]));
         // Core 0: 100 of kernel (60 idle, 10 hardware) + 100 user. Core 1: all idle.
         let b = parse_core_times(&core_buffer(&[(60, 100, 100, 6, 4), (200, 200, 0, 0, 0)]));
-        assert_eq!(b[0], CoreTimes { idle: 60, kernel: 100, user: 100, dpc: 6, interrupt: 4 });
+        assert_eq!(
+            b[0],
+            CoreTimes {
+                idle: 60,
+                kernel: 100,
+                user: 100,
+                dpc: 6,
+                interrupt: 4
+            }
+        );
         let s = core_split(&a, &b).unwrap();
-        assert!((s.cores[0] - 0.7).abs() < 1e-6 && s.cores[1] == 0.0, "{:?}", s.cores);
+        assert!(
+            (s.cores[0] - 0.7).abs() < 1e-6 && s.cores[1] == 0.0,
+            "{:?}",
+            s.cores
+        );
         // Machine: 400 ticks, 260 idle -> busy 0.35, apps 0.25, Windows 0.10, of which hardware 0.025.
-        assert!((s.load - 0.35).abs() < 1e-6 && (s.user - 0.25).abs() < 1e-6 && (s.kernel - 0.10).abs() < 1e-6);
+        assert!(
+            (s.load - 0.35).abs() < 1e-6
+                && (s.user - 0.25).abs() < 1e-6
+                && (s.kernel - 0.10).abs() < 1e-6
+        );
         assert!((s.interrupt - 0.025).abs() < 1e-6);
         // A partial trailing record is ignored; a changed core count or no time gives nothing.
         assert_eq!(parse_core_times(&[0u8; 50]).len(), 1);
@@ -1258,13 +1510,28 @@ mod tests {
 
     #[test]
     fn hybrid_cores_by_efficiency_class() {
-        assert_eq!(core_kinds(&[1, 1, 0, 0]), [CoreKind::Performance, CoreKind::Performance, CoreKind::Efficiency, CoreKind::Efficiency]);
+        assert_eq!(
+            core_kinds(&[1, 1, 0, 0]),
+            [
+                CoreKind::Performance,
+                CoreKind::Performance,
+                CoreKind::Efficiency,
+                CoreKind::Efficiency
+            ]
+        );
         assert_eq!(core_kinds(&[0, 0]), [CoreKind::Any, CoreKind::Any]);
         assert!(core_kinds(&[]).is_empty());
-        let cores = [(0.8, CoreKind::Performance), (0.4, CoreKind::Performance), (0.1, CoreKind::Efficiency)]
-            .map(|(load, kind)| CoreLoad { load, kind })
-            .to_vec();
-        let c = CpuReading { cores, ..CpuReading::default() };
+        let cores = [
+            (0.8, CoreKind::Performance),
+            (0.4, CoreKind::Performance),
+            (0.1, CoreKind::Efficiency),
+        ]
+        .map(|(load, kind)| CoreLoad { load, kind })
+        .to_vec();
+        let c = CpuReading {
+            cores,
+            ..CpuReading::default()
+        };
         assert_eq!(c.hybrid(), Some((2, 1)));
         assert!((c.kind_load(CoreKind::Performance).unwrap() - 0.6).abs() < 1e-6);
         assert_eq!(CpuReading::default().hybrid(), None);
@@ -1273,37 +1540,95 @@ mod tests {
     #[test]
     fn app_io_rate_and_top_io() {
         let mut t = AppTracker::default();
-        let p = |pid, img: &str, io| ProcSample { pid, image: img.into(), cpu_time: 0, memory: 1, io };
+        let p = |pid, img: &str, io| ProcSample {
+            pid,
+            image: img.into(),
+            cpu_time: 0,
+            memory: 1,
+            io,
+        };
         t.update(1.0, 1, &[p(1, "a.exe", 1_000), p(2, "b.exe", 5_000)]);
-        let apps = t.update(3.0, 1, &[p(1, "a.exe", 9_000), p(2, "b.exe", 5_000), p(3, "c.exe", 99_999)]);
+        let apps = t.update(
+            3.0,
+            1,
+            &[
+                p(1, "a.exe", 9_000),
+                p(2, "b.exe", 5_000),
+                p(3, "c.exe", 99_999),
+            ],
+        );
         let io = |img: &str| apps.iter().find(|a| a.image == img).unwrap().io;
         assert_eq!((io("a.exe"), io("b.exe"), io("c.exe")), (4_000.0, 0.0, 0.0));
         let top = top_io(&apps, 5);
-        assert_eq!(top.iter().map(|a| a.image.as_str()).collect::<Vec<_>>(), ["a.exe"], "idle apps are left out");
+        assert_eq!(
+            top.iter().map(|a| a.image.as_str()).collect::<Vec<_>>(),
+            ["a.exe"],
+            "idle apps are left out"
+        );
     }
 
     #[test]
     fn memory_parts_add_up() {
-        let m = MemoryReading { total: 100, used: 60, wired: 5, compressed: 3, cached: 30, free: 10, committed: 80, commit_limit: 100, ..MemoryReading::default() };
+        let m = MemoryReading {
+            total: 100,
+            used: 60,
+            wired: 5,
+            compressed: 3,
+            cached: 30,
+            free: 10,
+            committed: 80,
+            commit_limit: 100,
+            ..MemoryReading::default()
+        };
         let parts = m.parts();
         assert_eq!(parts.map(|(_, v)| v), [52, 5, 3, 30, 10]);
         assert_eq!(parts.iter().map(|(_, v)| v).sum::<u64>(), 100);
         // Parts that overrun the total are cut, never negative.
-        let odd = MemoryReading { total: 10, wired: 8, compressed: 8, cached: 8, free: 8, ..MemoryReading::default() };
+        let odd = MemoryReading {
+            total: 10,
+            wired: 8,
+            compressed: 8,
+            cached: 8,
+            free: 8,
+            ..MemoryReading::default()
+        };
         assert_eq!(odd.parts().map(|(_, v)| v), [0, 8, 2, 0, 0]);
-        assert_eq!((pressure_word(m.pressure()), pressure_word(0.8), pressure_word(0.95)), ("Warning", "Warning", "Critical"));
+        assert_eq!(
+            (
+                pressure_word(m.pressure()),
+                pressure_word(0.8),
+                pressure_word(0.95)
+            ),
+            ("Warning", "Warning", "Critical")
+        );
         assert_eq!(pressure_word(0.5), "Normal");
     }
 
     #[test]
     fn new_formats() {
-        assert_eq!((fmt_temp(54.4), fmt_temp(-3.6)), ("54°".into(), "-4°".into()));
-        assert_eq!((fmt_link(1_000_000_000), fmt_link(2_500_000_000), fmt_link(866_700_000)), ("1 Gbps".into(), "2.5 Gbps".into(), "867 Mbps".into()));
+        assert_eq!(
+            (fmt_temp(54.4), fmt_temp(-3.6)),
+            ("54°".into(), "-4°".into())
+        );
+        assert_eq!(
+            (
+                fmt_link(1_000_000_000),
+                fmt_link(2_500_000_000),
+                fmt_link(866_700_000)
+            ),
+            ("1 Gbps".into(), "2.5 Gbps".into(), "867 Mbps".into())
+        );
     }
 
     #[test]
     fn gpu_engine_loads() {
-        let kinds = [Engine::ThreeD, Engine::Copy, Engine::VideoDecode, Engine::ThreeD, Engine::Other];
+        let kinds = [
+            Engine::ThreeD,
+            Engine::Copy,
+            Engine::VideoDecode,
+            Engine::ThreeD,
+            Engine::Other,
+        ];
         assert_eq!(Engine::from_type(1), Engine::ThreeD);
         assert_eq!(Engine::from_type(6), Engine::Copy);
         assert_eq!(Engine::from_type(42), Engine::Other);
@@ -1313,7 +1638,10 @@ mod tests {
         let e = gpu_busy(&kinds, &prev, &now, 1e7).unwrap();
         assert!((e.engine_3d - 0.55).abs() < 1e-6 && (e.copy - 0.05).abs() < 1e-6);
         assert!((e.video_decode - 0.12).abs() < 1e-6 && e.video_encode == 0.0);
-        assert!((e.util - 0.7).abs() < 1e-6, "the busiest engine of all, of any type");
+        assert!(
+            (e.util - 0.7).abs() < 1e-6,
+            "the busiest engine of all, of any type"
+        );
         // A counter that went backwards is idle; past the clock is full.
         let e = gpu_busy(&kinds[..2], &[5, 0], &[0, 30_000_000], 1e7).unwrap();
         assert_eq!((e.engine_3d, e.copy), (0.0, 1.0));
@@ -1324,13 +1652,27 @@ mod tests {
     #[test]
     fn readings_rest_when_nobody_is_there() {
         let here = Rest::default();
-        let away = Rest { away: true, saver: false };
-        let saver = Rest { away: false, saver: true };
+        let away = Rest {
+            away: true,
+            saver: false,
+        };
+        let saver = Rest {
+            away: false,
+            saver: true,
+        };
         // The kept minute: read while someone is there, rest when away or on battery saver.
         assert!(reads(false, false, true, here));
         assert!(!reads(false, false, true, away));
         assert!(!reads(false, false, true, saver));
-        assert!(!reads(false, false, true, Rest { away: true, saver: true }));
+        assert!(!reads(
+            false,
+            false,
+            true,
+            Rest {
+                away: true,
+                saver: true
+            }
+        ));
         // The open page and the readout over a game: rest only when nobody can see them.
         for (open, game) in [(true, false), (false, true), (true, true)] {
             assert!(reads(open, game, false, here));
@@ -1343,30 +1685,71 @@ mod tests {
 
     #[test]
     fn readings_helpers() {
-        let d = Drive { root: "C:".into(), total: 400, free: 100, ..Drive::default() };
+        let d = Drive {
+            root: "C:".into(),
+            total: 400,
+            free: 100,
+            ..Drive::default()
+        };
         assert_eq!(d.used_frac(), 0.75);
-        let r = Reading { drives: vec![Drive { root: "D:".into(), ..Drive::default() }, Drive { system: true, ..d.clone() }], ..Reading::default() };
+        let r = Reading {
+            drives: vec![
+                Drive {
+                    root: "D:".into(),
+                    ..Drive::default()
+                },
+                Drive {
+                    system: true,
+                    ..d.clone()
+                },
+            ],
+            ..Reading::default()
+        };
         assert_eq!(r.system_drive().unwrap().root, "C:");
-        let b = BatteryReading { design_mwh: Some(57_000), full_mwh: Some(51_870), ..BatteryReading::default() };
+        let b = BatteryReading {
+            design_mwh: Some(57_000),
+            full_mwh: Some(51_870),
+            ..BatteryReading::default()
+        };
         assert!((b.health().unwrap() - 0.91).abs() < 1e-3);
         assert_eq!(BatteryReading::default().health(), None);
-        assert_eq!(MemoryReading { total: 16, used: 4, ..MemoryReading::default() }.used_frac(), 0.25);
+        assert_eq!(
+            MemoryReading {
+                total: 16,
+                used: 4,
+                ..MemoryReading::default()
+            }
+            .used_frac(),
+            0.25
+        );
     }
 
     #[test]
     fn mac_pressure_says_the_kernels_word() {
         use PressureLevel::*;
         let from = PressureLevel::from_kernel;
-        assert_eq!((from(1), from(2), from(4), from(0)), (Some(Normal), Some(Warning), Some(Critical), None));
+        assert_eq!(
+            (from(1), from(2), from(4), from(0)),
+            (Some(Normal), Some(Warning), Some(Critical), None)
+        );
         // The needle follows how full memory is, inside the level's zone.
         assert_eq!(level_pressure(Normal, 0.4), 0.4);
-        for (level, word) in [(Normal, "Normal"), (Warning, "Warning"), (Critical, "Critical")] {
+        for (level, word) in [
+            (Normal, "Normal"),
+            (Warning, "Warning"),
+            (Critical, "Critical"),
+        ] {
             for used in [0.0, 0.5, 0.75, 0.8, 0.9, 1.0, f32::NAN] {
                 let p = level_pressure(level, used);
                 assert_eq!(pressure_word(p), word, "{level:?} at {used}");
                 // As the page reads it back: a share of the RAM, in whole bytes.
                 let total = 17_179_869_184u64;
-                let m = MemoryReading { total, commit_limit: total, committed: (f64::from(p) * total as f64).round() as u64, ..MemoryReading::default() };
+                let m = MemoryReading {
+                    total,
+                    commit_limit: total,
+                    committed: (f64::from(p) * total as f64).round() as u64,
+                    ..MemoryReading::default()
+                };
                 assert_eq!(pressure_word(m.pressure()), word);
             }
         }
@@ -1376,11 +1759,17 @@ mod tests {
     fn apps_by_bundle() {
         let helper = "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/130/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer)";
         assert_eq!(app_bundle(helper), Some("/Applications/Google Chrome.app"));
-        assert_eq!(app_bundle("/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder"), Some("/System/Library/CoreServices/Finder.app"));
+        assert_eq!(
+            app_bundle("/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder"),
+            Some("/System/Library/CoreServices/Finder.app")
+        );
         assert_eq!(app_bundle("/usr/libexec/trustd"), None);
         assert_eq!(app_bundle("/Users/me/tools.apps/bin/x"), None);
         assert_eq!(app_bundle("/Users/me/.app/x"), None);
-        assert_eq!(bundle_name("/Applications/Google Chrome.app"), "Google Chrome");
+        assert_eq!(
+            bundle_name("/Applications/Google Chrome.app"),
+            "Google Chrome"
+        );
         assert_eq!(bundle_name("/Applications/Safari.app/"), "Safari");
         assert_eq!(bundle_name("/Applications/.app"), ".app");
     }
@@ -1398,7 +1787,16 @@ mod tests {
     /// An interface's entry the way `NET_RT_IFLIST2` lays it out, its link
     /// address after it, padded to four bytes.
     #[allow(clippy::too_many_arguments)]
-    fn if_entry(index: u16, name: &str, flags: u32, kind: u8, baud: u64, rx: u64, tx: u64, mac: &[u8]) -> Vec<u8> {
+    fn if_entry(
+        index: u16,
+        name: &str,
+        flags: u32,
+        kind: u8,
+        baud: u64,
+        rx: u64,
+        tx: u64,
+        mac: &[u8],
+    ) -> Vec<u8> {
         let mut sdl = vec![0u8; SDL_DATA];
         sdl.extend_from_slice(name.as_bytes());
         sdl.extend_from_slice(mac);
@@ -1431,13 +1829,31 @@ mod tests {
         addr[0] = 24;
         addr[3] = 0x0c;
         buf.extend_from_slice(&addr);
-        buf.extend(if_entry(4, "en0", 0x8863, 6, 1_000_000_000, 5 << 32, 77, &[0x3c, 0x22, 0xfb, 0x0a, 0x11, 0x9e]));
+        buf.extend(if_entry(
+            4,
+            "en0",
+            0x8863,
+            6,
+            1_000_000_000,
+            5 << 32,
+            77,
+            &[0x3c, 0x22, 0xfb, 0x0a, 0x11, 0x9e],
+        ));
         let list = parse_if_list(&buf);
         assert_eq!(list.len(), 2);
-        assert_eq!((list[0].name.as_str(), list[0].kind, list[0].mac.as_str()), ("lo0", 24, ""));
+        assert_eq!(
+            (list[0].name.as_str(), list[0].kind, list[0].mac.as_str()),
+            ("lo0", 24, "")
+        );
         let en0 = &list[1];
-        assert_eq!((en0.index, en0.name.as_str(), en0.flags, en0.kind), (4, "en0", 0x8863, 6));
-        assert_eq!((en0.baud, en0.received, en0.sent), (1_000_000_000, 5 << 32, 77));
+        assert_eq!(
+            (en0.index, en0.name.as_str(), en0.flags, en0.kind),
+            (4, "en0", 0x8863, 6)
+        );
+        assert_eq!(
+            (en0.baud, en0.received, en0.sent),
+            (1_000_000_000, 5 << 32, 77)
+        );
         assert_eq!(en0.mac, "3C:22:FB:0A:11:9E");
         // Cut short, the walk ends at the last whole message.
         assert_eq!(parse_if_list(&buf[..buf.len() - 1]).len(), 1);

@@ -43,7 +43,8 @@ pub fn fit_centre(want: f32, room: f32, body_w: f32, side: f32) -> f32 {
 /// `mon_w` DIPs wide: its share of the width (the same spot on any screen
 /// and scale), or nothing near the middle.
 pub fn remember(centre: f32, mon_w: f32) -> Option<f32> {
-    if mon_w.is_nan() || mon_w <= 0.0 || !centre.is_finite() || (centre - mon_w / 2.0).abs() < SNAP {
+    if mon_w.is_nan() || mon_w <= 0.0 || !centre.is_finite() || (centre - mon_w / 2.0).abs() < SNAP
+    {
         return None;
     }
     Some((centre / mon_w).clamp(0.0, 1.0))
@@ -73,7 +74,11 @@ mod tests {
         // `surface_size` makes monitor and window widths the same parity,
         // so the halves give the old `left + (mon_w - w) / 2`.
         for (mon_w, w) in [(1920, 700), (1365, 691), (2560, 1036), (1366, 692)] {
-            assert_eq!(window_left(100, mon_w, w, 100 + mon_w / 2), 100 + (mon_w - w) / 2, "{mon_w} {w}");
+            assert_eq!(
+                window_left(100, mon_w, w, 100 + mon_w / 2),
+                100 + (mon_w - w) / 2,
+                "{mon_w} {w}"
+            );
         }
     }
 

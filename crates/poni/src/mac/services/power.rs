@@ -7,7 +7,10 @@ use super::cf::{self, CFTypeRef};
 use crate::events::{AppEvent, EventSink};
 use crate::state::PowerState;
 use block2::RcBlock;
-use objc2_foundation::{NSNotification, NSNotificationCenter, NSProcessInfo, NSProcessInfoPowerStateDidChangeNotification};
+use objc2_foundation::{
+    NSNotification, NSNotificationCenter, NSProcessInfo,
+    NSProcessInfoPowerStateDidChangeNotification,
+};
 use std::ffi::c_void;
 use std::ptr::NonNull;
 use std::sync::Mutex;
@@ -18,13 +21,19 @@ extern "C" {
     fn IOPSCopyPowerSourcesList(blob: CFTypeRef) -> CFTypeRef;
     fn IOPSGetPowerSourceDescription(blob: CFTypeRef, ps: CFTypeRef) -> CFTypeRef;
     fn IOPSGetProvidingPowerSourceType(blob: CFTypeRef) -> CFTypeRef;
-    fn IOPSNotificationCreateRunLoopSource(callback: extern "C" fn(*mut c_void), context: *mut c_void) -> CFTypeRef;
+    fn IOPSNotificationCreateRunLoopSource(
+        callback: extern "C" fn(*mut c_void),
+        context: *mut c_void,
+    ) -> CFTypeRef;
 }
 
 static SINK: Mutex<Option<EventSink>> = Mutex::new(None);
 
 pub fn query() -> PowerState {
-    let mut s = PowerState { saver: NSProcessInfo::processInfo().isLowPowerModeEnabled(), ..PowerState::default() };
+    let mut s = PowerState {
+        saver: NSProcessInfo::processInfo().isLowPowerModeEnabled(),
+        ..PowerState::default()
+    };
     unsafe {
         let blob = IOPSCopyPowerSourcesInfo();
         if blob.is_null() {
@@ -35,7 +44,10 @@ pub fn query() -> PowerState {
         if !list.is_null() {
             for i in 0..cf::CFArrayGetCount(list) {
                 let desc = IOPSGetPowerSourceDescription(blob, cf::CFArrayGetValueAtIndex(list, i));
-                if desc.is_null() || !cf::dict_str_is(desc, "Type", "InternalBattery") || cf::dict_bool(desc, "Is Present") == Some(false) {
+                if desc.is_null()
+                    || !cf::dict_str_is(desc, "Type", "InternalBattery")
+                    || cf::dict_bool(desc, "Is Present") == Some(false)
+                {
                     continue;
                 }
                 let cur = cf::dict_i64(desc, "Current Capacity").unwrap_or(0);
@@ -69,7 +81,14 @@ pub fn watch(sink: EventSink) {
     // source below doesn't hear it (a Mac without a battery never would):
     // macOS's own notification does, on any thread. Lives as long as the app.
     let block = RcBlock::new(|_n: NonNull<NSNotification>| changed(std::ptr::null_mut()));
-    let observer = unsafe { NSNotificationCenter::defaultCenter().addObserverForName_object_queue_usingBlock(Some(NSProcessInfoPowerStateDidChangeNotification), None, None, &block) };
+    let observer = unsafe {
+        NSNotificationCenter::defaultCenter().addObserverForName_object_queue_usingBlock(
+            Some(NSProcessInfoPowerStateDidChangeNotification),
+            None,
+            None,
+            &block,
+        )
+    };
     std::mem::forget(observer);
     unsafe {
         let source = IOPSNotificationCreateRunLoopSource(changed, std::ptr::null_mut());

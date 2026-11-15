@@ -46,23 +46,24 @@ use crate::pages::{self, PageKind};
 use crate::paths;
 use crate::png;
 use crate::state::{
-    AgendaState, AppState, FpsAccess, GameState, Hud, HudKind, InlineAction, LyricsState, LyricsStatus, MediaSession, Notice, NoticeAction, OyenzaLink,
-    OyenzaState, PowerState, VolumeState,
+    AgendaState, AppState, FpsAccess, GameState, Hud, HudKind, InlineAction, LyricsState,
+    LyricsStatus, MediaSession, Notice, NoticeAction, OyenzaLink, OyenzaState, PowerState,
+    VolumeState,
 };
 use crate::ui::wid;
-use poni_core::notifications::NotificationSettings;
 use poni_core::datetime::{days_from_civil, LocalDateTime};
+use poni_core::frames::FrameRate;
 use poni_core::geom::{palette, Color, Point, Rect};
 use poni_core::lrc::{parse_lrc, Lyrics};
+use poni_core::notifications::NotificationSettings;
 use poni_core::oyenza::{Activity, Bill, Day, DayPick, Saved, Seen, Txn, WalletRef};
 use poni_core::pomodoro::Phase as PomoPhase;
 use poni_core::power::{PowerReading, PsuReading, Rail};
 use poni_core::settings::{IdleStyle, Theme};
 use poni_core::shelf::ShelfItem;
-use poni_core::frames::FrameRate;
 use poni_core::sysmon::{
-    AppUse, BatteryReading, CoreKind, CoreLoad, CpuReading, DiskActivity, Drive, GpuReading, MemoryReading, Module, Monitor, NetReading, Reading,
-    Series, HISTORY_LEN,
+    AppUse, BatteryReading, CoreKind, CoreLoad, CpuReading, DiskActivity, Drive, GpuReading,
+    MemoryReading, Module, Monitor, NetReading, Reading, Series, HISTORY_LEN,
 };
 use poni_core::timeline::Timeline;
 use serde::Serialize;
@@ -74,7 +75,8 @@ use std::time::Instant;
 use studio_diorama::{Badge, Clock, Moment, View};
 use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongPtrW, GetWindowRect, IsWindowVisible, GWL_EXSTYLE, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    GetWindowLongPtrW, GetWindowRect, IsWindowVisible, GWL_EXSTYLE, WS_EX_LAYERED,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
 };
 
 // ---------------------------------------------------------------- timing
@@ -203,14 +205,32 @@ const GIB: u64 = 1024 * 1024 * 1024;
 
 /// Paths of the sample apps (keys for their icons only; never opened) and their tile colours.
 const SAMPLE_ICONS: [(&str, u32); 8] = [
-    ("C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", 0x1A9FD9),
-    ("C:\\Users\\Sample\\AppData\\Roaming\\Spotify\\Spotify.exe", 0x1DB954),
+    (
+        "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+        0x1A9FD9,
+    ),
+    (
+        "C:\\Users\\Sample\\AppData\\Roaming\\Spotify\\Spotify.exe",
+        0x1DB954,
+    ),
     ("C:\\Windows\\explorer.exe", 0xF2C14E),
-    ("C:\\Users\\Sample\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe", 0x2F80ED),
+    (
+        "C:\\Users\\Sample\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+        0x2F80ED,
+    ),
     ("C:\\Windows\\System32\\dwm.exe", 0x00A4EF),
-    ("C:\\Users\\Sample\\AppData\\Local\\Discord\\app-1.0.9200\\Discord.exe", 0x5865F2),
-    ("C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.25010.11-0\\MsMpEng.exe", 0x0078D4),
-    ("C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE", 0x2B579A),
+    (
+        "C:\\Users\\Sample\\AppData\\Local\\Discord\\app-1.0.9200\\Discord.exe",
+        0x5865F2,
+    ),
+    (
+        "C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.25010.11-0\\MsMpEng.exe",
+        0x0078D4,
+    ),
+    (
+        "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE",
+        0x2B579A,
+    ),
 ];
 
 /// A plain rounded tile standing in for an app icon, laid out like the
@@ -239,12 +259,30 @@ fn sample_icon(rgb: u32) -> Image {
 fn sample_app(i: usize, name: &str, cpu: f32, memory: u64, io: f64) -> AppUse {
     let path = SAMPLE_ICONS[i].0;
     let image = path.rsplit('\\').next().unwrap_or(path).to_lowercase();
-    AppUse { image, name: name.into(), path: Some(path.into()), pid: 1000 + i as u64, cpu, memory, io, processes: 1 }
+    AppUse {
+        image,
+        name: name.into(),
+        path: Some(path.into()),
+        pid: 1000 + i as u64,
+        cpu,
+        memory,
+        io,
+        processes: 1,
+    }
 }
 
 /// The kernel's own entry: no file, so the page shows Windows' mark.
 fn sample_system(cpu: f32, memory: u64, io: f64) -> AppUse {
-    AppUse { image: "system".into(), name: "System".into(), path: None, pid: 4, cpu, memory, io, processes: 1 }
+    AppUse {
+        image: "system".into(),
+        name: "System".into(),
+        path: None,
+        pid: 4,
+        cpu,
+        memory,
+        io,
+        processes: 1,
+    }
 }
 
 /// The System page's sample minute (all made up): a laptop with a hybrid
@@ -259,16 +297,66 @@ fn fake_system(scene: Scene) -> Monitor {
     for i in 0..HISTORY_LEN {
         let t = i as f32;
         let last = i + 1 == HISTORY_LEN;
-        let spike = if (38..45).contains(&i) { 0.22 * ((t - 38.0) / 6.0 * std::f32::consts::PI).sin() } else { 0.0 };
-        let cpu = if last { 0.23 } else { (0.19 + 0.05 * (t / 4.3).sin() + 0.03 * (t / 1.7 + 1.1).sin() + spike).clamp(0.03, 0.95) };
-        let gpu = if last { 0.31 } else { (0.24 + 0.08 * (t / 5.1 + 0.4).sin() + 0.04 * (t / 2.3).sin() + if (18..30).contains(&i) { 0.3 } else { 0.0 }).clamp(0.02, 0.98) };
-        let burst = |at: usize, len: usize, peak: f64| if (at..at + len).contains(&i) { peak * (((i - at) as f64 + 0.5) / len as f64 * std::f64::consts::PI).sin() } else { 0.0 };
-        let read = if last { 1.2 * MIB } else { 0.15 * MIB + burst(12, 6, 6.5 * MIB) + burst(41, 4, 2.8 * MIB) };
-        let write = if last { 0.33 * MIB } else { 0.05 * MIB + burst(20, 9, 1.9 * MIB) };
-        let down = if last { 1.2 * MIB } else { 0.08 * MIB + burst(5, 14, 3.4 * MIB) + burst(46, 10, 1.6 * MIB) };
-        let up = if last { 0.082 * MIB } else { 0.02 * MIB + burst(25, 8, 0.6 * MIB) };
-        let sample = Sample { cpu, gpu, mem: 0.6 + 0.004 * (t / 6.0).sin(), read, write, down, up, t };
-        let desktop = matches!(scene, Scene::SystemMemory | Scene::SystemPower | Scene::SystemPowerEstimate);
+        let spike = if (38..45).contains(&i) {
+            0.22 * ((t - 38.0) / 6.0 * std::f32::consts::PI).sin()
+        } else {
+            0.0
+        };
+        let cpu = if last {
+            0.23
+        } else {
+            (0.19 + 0.05 * (t / 4.3).sin() + 0.03 * (t / 1.7 + 1.1).sin() + spike).clamp(0.03, 0.95)
+        };
+        let gpu = if last {
+            0.31
+        } else {
+            (0.24
+                + 0.08 * (t / 5.1 + 0.4).sin()
+                + 0.04 * (t / 2.3).sin()
+                + if (18..30).contains(&i) { 0.3 } else { 0.0 })
+            .clamp(0.02, 0.98)
+        };
+        let burst = |at: usize, len: usize, peak: f64| {
+            if (at..at + len).contains(&i) {
+                peak * (((i - at) as f64 + 0.5) / len as f64 * std::f64::consts::PI).sin()
+            } else {
+                0.0
+            }
+        };
+        let read = if last {
+            1.2 * MIB
+        } else {
+            0.15 * MIB + burst(12, 6, 6.5 * MIB) + burst(41, 4, 2.8 * MIB)
+        };
+        let write = if last {
+            0.33 * MIB
+        } else {
+            0.05 * MIB + burst(20, 9, 1.9 * MIB)
+        };
+        let down = if last {
+            1.2 * MIB
+        } else {
+            0.08 * MIB + burst(5, 14, 3.4 * MIB) + burst(46, 10, 1.6 * MIB)
+        };
+        let up = if last {
+            0.082 * MIB
+        } else {
+            0.02 * MIB + burst(25, 8, 0.6 * MIB)
+        };
+        let sample = Sample {
+            cpu,
+            gpu,
+            mem: 0.6 + 0.004 * (t / 6.0).sin(),
+            read,
+            write,
+            down,
+            up,
+            t,
+        };
+        let desktop = matches!(
+            scene,
+            Scene::SystemMemory | Scene::SystemPower | Scene::SystemPowerEstimate
+        );
         let mut r = sample_reading(!desktop, &sample);
         if matches!(scene, Scene::SystemPower | Scene::SystemPowerEstimate) {
             r.power = sample_power(&r, scene == Scene::SystemPower, t);
@@ -288,7 +376,11 @@ fn sample_power(r: &Reading, psu: bool, t: f32) -> Option<PowerReading> {
         return PowerReading::estimate(cpu_w, gpu_w, true);
     }
     let out_w = cpu_w? + gpu_w? + 46.0 + 2.0 * (t / 2.9).sin();
-    let rail = |nominal: f32, volts: f32, amps: f32| Rail { nominal, volts, amps };
+    let rail = |nominal: f32, volts: f32, amps: f32| Rail {
+        nominal,
+        volts,
+        amps,
+    };
     let reading = PsuReading {
         name: "MSI MEG Ai1600T".into(),
         out_w,
@@ -297,7 +389,11 @@ fn sample_power(r: &Reading, psu: bool, t: f32) -> Option<PowerReading> {
         mains_v: Some(229.6),
         temp_c: Some(38.5),
         fan_rpm: Some(0),
-        rails: vec![rail(12.0, 12.06, (out_w - 14.0) / 12.06), rail(5.0, 5.02, 1.9), rail(3.3, 3.31, 1.4)],
+        rails: vec![
+            rail(12.0, 12.06, (out_w - 14.0) / 12.06),
+            rail(5.0, 5.02, 1.9),
+            rail(3.3, 3.31, 1.4),
+        ],
     };
     Some(PowerReading::from_psu(reading, cpu_w, gpu_w))
 }
@@ -329,15 +425,25 @@ fn fake_game(scene: Scene, system: &mut Monitor) -> GameState {
         for i in 0..HISTORY_LEN {
             let t = i as f32;
             let dip = if (33..36).contains(&i) { 38.0 } else { 0.0 };
-            history.push(Some(141.0 + 3.0 * (t / 3.7).sin() + 1.5 * (t / 1.3 + 0.6).sin() - dip));
+            history.push(Some(
+                141.0 + 3.0 * (t / 3.7).sin() + 1.5 * (t / 1.3 + 0.6).sin() - dip,
+            ));
         }
     }
     GameState {
         active: in_front,
         app: in_front.then(|| "Harbor Racers".to_string()),
-        rate: (allowed && in_front).then_some(FrameRate { fps: 144.2, frame_ms: 6.93, worst_ms: 9.4 }),
+        rate: (allowed && in_front).then_some(FrameRate {
+            fps: 144.2,
+            frame_ms: 6.93,
+            worst_ms: 9.4,
+        }),
         history,
-        access: if allowed { FpsAccess::Ready } else { FpsAccess::NeedsOk },
+        access: if allowed {
+            FpsAccess::Ready
+        } else {
+            FpsAccess::NeedsOk
+        },
     }
 }
 
@@ -362,8 +468,19 @@ fn sample_reading(laptop: bool, s: &Sample) -> Reading {
         .map(|k| {
             let p = k < 12;
             let wave = 0.5 + 0.5 * (s.t / 3.0 + k as f32 * 1.7).sin();
-            let load = if p { s.cpu * (0.6 + 1.1 * wave) } else { s.cpu * (0.3 + 0.5 * wave) };
-            CoreLoad { load: load.clamp(0.02, 1.0), kind: if p { CoreKind::Performance } else { CoreKind::Efficiency } }
+            let load = if p {
+                s.cpu * (0.6 + 1.1 * wave)
+            } else {
+                s.cpu * (0.3 + 0.5 * wave)
+            };
+            CoreLoad {
+                load: load.clamp(0.02, 1.0),
+                kind: if p {
+                    CoreKind::Performance
+                } else {
+                    CoreKind::Efficiency
+                },
+            }
         })
         .collect();
     Reading {
@@ -412,10 +529,26 @@ fn sample_reading(laptop: bool, s: &Sample) -> Reading {
             page_total: GIB * 24 / 10,
         }),
         drives: vec![
-            Drive { root: "C:".into(), label: "Windows".into(), total: GIB * 476, free: GIB * 212, system: true },
-            Drive { root: "D:".into(), label: "Data".into(), total: GIB * 931, free: GIB * 640, system: false },
+            Drive {
+                root: "C:".into(),
+                label: "Windows".into(),
+                total: GIB * 476,
+                free: GIB * 212,
+                system: true,
+            },
+            Drive {
+                root: "D:".into(),
+                label: "Data".into(),
+                total: GIB * 931,
+                free: GIB * 640,
+                system: false,
+            },
         ],
-        disk: Some(DiskActivity { read_bps: s.read, write_bps: s.write, active: Some(0.14) }),
+        disk: Some(DiskActivity {
+            read_bps: s.read,
+            write_bps: s.write,
+            active: Some(0.14),
+        }),
         network: Some(NetReading {
             online: true,
             adapter: "Wi-Fi".into(),
@@ -475,10 +608,28 @@ fn sample_reading(laptop: bool, s: &Sample) -> Reading {
 fn system_readings(p: crate::services::sysmon::Probe) -> (bool, String) {
     use poni_core::sysmon::fmt_bytes;
     let r = &p.reading;
-    let cpu = r.cpu.as_ref().filter(|c| (0.0..=1.0).contains(&c.load) && c.logical > 0);
-    let mem = r.memory.as_ref().filter(|m| m.total > 0 && m.used <= m.total);
+    let cpu = r
+        .cpu
+        .as_ref()
+        .filter(|c| (0.0..=1.0).contains(&c.load) && c.logical > 0);
+    let mem = r
+        .memory
+        .as_ref()
+        .filter(|m| m.total > 0 && m.used <= m.total);
     let ok = cpu.is_some() && mem.is_some() && !r.drives.is_empty() && !r.top_memory.is_empty();
-    let apps: Vec<String> = r.top_memory.iter().take(3).map(|a| format!("{} ({}{})", a.name, fmt_bytes(a.memory), if a.path.is_some() { ", path" } else { "" })).collect();
+    let apps: Vec<String> = r
+        .top_memory
+        .iter()
+        .take(3)
+        .map(|a| {
+            format!(
+                "{} ({}{})",
+                a.name,
+                fmt_bytes(a.memory),
+                if a.path.is_some() { ", path" } else { "" }
+            )
+        })
+        .collect();
     let cores = cpu.map_or("missing".into(), |c| match c.hybrid() {
         Some((p, e)) => format!("{} ({p} P + {e} E)", c.cores.len()),
         None if c.cores.is_empty() => "total only".into(),
@@ -518,30 +669,63 @@ fn fake_oyenza(st: &AppState, scene: Scene, now: f64) -> OyenzaState {
     let iso = |t: i64| {
         let (y, m, d) = poni_core::datetime::civil_from_days(t.div_euclid(86_400));
         let s = t.rem_euclid(86_400);
-        format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", s / 3600, s % 3600 / 60, s % 60)
+        format!(
+            "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+            s / 3600,
+            s % 3600 / 60,
+            s % 60
+        )
     };
     // Today's rows a few minutes to hours ago, or, early in the day, spread over the time since midnight
     // (`share` of it), so their times stay apart and in order; earlier days at set times.
-    let since_midnight = st.local.hour as i64 * 3600 + st.local.minute as i64 * 60 + st.local.second as i64;
+    let since_midnight =
+        st.local.hour as i64 * 3600 + st.local.minute as i64 * 60 + st.local.second as i64;
     let midnight = st.unix - since_midnight;
-    let ago = |minutes: i64, share: f64| iso(st.unix - (minutes * 60).min((since_midnight as f64 * share) as i64));
+    let ago = |minutes: i64, share: f64| {
+        iso(st.unix - (minutes * 60).min((since_midnight as f64 * share) as i64))
+    };
     let on = |days_ago: i64, h: i64, m: i64| iso(midnight - days_ago * 86_400 + h * 3600 + m * 60);
-    let txn = |id: &str, kind: &str, title: &str, text: &str, wallet: (&str, &str), at: String, auto: bool| Txn {
+    let txn = |id: &str,
+               kind: &str,
+               title: &str,
+               text: &str,
+               wallet: (&str, &str),
+               at: String,
+               auto: bool| Txn {
         id: id.into(),
         kind: kind.into(),
         title: title.into(),
         amount: 1.0,
         text: text.into(),
         category: None,
-        wallet: Some(WalletRef { name: wallet.0.into(), color: wallet.1.into() }),
+        wallet: Some(WalletRef {
+            name: wallet.0.into(),
+            color: wallet.1.into(),
+        }),
         to_wallet: None,
         at,
         auto,
     };
-    let (bca, gopay, ovo, cash) = (("BCA", "#0060AF"), ("GoPay", "#00AED6"), ("OVO", "#4C3494"), ("Cash", "#8E8E93"));
+    let (bca, gopay, ovo, cash) = (
+        ("BCA", "#0060AF"),
+        ("GoPay", "#00AED6"),
+        ("OVO", "#4C3494"),
+        ("Cash", "#8E8E93"),
+    );
     let day = |n: i64| st.local.add_days(n).day_key();
-    let mut transfer = txn("t1", "transfer", "", "Rp 500.000", bca, ago(545, 0.9), false);
-    transfer.to_wallet = Some(WalletRef { name: gopay.0.into(), color: gopay.1.into() });
+    let mut transfer = txn(
+        "t1",
+        "transfer",
+        "",
+        "Rp 500.000",
+        bca,
+        ago(545, 0.9),
+        false,
+    );
+    transfer.to_wallet = Some(WalletRef {
+        name: gopay.0.into(),
+        color: gopay.1.into(),
+    });
     let today = Day {
         date: day(0),
         count: 5,
@@ -550,10 +734,42 @@ fn fake_oyenza(st: &AppState, scene: Scene, now: f64) -> OyenzaState {
         in_text: "Rp 1.250.000".into(),
         out_text: "Rp 152.000".into(),
         rows: vec![
-            txn("t5", "income", "Gaji Oktober", "Rp 1.250.000", bca, ago(2, 0.04), true),
-            txn("t4", "expense", "Kopi susu", "Rp 25.000", gopay, ago(33, 0.25), false),
-            txn("t3", "expense", "Grab ke rumah", "Rp 38.000", ovo, ago(128, 0.5), false),
-            txn("t2", "expense", "Tokopedia · Kabel USB-C", "Rp 89.000", bca, ago(427, 0.75), true),
+            txn(
+                "t5",
+                "income",
+                "Gaji Oktober",
+                "Rp 1.250.000",
+                bca,
+                ago(2, 0.04),
+                true,
+            ),
+            txn(
+                "t4",
+                "expense",
+                "Kopi susu",
+                "Rp 25.000",
+                gopay,
+                ago(33, 0.25),
+                false,
+            ),
+            txn(
+                "t3",
+                "expense",
+                "Grab ke rumah",
+                "Rp 38.000",
+                ovo,
+                ago(128, 0.5),
+                false,
+            ),
+            txn(
+                "t2",
+                "expense",
+                "Tokopedia · Kabel USB-C",
+                "Rp 89.000",
+                bca,
+                ago(427, 0.75),
+                true,
+            ),
             transfer,
         ],
     };
@@ -565,10 +781,42 @@ fn fake_oyenza(st: &AppState, scene: Scene, now: f64) -> OyenzaState {
         in_text: "Rp 200.000".into(),
         out_text: "Rp 395.000".into(),
         rows: vec![
-            txn("y4", "expense", "Makan siang", "Rp 40.000", gopay, on(1, 12, 40), false),
-            txn("y3", "expense", "Listrik PLN", "Rp 350.000", bca, on(1, 10, 2), true),
-            txn("y2", "income", "Uang masuk", "Rp 200.000", gopay, on(1, 9, 15), true),
-            txn("y1", "expense", "Parkir", "Rp 5.000", cash, on(1, 8, 10), false),
+            txn(
+                "y4",
+                "expense",
+                "Makan siang",
+                "Rp 40.000",
+                gopay,
+                on(1, 12, 40),
+                false,
+            ),
+            txn(
+                "y3",
+                "expense",
+                "Listrik PLN",
+                "Rp 350.000",
+                bca,
+                on(1, 10, 2),
+                true,
+            ),
+            txn(
+                "y2",
+                "income",
+                "Uang masuk",
+                "Rp 200.000",
+                gopay,
+                on(1, 9, 15),
+                true,
+            ),
+            txn(
+                "y1",
+                "expense",
+                "Parkir",
+                "Rp 5.000",
+                cash,
+                on(1, 8, 10),
+                false,
+            ),
         ],
     };
     let thursday = Day {
@@ -578,10 +826,45 @@ fn fake_oyenza(st: &AppState, scene: Scene, now: f64) -> OyenzaState {
         out: 172_000.0,
         in_text: "Rp 0".into(),
         out_text: "Rp 172.000".into(),
-        rows: vec![txn("w2", "expense", "Bensin", "Rp 150.000", bca, on(2, 18, 20), false), txn("w1", "expense", "Kopi", "Rp 22.000", gopay, on(2, 8, 45), false)],
+        rows: vec![
+            txn(
+                "w2",
+                "expense",
+                "Bensin",
+                "Rp 150.000",
+                bca,
+                on(2, 18, 20),
+                false,
+            ),
+            txn(
+                "w1",
+                "expense",
+                "Kopi",
+                "Rp 22.000",
+                gopay,
+                on(2, 8, 45),
+                false,
+            ),
+        ],
     };
-    let empty = |n: i64| Day { date: day(-n), count: 0, in_sum: 0.0, out: 0.0, in_text: "Rp 0".into(), out_text: "Rp 0".into(), rows: Vec::new() };
-    let days = vec![today.clone(), yesterday, thursday, empty(3), empty(4), empty(5), empty(6)];
+    let empty = |n: i64| Day {
+        date: day(-n),
+        count: 0,
+        in_sum: 0.0,
+        out: 0.0,
+        in_text: "Rp 0".into(),
+        out_text: "Rp 0".into(),
+        rows: Vec::new(),
+    };
+    let days = vec![
+        today.clone(),
+        yesterday,
+        thursday,
+        empty(3),
+        empty(4),
+        empty(5),
+        empty(6),
+    ];
     // Everything was on the page a while ago except today's newest, which just landed.
     let mut seen = Seen::default();
     let mut before = days.clone();
@@ -595,12 +878,24 @@ fn fake_oyenza(st: &AppState, scene: Scene, now: f64) -> OyenzaState {
             // Pinned on every step, so the countdown reads 9:41 in the screenshot.
             until: now + 581.0,
         },
-        _ => OyenzaLink::Connected { account: "a•••@example.com".into() },
+        _ => OyenzaLink::Connected {
+            account: "a•••@example.com".into(),
+        },
     };
-    let bill = |kind: &str, name: &str, due: String, text: Option<&str>| Bill { kind: kind.into(), name: name.into(), due, amount: text.map(|_| 1.0), text: text.map(Into::into) };
+    let bill = |kind: &str, name: &str, due: String, text: Option<&str>| Bill {
+        kind: kind.into(),
+        name: name.into(),
+        due,
+        amount: text.map(|_| 1.0),
+        text: text.map(Into::into),
+    };
     OyenzaState {
         link,
-        activity: Some(Activity { cursor: "42".into(), today: day(0), days }),
+        activity: Some(Activity {
+            cursor: "42".into(),
+            today: day(0),
+            days,
+        }),
         seen,
         day: match scene {
             Scene::OyenzaYesterday => DayPick::Past(1),
@@ -609,7 +904,12 @@ fn fake_oyenza(st: &AppState, scene: Scene, now: f64) -> OyenzaState {
         },
         bills: vec![
             // Today's page lists a bill due today; the Oyenza tab's scenes keep it tomorrow.
-            bill("subscription", "Spotify", day(if scene == Scene::TodayDay { 0 } else { 1 }), Some("Rp 54.990")),
+            bill(
+                "subscription",
+                "Spotify",
+                day(if scene == Scene::TodayDay { 0 } else { 1 }),
+                Some("Rp 54.990"),
+            ),
             bill("card", "Kartu Kredit BCA", day(1), None),
             bill("subscription", "Netflix", day(5), Some("Rp 54.000")),
             bill("subscription", "Google One", day(8), Some("Rp 26.900")),
@@ -618,7 +918,14 @@ fn fake_oyenza(st: &AppState, scene: Scene, now: f64) -> OyenzaState {
         bills_today: st.day_key(),
         updated_unix: Some(st.unix - 8),
         saved: (scene == Scene::OyenzaSaved).then(|| {
-            let kopi = Saved { id: "s1".into(), title: "Kopi".into(), amount: 25_000.0, text: "Rp 25.000".into(), category: Some("Makan & Minum".into()), wallet: "GoPay".into() };
+            let kopi = Saved {
+                id: "s1".into(),
+                title: "Kopi".into(),
+                amount: 25_000.0,
+                text: "Rp 25.000".into(),
+                category: Some("Makan & Minum".into()),
+                wallet: "GoPay".into(),
+            };
             (vec![kopi], now + 9.5)
         }),
         agenda: fake_agenda(st, scene),
@@ -663,7 +970,9 @@ fn seed_notifications(st: &mut AppState, scene: Scene) {
     st.notify_access = match scene {
         Scene::NotifyAsk => NotifyAccess::Ask,
         Scene::NotifyNoPackage => NotifyAccess::NoPackage,
-        Scene::Page(PageKind::Notifications) | Scene::MessageNotice | Scene::MessageHidden => NotifyAccess::Allowed,
+        Scene::Page(PageKind::Notifications) | Scene::MessageNotice | Scene::MessageHidden => {
+            NotifyAccess::Allowed
+        }
         _ => NotifyAccess::Unknown,
     };
     let n = &mut st.settings.notifications;
@@ -682,7 +991,13 @@ fn seed_notifications(st: &mut AppState, scene: Scene) {
 }
 
 fn fake_power(plugged: bool) -> PowerState {
-    PowerState { has_battery: true, percent: 76, charging: plugged, on_ac: plugged, saver: false }
+    PowerState {
+        has_battery: true,
+        percent: 76,
+        charging: plugged,
+        on_ac: plugged,
+        saver: false,
+    }
 }
 
 // ---------------------------------------------------------------- scenes
@@ -815,17 +1130,28 @@ enum Scene {
 
 /// A later release than this build, as the update file describes one.
 fn fake_release() -> poni_core::update::Release {
-    let mut parts: Vec<u64> = crate::version::VERSION.split('.').filter_map(|p| p.parse().ok()).collect();
+    let mut parts: Vec<u64> = crate::version::VERSION
+        .split('.')
+        .filter_map(|p| p.parse().ok())
+        .collect();
     if let Some(last) = parts.last_mut() {
         *last += 1;
     }
-    let version = parts.iter().map(u64::to_string).collect::<Vec<_>>().join(".");
+    let version = parts
+        .iter()
+        .map(u64::to_string)
+        .collect::<Vec<_>>()
+        .join(".");
     let repo = "https://github.com/lucacadalora/oyenza-studio/releases";
     poni_core::update::Release {
         date: "2026-10-26".into(),
         headline: "A smoother island, and fixes".into(),
         notes: format!("{repo}/tag/v{version}"),
-        windows: Some(poni_core::update::Download { url: format!("{repo}/download/v{version}/Oyenza-Studio-Setup-{version}.exe"), size: 2_500_000, sha256: "0".repeat(64) }),
+        windows: Some(poni_core::update::Download {
+            url: format!("{repo}/download/v{version}/Oyenza-Studio-Setup-{version}.exe"),
+            size: 2_500_000,
+            sha256: "0".repeat(64),
+        }),
         mac: None,
         version,
     }
@@ -1023,7 +1349,11 @@ impl Scene {
             Scene::Page(p) => Some(p),
             Scene::ShelfDrop | Scene::ShelfEmpty => Some(PageKind::Shelf),
             Scene::TabClick => Some(PageKind::ALL[0]),
-            Scene::OyenzaSignedOut | Scene::OyenzaSignIn | Scene::OyenzaSaved | Scene::OyenzaYesterday | Scene::OyenzaTomorrow => Some(PageKind::Oyenza),
+            Scene::OyenzaSignedOut
+            | Scene::OyenzaSignIn
+            | Scene::OyenzaSaved
+            | Scene::OyenzaYesterday
+            | Scene::OyenzaTomorrow => Some(PageKind::Oyenza),
             Scene::GearClick
             | Scene::SettingsSigningIn
             | Scene::SettingsSignedIn
@@ -1078,11 +1408,22 @@ impl Scene {
 
     /// Show over games is on (and a game is in front, or was).
     fn game(self) -> bool {
-        matches!(self, Scene::GameStats | Scene::GameStatsAllow | Scene::SystemGames | Scene::SystemGamesAllow)
+        matches!(
+            self,
+            Scene::GameStats | Scene::GameStatsAllow | Scene::SystemGames | Scene::SystemGamesAllow
+        )
     }
 
     fn media_playing(self) -> bool {
-        matches!(self, Scene::Media | Scene::MediaTimer | Scene::MediaLyric | Scene::AsideLyric | Scene::AsidePeek | Scene::IslandDrag) || self.expanded()
+        matches!(
+            self,
+            Scene::Media
+                | Scene::MediaTimer
+                | Scene::MediaLyric
+                | Scene::AsideLyric
+                | Scene::AsidePeek
+                | Scene::IslandDrag
+        ) || self.expanded()
     }
 
     /// The island is off the middle of the screen.
@@ -1092,7 +1433,10 @@ impl Scene {
 
     /// A maximized window is under the island.
     fn window_under(self) -> bool {
-        matches!(self, Scene::AsideIdle | Scene::AsideLyric | Scene::AsidePeek | Scene::AsideHud)
+        matches!(
+            self,
+            Scene::AsideIdle | Scene::AsideLyric | Scene::AsidePeek | Scene::AsideHud
+        )
     }
 
     /// The island rests stepped aside: nothing to see, a strip to point at.
@@ -1131,11 +1475,27 @@ struct Rest {
 
 impl Rest {
     const fn at(name: &'static str, hour: u8, minute: u8) -> Rest {
-        Rest { name, hour, minute, h12: false, badge: None, minimal: false, hover: false, roll: false }
+        Rest {
+            name,
+            hour,
+            minute,
+            h12: false,
+            badge: None,
+            minimal: false,
+            hover: false,
+            roll: false,
+        }
     }
 
     fn time(&self) -> LocalDateTime {
-        LocalDateTime { year: REST_DAY.0, month: REST_DAY.1, day: REST_DAY.2, hour: self.hour, minute: self.minute, second: 0 }
+        LocalDateTime {
+            year: REST_DAY.0,
+            month: REST_DAY.1,
+            day: REST_DAY.2,
+            hour: self.hour,
+            minute: self.minute,
+            second: 0,
+        }
     }
 
     /// The battery that puts its badge beside the time: on the charger,
@@ -1143,7 +1503,10 @@ impl Rest {
     fn power(&self) -> PowerState {
         match self.badge {
             Some(Badge::Charging) => fake_power(true),
-            Some(Badge::Low(percent)) => PowerState { percent, ..fake_power(false) },
+            Some(Badge::Low(percent)) => PowerState {
+                percent,
+                ..fake_power(false)
+            },
             None => fake_power(false),
         }
     }
@@ -1165,15 +1528,37 @@ static RESTS: [Rest; 14] = [
     Rest::at("small-hours", 2, 30),
     // What makes the pill wider: a 12-hour clock, a badge, both ("12:59 PM"
     // is the widest time).
-    Rest { h12: true, ..Rest::at("12-hour", 17, 5) },
-    Rest { badge: Some(Badge::Charging), ..Rest::at("charging", 14, 5) },
-    Rest { badge: Some(Badge::Low(LOW_BATTERY)), ..Rest::at("low-battery", 21, 30) },
-    Rest { h12: true, badge: Some(Badge::Charging), ..Rest::at("12-hour-charging", 12, 59) },
-    Rest { minimal: true, ..Rest::at("minimal", 10, 8) },
-    Rest { hover: true, ..Rest::at("hover", 10, 8) },
+    Rest {
+        h12: true,
+        ..Rest::at("12-hour", 17, 5)
+    },
+    Rest {
+        badge: Some(Badge::Charging),
+        ..Rest::at("charging", 14, 5)
+    },
+    Rest {
+        badge: Some(Badge::Low(LOW_BATTERY)),
+        ..Rest::at("low-battery", 21, 30)
+    },
+    Rest {
+        h12: true,
+        badge: Some(Badge::Charging),
+        ..Rest::at("12-hour-charging", 12, 59)
+    },
+    Rest {
+        minimal: true,
+        ..Rest::at("minimal", 10, 8)
+    },
+    Rest {
+        hover: true,
+        ..Rest::at("hover", 10, 8)
+    },
     // Last, as it holds the app's clock for a moment: the minute before
     // sunset, then the ball on its way.
-    Rest { roll: true, ..Rest::at("roll", 17, 59) },
+    Rest {
+        roll: true,
+        ..Rest::at("roll", 17, 59)
+    },
 ];
 
 /// The sun's hours in every Diorama picture, in minutes of the day: six to
@@ -1213,7 +1598,11 @@ impl Sight {
         // The time is in the sky for the clock (and a status bar left from
         // Pill); Minimal is the place alone, and so is a setting left on Eyes.
         let timed = matches!(st.settings.idle_style, IdleStyle::Clock | IdleStyle::Status);
-        let clock = timed.then_some(Clock { hour: l.hour, minute: l.minute, h24: st.settings.use_24h });
+        let clock = timed.then_some(Clock {
+            hour: l.hour,
+            minute: l.minute,
+            h24: st.settings.use_24h,
+        });
         let badge = rest.and_then(|r| r.badge);
         let mut moment = Moment {
             minute: (l.hour as u32 * 60 + l.minute as u32) as f32,
@@ -1242,14 +1631,25 @@ impl Sight {
             },
             if moment.night() { "tree" } else { "house" }
         );
-        Sight { moment, lifted: rest.is_some_and(|r| r.hover), what }
+        Sight {
+            moment,
+            lifted: rest.is_some_and(|r| r.hover),
+            what,
+        }
     }
 
     /// The pill's size at rest, and as the island shows it (6 DIPs more
     /// each way under the pointer).
     fn sizes(&self) -> ((f32, f32), (f32, f32)) {
-        let rest = (studio_diorama::width(self.moment.clock, self.moment.badge), studio_diorama::H);
-        let lift = if self.lifted { 2.0 * crate::pill::motion::HOVER_OUTSET } else { 0.0 };
+        let rest = (
+            studio_diorama::width(self.moment.clock, self.moment.badge),
+            studio_diorama::H,
+        );
+        let lift = if self.lifted {
+            2.0 * crate::pill::motion::HOVER_OUTSET
+        } else {
+            0.0
+        };
         (rest, (rest.0 + lift, rest.1 + lift))
     }
 }
@@ -1262,11 +1662,34 @@ impl Sight {
 /// window's DIPs and `origin` the frame's first pixel in the window: the
 /// app puts the picture on the window's whole pixels, and half a pixel
 /// rounds one way there and another from the frame's corner.
-fn picture_match(frame: &Frame, body: Rect, origin: (i32, i32), scale: f32, m: &Moment, rest: (f32, f32), shown: (f32, f32)) -> (usize, usize, u8) {
+fn picture_match(
+    frame: &Frame,
+    body: Rect,
+    origin: (i32, i32),
+    scale: f32,
+    m: &Moment,
+    rest: (f32, f32),
+    shown: (f32, f32),
+) -> (usize, usize, u8) {
     // Where `pill::diorama::draw` puts it: the body's top middle, on whole pixels.
-    let at = crate::pill::shape::snap(Rect::new(body.center().x - shown.0 / 2.0, body.y, shown.0, shown.1), scale);
-    let p = studio_diorama::render(m, &View { w: at.w, h: at.h, rest_w: rest.0, rest_h: rest.1, scale });
-    let (x0, y0) = ((at.x * scale).round() as i32 - origin.0, (at.y * scale).round() as i32 - origin.1);
+    let at = crate::pill::shape::snap(
+        Rect::new(body.center().x - shown.0 / 2.0, body.y, shown.0, shown.1),
+        scale,
+    );
+    let p = studio_diorama::render(
+        m,
+        &View {
+            w: at.w,
+            h: at.h,
+            rest_w: rest.0,
+            rest_h: rest.1,
+            scale,
+        },
+    );
+    let (x0, y0) = (
+        (at.x * scale).round() as i32 - origin.0,
+        (at.y * scale).round() as i32 - origin.1,
+    );
     let (bw, bh) = (p.w as f32 / scale, p.h as f32 / scale);
     let r = bw.min(bh) / 2.0;
     let (mut same, mut total, mut worst) = (0, 0, 0u8);
@@ -1279,7 +1702,10 @@ fn picture_match(frame: &Frame, body: Rect, origin: (i32, i32), scale: f32, m: &
             }
             let o = ((j as u32 * p.w + i as u32) * 4) as usize;
             let got = frame.at(x0 + i, y0 + j);
-            let off = (0..3).map(|c| got[c].abs_diff(p.bgra[o + c])).max().unwrap_or(0);
+            let off = (0..3)
+                .map(|c| got[c].abs_diff(p.bgra[o + c]))
+                .max()
+                .unwrap_or(0);
             total += 1;
             same += usize::from(off <= PICTURE_TOLERANCE && got[3] == 255);
             worst = worst.max(off);
@@ -1312,7 +1738,15 @@ fn luma(p: [u8; 4]) -> f32 {
 /// light at midday and dark deep in the night. And it is `studio_diorama`'s
 /// picture of the moment, which puts the time in the sky and the glass ball
 /// on the house by day, on the tree at night.
-fn diorama_checks(frame: &Frame, body: Rect, origin: (i32, i32), scale: f32, s: &Sight, geom: Option<Geom>, checks: &mut Vec<Check>) {
+fn diorama_checks(
+    frame: &Frame,
+    body: Rect,
+    origin: (i32, i32),
+    scale: f32,
+    s: &Sight,
+    geom: Option<Geom>,
+    checks: &mut Vec<Check>,
+) {
     let (rest, shown) = s.sizes();
     let m = &s.moment;
     let want = Geom::new(rest.0, rest.1, rest.1 / 2.0);
@@ -1330,13 +1764,21 @@ fn diorama_checks(frame: &Frame, body: Rect, origin: (i32, i32), scale: f32, s: 
     // DIPs: as tall as that in the middle column, as wide in the middle
     // row, and 3 DIPs under its top edge as much shorter as round ends of
     // half its height leave it.
-    let b = crate::pill::shape::snap(body, scale).offset(-(origin.0 as f32) / scale, -(origin.1 as f32) / scale);
-    let (cx, cy) = (((b.x + b.w / 2.0) * scale).floor() as i32, ((b.y + b.h / 2.0) * scale).floor() as i32);
+    let b = crate::pill::shape::snap(body, scale)
+        .offset(-(origin.0 as f32) / scale, -(origin.1 as f32) / scale);
+    let (cx, cy) = (
+        ((b.x + b.w / 2.0) * scale).floor() as i32,
+        ((b.y + b.h / 2.0) * scale).floor() as i32,
+    );
     let row = ((b.y + 3.0) * scale).round() as i32;
     let depth = (row as f32 + 0.5) / scale - b.y;
     let r = b.h / 2.0;
     let chord = b.w - 2.0 * r + 2.0 * (r * r - (r - depth) * (r - depth)).max(0.0).sqrt();
-    let (tall, wide, near_top) = (frame.opaque_rise(cx, cy), frame.opaque_run(cx, cy), frame.opaque_run(cx, row));
+    let (tall, wide, near_top) = (
+        frame.opaque_rise(cx, cy),
+        frame.opaque_run(cx, cy),
+        frame.opaque_run(cx, row),
+    );
     let close = |px: i32, dip: f32| (px as f32 - dip * scale).abs() <= 2.0;
     checks.push(check(
         "diorama-capsule",
@@ -1354,14 +1796,33 @@ fn diorama_checks(frame: &Frame, body: Rect, origin: (i32, i32), scale: f32, s: 
     let mid = studio_diorama::BEZEL / 2.0;
     let px = |x: f32, y: f32| frame.at((x * scale).floor() as i32, (y * scale).floor() as i32);
     let (mx, my) = (b.x + b.w / 2.0, b.y + b.h / 2.0);
-    let ring = [px(mx, b.y + mid), px(mx, b.bottom() - mid), px(b.x + mid, my), px(b.right() - mid, my)];
+    let ring = [
+        px(mx, b.y + mid),
+        px(mx, b.bottom() - mid),
+        px(b.x + mid, my),
+        px(b.right() - mid, my),
+    ];
     let cream = |p: [u8; 4]| luma(p) >= 150.0 && p[2] >= p[0];
     let indigo = |p: [u8; 4]| luma(p) <= 110.0 && p[0] > p[2];
-    let said = ring.map(|[b, g, r, _]| format!("rgb({r}, {g}, {b})")).join(", ");
+    let said = ring
+        .map(|[b, g, r, _]| format!("rgb({r}, {g}, {b})"))
+        .join(", ");
     if m.lens <= 0.0 {
-        checks.push(check("diorama-frame", ring.into_iter().all(cream), format!("top, bottom, left, right: {said}; want cream (light, no bluer than red) by day")));
+        checks.push(check(
+            "diorama-frame",
+            ring.into_iter().all(cream),
+            format!(
+                "top, bottom, left, right: {said}; want cream (light, no bluer than red) by day"
+            ),
+        ));
     } else if m.lens >= 1.0 {
-        checks.push(check("diorama-frame", ring.into_iter().all(indigo), format!("top, bottom, left, right: {said}; want indigo (dark, bluer than red) at night")));
+        checks.push(check(
+            "diorama-frame",
+            ring.into_iter().all(indigo),
+            format!(
+                "top, bottom, left, right: {said}; want indigo (dark, bluer than red) at night"
+            ),
+        ));
     }
     if s.lifted {
         // The frame swells with the body and the pane keeps its size: 4 DIPs
@@ -1394,7 +1855,11 @@ fn diorama_checks(frame: &Frame, body: Rect, origin: (i32, i32), scale: f32, s: 
         }
         lumas.sort_by(|a, b| a.total_cmp(b));
         let sky = lumas.get(lumas.len() / 2).copied().unwrap_or(-1.0);
-        let (ok, want) = if day { (sky >= 120.0, "light by day (120 or more)") } else { ((0.0..=70.0).contains(&sky), "dark at night (70 or less)") };
+        let (ok, want) = if day {
+            (sky >= 120.0, "light by day (120 or more)")
+        } else {
+            ((0.0..=70.0).contains(&sky), "dark at night (70 or less)")
+        };
         checks.push(check("diorama-sky", ok, format!("the sky above the time has lightness {sky:.0} of 255 (the median of {} pixels), want {want}", lumas.len())));
     }
 
@@ -1416,7 +1881,11 @@ struct Check {
 }
 
 fn check(name: &str, ok: bool, detail: impl Into<String>) -> Check {
-    Check { name: name.into(), ok, detail: detail.into() }
+    Check {
+        name: name.into(),
+        ok,
+        detail: detail.into(),
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -1467,29 +1936,58 @@ struct Report {
 
 enum Phase {
     /// Record one transition frame by frame (PONI_SELFTEST_ANIM=1).
-    Anim { seq: usize },
+    Anim {
+        seq: usize,
+    },
     /// Record the media pill playing, then paused (PONI_SELFTEST_LOOP=1).
     Loop,
     /// Film the lyrics moving to the next line (PONI_SELFTEST_SCROLL=<Hz>).
     Scroll,
-    Settle { i: usize, since: f64, steps: u32, stable: u32 },
-    Click { i: usize },
-    ClickWait { i: usize, since: f64, from: PageKind, want: PageKind },
+    Settle {
+        i: usize,
+        since: f64,
+        steps: u32,
+        stable: u32,
+    },
+    Click {
+        i: usize,
+    },
+    ClickWait {
+        i: usize,
+        since: f64,
+        from: PageKind,
+        want: PageKind,
+    },
     /// After the scenes: a real click on the Settings page's last row,
     /// Advanced settings (`clicked` once pressed): the window opens and the
     /// island closes.
-    Advanced { since: f64, clicked: bool },
+    Advanced {
+        since: f64,
+        clicked: bool,
+    },
     /// Then the Settings window's `k`-th section as a picture.
-    Window { k: usize },
+    Window {
+        k: usize,
+    },
     /// Scene `i` has a song on the closed island; once it rests, drag it
     /// to the right (`Scene::IslandDrag`).
-    Drag { i: usize, since: f64 },
+    Drag {
+        i: usize,
+        since: f64,
+    },
     /// The Diorama theme's own pictures of its resting pill, `RESTS[k]`,
     /// each settled like a scene. Diorama runs only: after the scenes and
     /// the Settings window (or the scene deadline), or with
     /// PONI_SELFTEST_DIORAMA=only from the start.
-    Rests { k: usize, since: f64, steps: u32, stable: u32 },
-    Finish { since: f64 },
+    Rests {
+        k: usize,
+        since: f64,
+        steps: u32,
+        stable: u32,
+    },
+    Finish {
+        since: f64,
+    },
     Done(i32),
 }
 
@@ -1552,7 +2050,11 @@ pub struct SelfTest {
 /// Transitions recorded in animation mode: (name, from, to).
 const ANIMS: [(&str, Scene, Scene); 5] = [
     ("expand", Scene::Media, Scene::Page(PageKind::Media)),
-    ("page", Scene::Page(PageKind::Media), Scene::Page(PageKind::Focus)),
+    (
+        "page",
+        Scene::Page(PageKind::Media),
+        Scene::Page(PageKind::Focus),
+    ),
     ("collapse", Scene::Page(PageKind::Media), Scene::Media),
     ("hud", Scene::Media, Scene::VolumeHud),
     ("notice", Scene::IdleClock, Scene::TimerNotice),
@@ -1575,21 +2077,43 @@ const SCROLL_FILM_S: f64 = 1.3;
 impl SelfTest {
     pub fn new(dir: String) -> Self {
         let track_key = MediaSession::make_track_key(TITLE, ARTIST, ALBUM);
-        let theme = match std::env::var("PONI_SELFTEST_THEME").map(|v| v.trim().to_ascii_lowercase()).as_deref() {
+        let theme = match std::env::var("PONI_SELFTEST_THEME")
+            .map(|v| v.trim().to_ascii_lowercase())
+            .as_deref()
+        {
             Ok("oyen") => Theme::Oyen,
             Ok("glass") => Theme::Glass,
             Ok("pill") => Theme::Pill,
             Ok("diorama") => Theme::Diorama,
             _ => Theme::Classic,
         };
-        let rests_only = theme == Theme::Diorama && std::env::var("PONI_SELFTEST_DIORAMA").is_ok_and(|v| v.trim().eq_ignore_ascii_case("only"));
+        let rests_only = theme == Theme::Diorama
+            && std::env::var("PONI_SELFTEST_DIORAMA")
+                .is_ok_and(|v| v.trim().eq_ignore_ascii_case("only"));
         Self {
             dir: PathBuf::from(dir),
             t0: Instant::now(),
-            phase: if rests_only { Phase::Rests { k: 0, since: 0.0, steps: 0, stable: 0 } } else { Phase::Settle { i: 0, since: 0.0, steps: 0, stable: 0 } },
+            phase: if rests_only {
+                Phase::Rests {
+                    k: 0,
+                    since: 0.0,
+                    steps: 0,
+                    stable: 0,
+                }
+            } else {
+                Phase::Settle {
+                    i: 0,
+                    since: 0.0,
+                    steps: 0,
+                    stable: 0,
+                }
+            },
             art: None,
             art_color: None,
-            lyrics: LyricsState { track_key: track_key.clone(), ..Default::default() },
+            lyrics: LyricsState {
+                track_key: track_key.clone(),
+                ..Default::default()
+            },
             track_key,
             lyric_pos: TRACK_POS_S,
             states: Vec::new(),
@@ -1597,10 +2121,15 @@ impl SelfTest {
             writes: Vec::new(),
             scale: 1.0,
             expanded_width: 0.0,
-            dpi: std::env::var("PONI_SELFTEST_DPI").ok().and_then(|v| v.trim().parse().ok()),
+            dpi: std::env::var("PONI_SELFTEST_DPI")
+                .ok()
+                .and_then(|v| v.trim().parse().ok()),
             anim: std::env::var("PONI_SELFTEST_ANIM").is_ok_and(|v| v.trim() == "1"),
             media_loop: std::env::var("PONI_SELFTEST_LOOP").is_ok_and(|v| v.trim() == "1"),
-            scroll_hz: std::env::var("PONI_SELFTEST_SCROLL").ok().and_then(|v| v.trim().parse().ok()).filter(|hz: &f64| (20.0..=500.0).contains(hz)),
+            scroll_hz: std::env::var("PONI_SELFTEST_SCROLL")
+                .ok()
+                .and_then(|v| v.trim().parse().ok())
+                .filter(|hz: &f64| (20.0..=500.0).contains(hz)),
             dpi_applied: false,
             theme,
             rests_only,
@@ -1610,7 +2139,10 @@ impl SelfTest {
             slow_frames: Vec::new(),
             glass_size: Cell::new((0, 0)),
             glass_scene: Cell::new(None),
-            lyrics_lang: std::env::var("PONI_SELFTEST_LYRICS").ok().map(|v| v.trim().to_ascii_lowercase()).filter(|v| !v.is_empty()),
+            lyrics_lang: std::env::var("PONI_SELFTEST_LYRICS")
+                .ok()
+                .map(|v| v.trim().to_ascii_lowercase())
+                .filter(|v| !v.is_empty()),
             renderer: "software",
             shelf_items: Vec::new(),
             shelf_thumbs: Vec::new(),
@@ -1625,22 +2157,35 @@ impl SelfTest {
         let (ok, detail) = system_readings(crate::services::sysmon::probe());
         self.checks.push(check("system-readings", ok, detail));
         // Show over games: count Poni's own frames through the whole run.
-        let required = std::env::var("PONI_SELFTEST_FRAMES").is_ok_and(|v| v.trim().eq_ignore_ascii_case("required"));
+        let required = std::env::var("PONI_SELFTEST_FRAMES")
+            .is_ok_and(|v| v.trim().eq_ignore_ascii_case("required"));
         match crate::services::frames::Frames::start_selftest(std::process::id()) {
             Ok(f) => self.frames = Some(f),
-            Err(e) if required => self.checks.push(check("frame-count", false, format!("the frame count didn't start: {e:?}"))),
+            Err(e) if required => self.checks.push(check(
+                "frame-count",
+                false,
+                format!("the frame count didn't start: {e:?}"),
+            )),
             Err(e) => crate::pinfo!("selftest: frame count not started ({e:?})"),
         }
         self.t0 = Instant::now();
         if self.theme == Theme::Glass {
             let run = GlassRun::from_env();
-            crate::pinfo!("selftest: Glass theme over the {} page, Windows in {} mode", if run.dark_page() { "dark" } else { "light" }, if run.app_light() { "light" } else { "dark" });
+            crate::pinfo!(
+                "selftest: Glass theme over the {} page, Windows in {} mode",
+                if run.dark_page() { "dark" } else { "light" },
+                if run.app_light() { "light" } else { "dark" }
+            );
             self.glass = Some(run);
         }
         crate::pinfo!("selftest: output folder {}", self.dir.display());
         match fs::create_dir_all(&self.dir) {
             Ok(()) => self.clear_old_outputs(),
-            Err(e) => self.checks.push(check("output-folder", false, format!("{}: {e}", self.dir.display()))),
+            Err(e) => self.checks.push(check(
+                "output-folder",
+                false,
+                format!("{}: {e}", self.dir.display()),
+            )),
         }
 
         // Quiet, deterministic settings (defaults otherwise: the home folder is fresh).
@@ -1655,7 +2200,13 @@ impl SelfTest {
         st.settings.hud_bluetooth = true;
         st.accent = palette::BLUE;
         st.pinned = false;
-        st.volume = VolumeState { level: 0.64, muted: false, known: true, adjustable: true, can_mute: true };
+        st.volume = VolumeState {
+            level: 0.64,
+            muted: false,
+            known: true,
+            adjustable: true,
+            can_mute: true,
+        };
         st.power = fake_power(false);
         self.use_24h = st.settings.use_24h;
 
@@ -1665,7 +2216,9 @@ impl SelfTest {
         self.art = Some(art);
         // PONI_SELFTEST_LRC=<file>: a real song for a one-off check on CI
         // (fetched there at run time; song lyrics never go in the repo).
-        let file = std::env::var("PONI_SELFTEST_LRC").ok().and_then(|p| fs::read_to_string(p.trim()).ok());
+        let file = std::env::var("PONI_SELFTEST_LRC")
+            .ok()
+            .and_then(|p| fs::read_to_string(p.trim()).ok());
         let lrc = match (file.as_deref(), self.lyrics_lang.as_deref()) {
             (Some(f), _) => f,
             (None, Some("ja")) => LYRICS_JA,
@@ -1675,17 +2228,29 @@ impl SelfTest {
         };
         let parsed = parse_lrc(lrc);
         if file.is_none() {
-            let lyric_ok = parsed.synced && parsed.lines.len() == 12 && parsed.line_index_at(TRACK_POS_S) == Some(4);
+            let lyric_ok = parsed.synced
+                && parsed.lines.len() == 12
+                && parsed.line_index_at(TRACK_POS_S) == Some(4);
             self.checks.push(check(
                 "lyrics-fixture",
                 lyric_ok,
-                format!("{} lines, synced {}, line at {TRACK_POS_S}s = {:?}", parsed.lines.len(), parsed.synced, parsed.line_index_at(TRACK_POS_S)),
+                format!(
+                    "{} lines, synced {}, line at {TRACK_POS_S}s = {:?}",
+                    parsed.lines.len(),
+                    parsed.synced,
+                    parsed.line_index_at(TRACK_POS_S)
+                ),
             ));
         }
         if let Some(pos) = lyric_scene_pos(&parsed) {
             self.lyric_pos = pos;
         }
-        self.lyrics = LyricsState { track_key: self.track_key.clone(), status: LyricsStatus::Found, lyrics: Some(parsed), ..Default::default() };
+        self.lyrics = LyricsState {
+            track_key: self.track_key.clone(),
+            status: LyricsStatus::Found,
+            lyrics: Some(parsed),
+            ..Default::default()
+        };
 
         seed_tasks(st);
         let today = st.day_key();
@@ -1705,7 +2270,6 @@ impl SelfTest {
             Err(d) => (false, d),
         };
         self.checks.push(check("notifications", ok, detail));
-
     }
 
     /// Called every ~50 ms; returns Some(exit code) when finished.
@@ -1713,7 +2277,10 @@ impl SelfTest {
         if !self.dpi_applied {
             self.dpi_applied = true;
             if let Some(dpi) = self.dpi {
-                crate::pinfo!("selftest: rendering at {dpi} DPI ({:.0} %)", dpi as f32 / 96.0 * 100.0);
+                crate::pinfo!(
+                    "selftest: rendering at {dpi} DPI ({:.0} %)",
+                    dpi as f32 / 96.0 * 100.0
+                );
                 app.selftest_set_dpi(dpi);
             }
         }
@@ -1727,20 +2294,36 @@ impl SelfTest {
         if elapsed > SCENE_DEADLINE
             && !matches!(
                 self.phase,
-                Phase::Finish { .. } | Phase::Done(_) | Phase::Anim { .. } | Phase::Loop | Phase::Scroll | Phase::Rests { .. }
+                Phase::Finish { .. }
+                    | Phase::Done(_)
+                    | Phase::Anim { .. }
+                    | Phase::Loop
+                    | Phase::Scroll
+                    | Phase::Rests { .. }
             )
         {
             let at = match &self.phase {
-                Phase::Settle { i, .. } | Phase::Click { i } | Phase::ClickWait { i, .. } => SCENES[*i].name(),
+                Phase::Settle { i, .. } | Phase::Click { i } | Phase::ClickWait { i, .. } => {
+                    SCENES[*i].name()
+                }
                 _ => String::new(),
             };
             crate::pwarn!("selftest: deadline reached while at '{at}'");
-            self.checks.push(check("deadline", false, format!("stopped after {elapsed:.1} s at '{at}'")));
+            self.checks.push(check(
+                "deadline",
+                false,
+                format!("stopped after {elapsed:.1} s at '{at}'"),
+            ));
             // The scenes stop here. The Diorama theme's own pictures are
             // still taken: they are what its run is for, and a few seconds.
             self.phase = if self.theme == Theme::Diorama {
                 app.selftest_close_settings();
-                Phase::Rests { k: 0, since: now, steps: 0, stable: 0 }
+                Phase::Rests {
+                    k: 0,
+                    since: now,
+                    steps: 0,
+                    stable: 0,
+                }
             } else {
                 Phase::Finish { since: now }
             };
@@ -1761,15 +2344,28 @@ impl SelfTest {
             }
             Phase::Loop => {
                 self.record_loop(app);
-                self.phase = if self.scroll_hz.is_some() { Phase::Scroll } else { Phase::Finish { since: clock::mono() } };
+                self.phase = if self.scroll_hz.is_some() {
+                    Phase::Scroll
+                } else {
+                    Phase::Finish {
+                        since: clock::mono(),
+                    }
+                };
             }
             Phase::Scroll => {
                 if let Some(hz) = self.scroll_hz {
                     self.record_scroll(app, hz);
                 }
-                self.phase = Phase::Finish { since: clock::mono() };
+                self.phase = Phase::Finish {
+                    since: clock::mono(),
+                };
             }
-            Phase::Settle { i, since, steps, stable } => {
+            Phase::Settle {
+                i,
+                since,
+                steps,
+                stable,
+            } => {
                 let scene = SCENES[i];
                 let since = if steps == 0 { now } else { since };
                 self.apply(app, scene);
@@ -1779,13 +2375,19 @@ impl SelfTest {
                 let waited = now - since;
                 let timed_out = waited > self.settle_limit(app);
                 // No picture mid-blink: the eyes, and Oyen in the Oyenza tab.
-                let blinking = (scene == Scene::IdleEyes && mid_blink()) || (scene.expanded() && crate::oyen::mid_rest_move(clock::mono(), 0.3));
+                let blinking = (scene == Scene::IdleEyes && mid_blink())
+                    || (scene.expanded() && crate::oyen::mid_rest_move(clock::mono(), 0.3));
                 let ready = steps >= MIN_STEPS && stable >= STABLE_STEPS && !blinking;
                 if ready || timed_out {
                     self.capture(app, Shot::Scene(i), !timed_out || settled, waited);
                     self.phase = self.next_phase(i + 1, now);
                 } else {
-                    self.phase = Phase::Settle { i, since, steps, stable };
+                    self.phase = Phase::Settle {
+                        i,
+                        since,
+                        steps,
+                        stable,
+                    };
                 }
             }
             Phase::Click { i } => {
@@ -1793,53 +2395,114 @@ impl SelfTest {
                 // The first tab, or the gear (found by its widget id: its place
                 // depends on how wide the clock and date are).
                 let (what, at, want) = match SCENES[i] {
-                    Scene::GearClick => ("the gear", app.selftest_hit_center(wid(pages::GEAR_ID)), PageKind::Settings),
-                    _ => ("the first header tab", Some(first_tab_point(app.island_body())), PageKind::ALL[0]),
+                    Scene::GearClick => (
+                        "the gear",
+                        app.selftest_hit_center(wid(pages::GEAR_ID)),
+                        PageKind::Settings,
+                    ),
+                    _ => (
+                        "the first header tab",
+                        Some(first_tab_point(app.island_body())),
+                        PageKind::ALL[0],
+                    ),
                 };
                 match at {
                     Some(p) => {
-                        crate::pinfo!("selftest: clicking {what} at ({:.0}, {:.0}) DIP on page '{}'", p.x, p.y, from.key());
+                        crate::pinfo!(
+                            "selftest: clicking {what} at ({:.0}, {:.0}) DIP on page '{}'",
+                            p.x,
+                            p.y,
+                            from.key()
+                        );
                         app.selftest_click(p);
                     }
                     None => crate::pwarn!("selftest: {what} isn't on page '{}'", from.key()),
                 }
-                self.phase = Phase::ClickWait { i, since: now, from, want };
+                self.phase = Phase::ClickWait {
+                    i,
+                    since: now,
+                    from,
+                    want,
+                };
             }
-            Phase::ClickWait { i, since, from, want } => {
+            Phase::ClickWait {
+                i,
+                since,
+                from,
+                want,
+            } => {
                 let page = app.st.page;
                 if page != from || now - since > CLICK_TIMEOUT {
                     let ok = from != want && page == want;
-                    let name = if SCENES[i] == Scene::GearClick { "gear-click" } else { "tab-click" };
+                    let name = if SCENES[i] == Scene::GearClick {
+                        "gear-click"
+                    } else {
+                        "tab-click"
+                    };
                     self.checks.push(check(
                         name,
                         ok,
-                        format!("page '{}' -> '{}' after {:.0} ms (expected '{}')", from.key(), page.key(), (now - since) * 1000.0, want.key()),
+                        format!(
+                            "page '{}' -> '{}' after {:.0} ms (expected '{}')",
+                            from.key(),
+                            page.key(),
+                            (now - since) * 1000.0,
+                            want.key()
+                        ),
                     ));
                     if !ok {
-                        crate::pwarn!("selftest: {name} did not switch to '{}' (page is '{}')", want.key(), page.key());
+                        crate::pwarn!(
+                            "selftest: {name} did not switch to '{}' (page is '{}')",
+                            want.key(),
+                            page.key()
+                        );
                     }
-                    self.phase = Phase::Settle { i, since: now, steps: 0, stable: 0 };
+                    self.phase = Phase::Settle {
+                        i,
+                        since: now,
+                        steps: 0,
+                        stable: 0,
+                    };
                 }
             }
-            Phase::Advanced { since, clicked: false } => {
+            Phase::Advanced {
+                since,
+                clicked: false,
+            } => {
                 // The Settings page on the open island, then a real click on
                 // its last row once the island has settled.
                 self.apply(app, Scene::Page(PageKind::Settings));
-                let at = app.selftest_hit_center(wid(pages::settings::ADVANCED_ID)).filter(|_| app.selftest_settled());
+                let at = app
+                    .selftest_hit_center(wid(pages::settings::ADVANCED_ID))
+                    .filter(|_| app.selftest_settled());
                 match at {
                     Some(p) => {
-                        crate::pinfo!("selftest: clicking Advanced settings at ({:.0}, {:.0}) DIP", p.x, p.y);
+                        crate::pinfo!(
+                            "selftest: clicking Advanced settings at ({:.0}, {:.0}) DIP",
+                            p.x,
+                            p.y
+                        );
                         app.selftest_click(p);
-                        self.phase = Phase::Advanced { since: now, clicked: true };
+                        self.phase = Phase::Advanced {
+                            since: now,
+                            clicked: true,
+                        };
                     }
                     None if now - since > self.settle_limit(app) => {
-                        self.checks.push(check("advanced-settings", false, "no Advanced settings row on the Settings page"));
+                        self.checks.push(check(
+                            "advanced-settings",
+                            false,
+                            "no Advanced settings row on the Settings page",
+                        ));
                         self.phase = Phase::Window { k: 0 };
                     }
                     None => {}
                 }
             }
-            Phase::Advanced { since, clicked: true } => {
+            Phase::Advanced {
+                since,
+                clicked: true,
+            } => {
                 // The window opens and the island closes, so it never sits over the window.
                 let opened = app.settings_window_open();
                 if opened || now - since > CLICK_TIMEOUT {
@@ -1861,32 +2524,52 @@ impl SelfTest {
             Phase::Window { k } => {
                 // Each of the Settings window's sections, as a picture: dark,
                 // then General and Appearance light.
-                let mut list: Vec<_> = crate::settings_model::sections(&app.st).into_iter().map(|s| (s, false)).collect();
-                list.extend([(crate::settings_model::Section::General, true), (crate::settings_model::Section::Appearance, true)]);
+                let mut list: Vec<_> = crate::settings_model::sections(&app.st)
+                    .into_iter()
+                    .map(|s| (s, false))
+                    .collect();
+                list.extend([
+                    (crate::settings_model::Section::General, true),
+                    (crate::settings_model::Section::Appearance, true),
+                ]);
                 match list.get(k) {
                     Some(&(section, light)) => {
                         let (w, h, px) = app.selftest_settings_shot(section, light);
-                        let name = format!("settings-window-{}{}", section.key(), if light { "-light" } else { "" });
+                        let name = format!(
+                            "settings-window-{}{}",
+                            section.key(),
+                            if light { "-light" } else { "" }
+                        );
                         let sized = w > 0 && h > 0 && px.len() == (w as usize) * (h as usize) * 4;
                         // The card is opaque where the sidebar meets the content.
                         let solid = sized && {
                             let s = app.selftest_settings_scale();
-                            let at = |x: f32, y: f32| px[(((y * s) as usize) * w as usize + (x * s) as usize) * 4 + 3];
+                            let at = |x: f32, y: f32| {
+                                px[(((y * s) as usize) * w as usize + (x * s) as usize) * 4 + 3]
+                            };
                             let card = app.selftest_settings_card();
                             at(card.center().x, card.center().y) == 255 && at(1.0, 1.0) == 0
                         };
-                        self.checks.push(check(&name, solid, format!("{w}x{h} px{}", if solid { "" } else { ", card not drawn" })));
+                        self.checks.push(check(
+                            &name,
+                            solid,
+                            format!("{w}x{h} px{}", if solid { "" } else { ", card not drawn" }),
+                        ));
                         if sized {
                             let scale = app.selftest_settings_scale();
                             self.queue_write(&name, w, h, px, scale, None);
                         }
                         // Frames of a glide redraw the whole window: what one costs.
                         if k == 0 {
-                            let median = |ms: &[f64]| ms.get(ms.len() / 2).copied().unwrap_or(f64::INFINITY);
+                            let median =
+                                |ms: &[f64]| ms.get(ms.len() / 2).copied().unwrap_or(f64::INFINITY);
                             let full = app.selftest_settings_frames(30, None);
                             // A glide's frame: the sidebar's highlight going a few rows down.
                             let card = app.selftest_settings_card();
-                            let part = app.selftest_settings_frames(30, Some(Rect::new(card.x + 10.0, card.y + 80.0, 200.0, 140.0)));
+                            let part = app.selftest_settings_frames(
+                                30,
+                                Some(Rect::new(card.x + 10.0, card.y + 80.0, 200.0, 140.0)),
+                            );
                             let detail = format!(
                                 "whole window {:.2} ms (best {:.2}, worst {:.2}), a glide's frame {:.2} ms (worst {:.2}), {} frames each at {:.0} %; 144 Hz leaves 6.94 ms a frame",
                                 median(&full),
@@ -1897,37 +2580,62 @@ impl SelfTest {
                                 full.len(),
                                 app.selftest_settings_scale() * 100.0
                             );
-                            self.checks.push(check("settings-window-frame", median(&full) < SETTINGS_FRAME_BUDGET_MS, detail));
+                            self.checks.push(check(
+                                "settings-window-frame",
+                                median(&full) < SETTINGS_FRAME_BUDGET_MS,
+                                detail,
+                            ));
                             // A person using it, filmed: what the glides' frames
                             // drawn in part show must be what drawing it all shows.
                             // PONI_SELFTEST_FILM keeps every frame as the screen shows
                             // it (film-settings.bgra: premultiplied BGRA, one frame after
                             // another) and the part each drew (film-settings.json).
-                            let mut keep = std::env::var_os("PONI_SELFTEST_FILM").and_then(|_| fs::File::create(self.dir.join("film-settings.bgra")).ok()).map(std::io::BufWriter::new);
+                            let mut keep = std::env::var_os("PONI_SELFTEST_FILM")
+                                .and_then(|_| {
+                                    fs::File::create(self.dir.join("film-settings.bgra")).ok()
+                                })
+                                .map(std::io::BufWriter::new);
                             let mut parts = Vec::new();
                             let film = app.selftest_settings_film(144.0, |k, _, _, px, part| {
                                 if let Some(out) = keep.as_mut() {
                                     let _ = std::io::Write::write_all(out, px);
-                                    let part = part.map_or("null".to_string(), |r| format!("[{}, {}, {}, {}]", r.left, r.top, r.right, r.bottom));
+                                    let part = part.map_or("null".to_string(), |r| {
+                                        format!(
+                                            "[{}, {}, {}, {}]",
+                                            r.left, r.top, r.right, r.bottom
+                                        )
+                                    });
                                     parts.push(format!("{{\"frame\": {k}, \"part\": {part}}}"));
                                 }
                             });
                             if let (Some(mut out), Some(f)) = (keep.take(), film.as_ref()) {
                                 let _ = std::io::Write::flush(&mut out);
                                 let json = format!("{{\"fps\": 144, \"width\": {}, \"height\": {}, \"frames\": [\n  {}\n]}}\n", f.size.0, f.size.1, parts.join(",\n  "));
-                                if let Err(e) = fs::write(self.dir.join("film-settings.json"), json) {
-                                    crate::pwarn!("selftest: writing film-settings.json failed: {e}");
+                                if let Err(e) = fs::write(self.dir.join("film-settings.json"), json)
+                                {
+                                    crate::pwarn!(
+                                        "selftest: writing film-settings.json failed: {e}"
+                                    );
                                 }
                             }
                             let (ok, detail) = match film {
                                 Some(f) => {
                                     let ms = &f.partial_ms;
                                     let worst = match f.worst {
-                                        Some((k, n, r)) => format!("; worst frame {k}: {n} pixels in ({}, {})-({}, {})", r.left, r.top, r.right, r.bottom),
+                                        Some((k, n, r)) => format!(
+                                            "; worst frame {k}: {n} pixels in ({}, {})-({}, {})",
+                                            r.left, r.top, r.right, r.bottom
+                                        ),
                                         None => String::new(),
                                     };
-                                    let missing = if f.missing.is_empty() { String::new() } else { format!("; not found: {}", f.missing.join(", ")) };
-                                    let ok = f.missing.is_empty() && f.differing.is_empty() && ms.len() >= 60;
+                                    let missing = if f.missing.is_empty() {
+                                        String::new()
+                                    } else {
+                                        format!("; not found: {}", f.missing.join(", "))
+                                    };
+                                    let ok = f.missing.is_empty()
+                                        && f.differing.is_empty()
+                                        && ms.len() >= 60;
                                     // The frames that differ, as runs ("24-30, 151").
                                     let mut runs: Vec<(usize, usize)> = Vec::new();
                                     for &k in &f.differing {
@@ -1936,7 +2644,17 @@ impl SelfTest {
                                             _ => runs.push((k, k)),
                                         }
                                     }
-                                    let at = runs.iter().map(|&(a, b)| if a == b { a.to_string() } else { format!("{a}-{b}") }).collect::<Vec<_>>().join(", ");
+                                    let at = runs
+                                        .iter()
+                                        .map(|&(a, b)| {
+                                            if a == b {
+                                                a.to_string()
+                                            } else {
+                                                format!("{a}-{b}")
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join(", ");
                                     let detail = format!(
                                         "{} frames at 144 Hz ({}x{} px), {} of them a glide's drawn in part: {:.2} ms (worst {:.2}); {} frames differ from the window drawn whole{}{worst}{missing}",
                                         f.frames,
@@ -1968,15 +2686,34 @@ impl SelfTest {
                 // move sideways and the release: it moves and stays closed.
                 // Then a click on it where it went: that still opens it.
                 self.apply(app, SCENES[i]);
-                let still = app.selftest_settled() && !app.selftest_expanded() && app.st.settings.island_x.is_none();
+                let still = app.selftest_settled()
+                    && !app.selftest_expanded()
+                    && app.st.settings.island_x.is_none();
                 if still || now - since > self.settle_limit(app) {
-                    let (ok, detail) = if still { drag_check(app) } else { (false, "the island never rested closed in the middle".to_string()) };
+                    let (ok, detail) = if still {
+                        drag_check(app)
+                    } else {
+                        (
+                            false,
+                            "the island never rested closed in the middle".to_string(),
+                        )
+                    };
                     self.checks.push(check("island-drag", ok, detail));
-                    self.phase = Phase::Settle { i, since: now, steps: 0, stable: 0 };
+                    self.phase = Phase::Settle {
+                        i,
+                        since: now,
+                        steps: 0,
+                        stable: 0,
+                    };
                 }
             }
 
-            Phase::Rests { k, since, steps, stable } => {
+            Phase::Rests {
+                k,
+                since,
+                steps,
+                stable,
+            } => {
                 // As a scene settles: the picture's state on every step, and
                 // the capture once the island rests in it.
                 let since = if steps == 0 { now } else { since };
@@ -1989,7 +2726,12 @@ impl SelfTest {
                 if (steps >= MIN_STEPS && stable >= STABLE_STEPS) || timed_out {
                     self.capture(app, Shot::Rest(k), !timed_out || settled, waited);
                     if k + 1 < RESTS.len() {
-                        self.phase = Phase::Rests { k: k + 1, since: now, steps: 0, stable: 0 };
+                        self.phase = Phase::Rests {
+                            k: k + 1,
+                            since: now,
+                            steps: 0,
+                            stable: 0,
+                        };
                     } else {
                         // The PC's own clock again, and its 12 or 24 hours.
                         clock::hold_local(None);
@@ -1997,15 +2739,25 @@ impl SelfTest {
                         self.phase = self.after_scenes(clock::mono());
                     }
                 } else {
-                    self.phase = Phase::Rests { k, since, steps, stable };
+                    self.phase = Phase::Rests {
+                        k,
+                        since,
+                        steps,
+                        stable,
+                    };
                 }
             }
             Phase::Finish { since } => {
                 let all_done = self.writes.iter().all(|(_, h)| h.is_finished());
-                let deadline = if self.anim || self.media_loop || self.scroll_hz.is_some() { WRITE_DEADLINE + 40.0 } else { WRITE_DEADLINE };
+                let deadline = if self.anim || self.media_loop || self.scroll_hz.is_some() {
+                    WRITE_DEADLINE + 40.0
+                } else {
+                    WRITE_DEADLINE
+                };
                 // The writers' time counts from the last capture where that
                 // came after the scene deadline (the Diorama theme's pictures).
-                if all_done || (elapsed > deadline && now - since > WRITE_DEADLINE - SCENE_DEADLINE) {
+                if all_done || (elapsed > deadline && now - since > WRITE_DEADLINE - SCENE_DEADLINE)
+                {
                     let code = self.finish(all_done, now - since);
                     self.phase = Phase::Done(code);
                     return Some(code);
@@ -2020,10 +2772,18 @@ impl SelfTest {
         match SCENES.get(i) {
             Some(Scene::TabClick | Scene::GearClick) => Phase::Click { i },
             Some(Scene::IslandDrag) => Phase::Drag { i, since: now },
-            Some(_) => Phase::Settle { i, since: now, steps: 0, stable: 0 },
+            Some(_) => Phase::Settle {
+                i,
+                since: now,
+                steps: 0,
+                stable: 0,
+            },
             // Advanced settings opening the Settings window, then its
             // sections (not over the Glass backdrops).
-            None if self.glass.is_none() => Phase::Advanced { since: now, clicked: false },
+            None if self.glass.is_none() => Phase::Advanced {
+                since: now,
+                clicked: false,
+            },
             None => self.after_window(now),
         }
     }
@@ -2032,7 +2792,12 @@ impl SelfTest {
     fn after_window(&self, now: f64) -> Phase {
         if self.theme == Theme::Diorama {
             // The Diorama theme's own pictures of its resting pill.
-            Phase::Rests { k: 0, since: now, steps: 0, stable: 0 }
+            Phase::Rests {
+                k: 0,
+                since: now,
+                steps: 0,
+                stable: 0,
+            }
         } else {
             self.after_scenes(now)
         }
@@ -2044,7 +2809,12 @@ impl SelfTest {
         if self.rests_only {
             RESTS.len()
         } else {
-            SCENES.len() + if self.theme == Theme::Diorama { RESTS.len() } else { 0 }
+            SCENES.len()
+                + if self.theme == Theme::Diorama {
+                    RESTS.len()
+                } else {
+                    0
+                }
         }
     }
 
@@ -2069,7 +2839,9 @@ impl SelfTest {
         loop {
             self.apply(app, from);
             let _ = app.selftest_capture();
-            if (app.selftest_settled() && t.elapsed().as_millis() > 200) || t.elapsed().as_secs_f64() > 2.5 {
+            if (app.selftest_settled() && t.elapsed().as_millis() > 200)
+                || t.elapsed().as_secs_f64() > 2.5
+            {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(16));
@@ -2083,12 +2855,19 @@ impl SelfTest {
             if settle_frame.is_none() && app.selftest_settled() {
                 settle_frame = Some(k);
             }
-            placed.push(format!("{{\"frame\": {k}, \"x\": {}, \"y\": {}, \"w\": {w}, \"h\": {h}}}", at.0, at.1));
+            placed.push(format!(
+                "{{\"frame\": {k}, \"x\": {}, \"y\": {}, \"w\": {w}, \"h\": {h}}}",
+                at.0, at.1
+            ));
             let scale = self.scale;
             self.queue_write(&format!("anim-{name}-{k:02}"), w, h, px, scale, None);
             std::thread::sleep(std::time::Duration::from_millis(16));
         }
-        let json = format!("{{\"name\": \"{name}\", \"scale\": {}, \"frames\": [\n  {}\n]}}\n", self.scale, placed.join(",\n  "));
+        let json = format!(
+            "{{\"name\": \"{name}\", \"scale\": {}, \"frames\": [\n  {}\n]}}\n",
+            self.scale,
+            placed.join(",\n  ")
+        );
         if let Err(e) = fs::write(self.dir.join(format!("anim-{name}.json")), json) {
             crate::pwarn!("selftest: writing anim-{name}.json failed: {e}");
         }
@@ -2105,7 +2884,9 @@ impl SelfTest {
         loop {
             self.apply(app, Scene::Media);
             let _ = app.selftest_capture();
-            if (app.selftest_settled() && t.elapsed().as_millis() > 200) || t.elapsed().as_secs_f64() > 2.5 {
+            if (app.selftest_settled() && t.elapsed().as_millis() > 200)
+                || t.elapsed().as_secs_f64() > 2.5
+            {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(16));
@@ -2129,13 +2910,19 @@ impl SelfTest {
                 app.st.media_paused_at = Some(paused_at);
             }
             let (w, h, px, at) = app.selftest_capture();
-            let Some(k) = i.checked_sub(preroll) else { continue };
+            let Some(k) = i.checked_sub(preroll) else {
+                continue;
+            };
             placed.push(format!("{{\"frame\": {k}, \"t\": {:.4}, \"playing\": {playing}, \"x\": {}, \"y\": {}, \"w\": {w}, \"h\": {h}}}", now - start, at.0, at.1));
             let scale = self.scale;
             self.queue_write(&format!("loop-media-{k:03}"), w, h, px, scale, None);
         }
         clock::hold(None);
-        let json = format!("{{\"name\": \"media\", \"fps\": {LOOP_FPS}, \"scale\": {}, \"frames\": [\n  {}\n]}}\n", self.scale, placed.join(",\n  "));
+        let json = format!(
+            "{{\"name\": \"media\", \"fps\": {LOOP_FPS}, \"scale\": {}, \"frames\": [\n  {}\n]}}\n",
+            self.scale,
+            placed.join(",\n  ")
+        );
         if let Err(e) = fs::write(self.dir.join("loop-media.json"), json) {
             crate::pwarn!("selftest: writing loop-media.json failed: {e}");
         }
@@ -2152,7 +2939,9 @@ impl SelfTest {
         loop {
             self.apply(app, Scene::Page(PageKind::Media));
             let _ = app.selftest_capture();
-            if (app.selftest_settled() && t.elapsed().as_millis() > 200) || t.elapsed().as_secs_f64() > 2.5 {
+            if (app.selftest_settled() && t.elapsed().as_millis() > 200)
+                || t.elapsed().as_secs_f64() > 2.5
+            {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(16));
@@ -2170,14 +2959,20 @@ impl SelfTest {
                 m.timeline = Timeline::new(SCROLL_FROM_S + (now - start), TRACK_LEN_S, now, true);
             }
             let (w, h, px, _) = app.selftest_capture();
-            let Some(k) = i.checked_sub(pre) else { continue };
+            let Some(k) = i.checked_sub(pre) else {
+                continue;
+            };
             // The right half of the page body: the lyrics column.
             let s = self.scale;
             let body = app.island_body_in_capture();
             let x0 = ((body.x + body.w * 0.5) * s).round().clamp(0.0, w as f32) as usize;
             let x1 = (body.right() * s).round().clamp(0.0, w as f32) as usize;
-            let y0 = ((body.y + pages::HEADER_H) * s).round().clamp(0.0, h as f32) as usize;
-            let y1 = ((body.bottom() - pages::PAD) * s).round().clamp(0.0, h as f32) as usize;
+            let y0 = ((body.y + pages::HEADER_H) * s)
+                .round()
+                .clamp(0.0, h as f32) as usize;
+            let y1 = ((body.bottom() - pages::PAD) * s)
+                .round()
+                .clamp(0.0, h as f32) as usize;
             if x1 <= x0 || y1 <= y0 || px.len() < (w * h * 4) as usize {
                 continue;
             }
@@ -2188,7 +2983,12 @@ impl SelfTest {
                     gray.push(p[0].max(p[1]).max(p[2]));
                 }
             }
-            placed.push(format!("{{\"frame\": {k}, \"t\": {:.5}, \"w\": {}, \"h\": {}}}", now - start, x1 - x0, y1 - y0));
+            placed.push(format!(
+                "{{\"frame\": {k}, \"t\": {:.5}, \"w\": {}, \"h\": {}}}",
+                now - start,
+                x1 - x0,
+                y1 - y0
+            ));
             let path = self.dir.join(format!("scroll-lyrics-{k:03}.png"));
             let (gw, gh) = ((x1 - x0) as u32, (y1 - y0) as u32);
             if let Err(e) = png::save_gray(&path, gw, gh, &gray) {
@@ -2196,7 +2996,11 @@ impl SelfTest {
             }
         }
         clock::hold(None);
-        let json = format!("{{\"name\": \"lyrics\", \"hz\": {hz}, \"scale\": {}, \"frames\": [\n  {}\n]}}\n", self.scale, placed.join(",\n  "));
+        let json = format!(
+            "{{\"name\": \"lyrics\", \"hz\": {hz}, \"scale\": {}, \"frames\": [\n  {}\n]}}\n",
+            self.scale,
+            placed.join(",\n  ")
+        );
         if let Err(e) = fs::write(self.dir.join("scroll-lyrics.json"), json) {
             crate::pwarn!("selftest: writing scroll-lyrics.json failed: {e}");
         }
@@ -2217,7 +3021,11 @@ impl SelfTest {
         };
         if st.settings.theme != self.theme {
             st.settings.theme = self.theme;
-            st.accent = if self.theme == Theme::Oyen { crate::oyen::ORANGE } else { palette::BLUE };
+            st.accent = if self.theme == Theme::Oyen {
+                crate::oyen::ORANGE
+            } else {
+                palette::BLUE
+            };
         }
         // Diorama's glass ball rests where the time has it in every picture:
         // it would roll in as the theme is picked, and across if the sun
@@ -2243,7 +3051,13 @@ impl SelfTest {
         if scene == Scene::LowBatteryHud {
             st.power.percent = LOW_BATTERY;
         }
-        st.volume = VolumeState { level: 0.64, muted: false, known: true, adjustable: true, can_mute: true };
+        st.volume = VolumeState {
+            level: 0.64,
+            muted: false,
+            known: true,
+            adjustable: true,
+            can_mute: true,
+        };
         st.pinned = false;
         st.drag_hover = scene == Scene::ShelfDrop;
         // Start with Windows as Settings shows it once read (it's read off the UI thread).
@@ -2251,7 +3065,11 @@ impl SelfTest {
         // Hide in full-screen apps (the default), except in the Stay on top scene.
         st.settings.hide_in_fullscreen = scene != Scene::SettingsStayOnTop;
         // Every tab in the row, except in the scene that hides two.
-        st.settings.hidden_tabs = if scene == Scene::SettingsTabs { vec!["today".into()] } else { Vec::new() };
+        st.settings.hidden_tabs = if scene == Scene::SettingsTabs {
+            vec!["today".into()]
+        } else {
+            Vec::new()
+        };
         // Step aside is off in the app since 0.2.6; the self-test keeps drawing what's left of it.
         st.settings.step_aside = scene != Scene::SettingsAsideStay;
         // In the middle, except where the drag left it (`Phase::Drag`) and at the right edge.
@@ -2262,28 +3080,47 @@ impl SelfTest {
         };
         // A later version offered, only where Settings shows it. A copy from
         // GitHub reads the update file itself, so Settings has Check now.
-        let looks = crate::state::UpdateView { looks: true, ..Default::default() };
+        let looks = crate::state::UpdateView {
+            looks: true,
+            ..Default::default()
+        };
         st.update = match scene {
-            Scene::SettingsUpdate | Scene::UpdateSheet | Scene::UpdateReady => crate::state::UpdateView {
-                offer: Some(fake_release()),
-                sheet: scene != Scene::SettingsUpdate,
-                ready: scene == Scene::UpdateReady,
-                ..looks
-            },
+            Scene::SettingsUpdate | Scene::UpdateSheet | Scene::UpdateReady => {
+                crate::state::UpdateView {
+                    offer: Some(fake_release()),
+                    sheet: scene != Scene::SettingsUpdate,
+                    ready: scene == Scene::UpdateReady,
+                    ..looks
+                }
+            }
             _ => looks,
         };
         // A new song's title shows for its few seconds (held here).
-        st.ui.peek_until = if scene == Scene::AsidePeek { now + 30.0 } else { 0.0 };
+        st.ui.peek_until = if scene == Scene::AsidePeek {
+            now + 30.0
+        } else {
+            0.0
+        };
         let empty_shelf = scene == Scene::ShelfEmpty;
-        st.store.shelf.items = if empty_shelf { Vec::new() } else { self.shelf_items.clone() };
+        st.store.shelf.items = if empty_shelf {
+            Vec::new()
+        } else {
+            self.shelf_items.clone()
+        };
         if !empty_shelf {
             for (path, thumb) in &self.shelf_thumbs {
-                st.shelf_thumbs.entry(path.clone()).or_insert_with(|| thumb.clone());
+                st.shelf_thumbs
+                    .entry(path.clone())
+                    .or_insert_with(|| thumb.clone());
             }
         }
 
         if scene.media_playing() {
-            let pos = if matches!(scene, Scene::MediaLyric | Scene::AsideLyric) { self.lyric_pos } else { TRACK_POS_S };
+            let pos = if matches!(scene, Scene::MediaLyric | Scene::AsideLyric) {
+                self.lyric_pos
+            } else {
+                TRACK_POS_S
+            };
             let timeline = Timeline::new(pos, TRACK_LEN_S, now, true);
             match st.media.as_mut() {
                 Some(m) if m.track_key == self.track_key => m.timeline = timeline,
@@ -2301,25 +3138,64 @@ impl SelfTest {
         st.pomodoro.cycle_done = 1;
         st.pomodoro.reset();
         if scene.timer_running() {
-            st.pomodoro.start(now + TIMER_LEFT_S - st.pomodoro.current_duration());
+            st.pomodoro
+                .start(now + TIMER_LEFT_S - st.pomodoro.current_duration());
         }
 
         let until = now + 30.0;
         st.hud = match scene {
-            Scene::VolumeHud | Scene::AsideHud => Some(Hud { kind: HudKind::Volume { level: 0.64, muted: false }, until }),
-            Scene::ChargingHud => Some(Hud { kind: HudKind::Charging { percent: 76, plugged: true }, until }),
-            Scene::BluetoothHud => {
-                Some(Hud { kind: HudKind::Bluetooth { name: "Sound Buds".into(), connected: true, battery: Some(80), audio: true }, until })
-            }
-            Scene::LowBatteryHud => Some(Hud { kind: HudKind::LowBattery { percent: LOW_BATTERY }, until }),
+            Scene::VolumeHud | Scene::AsideHud => Some(Hud {
+                kind: HudKind::Volume {
+                    level: 0.64,
+                    muted: false,
+                },
+                until,
+            }),
+            Scene::ChargingHud => Some(Hud {
+                kind: HudKind::Charging {
+                    percent: 76,
+                    plugged: true,
+                },
+                until,
+            }),
+            Scene::BluetoothHud => Some(Hud {
+                kind: HudKind::Bluetooth {
+                    name: "Sound Buds".into(),
+                    connected: true,
+                    battery: Some(80),
+                    audio: true,
+                },
+                until,
+            }),
+            Scene::LowBatteryHud => Some(Hud {
+                kind: HudKind::LowBattery {
+                    percent: LOW_BATTERY,
+                },
+                until,
+            }),
             _ => None,
         };
         st.notice = match scene {
-            Scene::UpdateNotice => Some(crate::updates::new_version_notice(&fake_release(), st.accent, until)),
-            Scene::UpdatedNotice => Some(crate::updates::updated_notice(Some(fake_release().headline), until)),
-            Scene::TimerNotice => {
-                Some(Notice { icon: Icon::Timer, color: palette::GREEN, title: "专注已完成".into(), title_dim: String::new(), subtitle: "休息一下，再开始下一轮。".into(), until, action: Some(NoticeAction::OpenPage(PageKind::Focus)), inline: None, reveal: None })
-            }
+            Scene::UpdateNotice => Some(crate::updates::new_version_notice(
+                &fake_release(),
+                st.accent,
+                until,
+            )),
+            Scene::UpdatedNotice => Some(crate::updates::updated_notice(
+                Some(fake_release().headline),
+                until,
+            )),
+            Scene::TimerNotice => Some(Notice {
+                icon: Icon::Timer,
+                color: palette::GREEN,
+                title: "专注已完成".into(),
+                title_dim: String::new(),
+                subtitle: "休息一下，再开始下一轮。".into(),
+                until,
+                action: Some(NoticeAction::OpenPage(PageKind::Focus)),
+                inline: None,
+                reveal: None,
+            }),
             Scene::OyenzaMoney | Scene::OyenzaMoneyShown => {
                 let hidden = scene == Scene::OyenzaMoney;
                 Some(Notice {
@@ -2327,7 +3203,11 @@ impl SelfTest {
                     color: palette::GREEN,
                     title: "Money in · BCA".into(),
                     title_dim: String::new(),
-                    subtitle: if hidden { "Amount and sender hidden".into() } else { "Rp 1.250.000 · Gaji Oktober".into() },
+                    subtitle: if hidden {
+                        "Amount and sender hidden".into()
+                    } else {
+                        "Rp 1.250.000 · Gaji Oktober".into()
+                    },
                     until,
                     action: Some(NoticeAction::OpenPage(PageKind::Oyenza)),
                     inline: Some(InlineAction::ShowAmount),
@@ -2346,8 +3226,17 @@ impl SelfTest {
                 reveal: Some("Rp 89.000 · Tokopedia".into()),
             }),
             Scene::MessageNotice | Scene::MessageHidden => {
-                let choices = NotificationSettings { text: scene == Scene::MessageNotice, ..Default::default() };
-                crate::pages::notifications::message_notice(&sample_message(), &choices, st.accent, now).map(|n| Notice { until, ..n })
+                let choices = NotificationSettings {
+                    text: scene == Scene::MessageNotice,
+                    ..Default::default()
+                };
+                crate::pages::notifications::message_notice(
+                    &sample_message(),
+                    &choices,
+                    st.accent,
+                    now,
+                )
+                .map(|n| Notice { until, ..n })
             }
             Scene::OyenzaBill => Some(Notice {
                 icon: Icon::Calendar,
@@ -2362,12 +3251,22 @@ impl SelfTest {
             }),
             _ => None,
         };
-        st.oyenza = if scene.oyenza() { fake_oyenza(st, scene, now) } else { OyenzaState::default() };
+        st.oyenza = if scene.oyenza() {
+            fake_oyenza(st, scene, now)
+        } else {
+            OyenzaState::default()
+        };
         // Today's list starts at today, or at the date clicked ten days on.
-        st.ui.today_pick = (scene == Scene::TodayPicked).then(|| poni_core::agenda::day_num(&st.day_key()).unwrap_or(0) + 10);
+        st.ui.today_pick = (scene == Scene::TodayPicked)
+            .then(|| poni_core::agenda::day_num(&st.day_key()).unwrap_or(0) + 10);
 
-        st.settings.set_system(scene.page() == Some(PageKind::System));
-        st.notify_can = scene.page() == Some(PageKind::Notifications) || matches!(scene, Scene::MessageNotice | Scene::MessageHidden | Scene::SettingsTabsStore);
+        st.settings
+            .set_system(scene.page() == Some(PageKind::System));
+        st.notify_can = scene.page() == Some(PageKind::Notifications)
+            || matches!(
+                scene,
+                Scene::MessageNotice | Scene::MessageHidden | Scene::SettingsTabsStore
+            );
         seed_notifications(st, scene);
         st.system = fake_system(scene);
         st.settings.game_stats = scene.game();
@@ -2383,7 +3282,9 @@ impl SelfTest {
             _ => Module::Cpu,
         };
         for (path, rgb) in SAMPLE_ICONS {
-            st.app_icons.entry(path.to_string()).or_insert_with(|| Some(sample_icon(rgb)));
+            st.app_icons
+                .entry(path.to_string())
+                .or_insert_with(|| Some(sample_icon(rgb)));
         }
         if let Some(p) = scene.page() {
             st.page = p;
@@ -2427,10 +3328,22 @@ impl SelfTest {
     /// picture of that point of the roll. Returns the frame of the ball
     /// halfway, which is the picture kept. Waits the roll out (about 1.5 s)
     /// so the app's clock never runs ahead of the real one.
-    fn sunset(&self, app: &mut App, r: &Rest, before: &Sight, scale: f32, checks: &mut Vec<Check>) -> Option<(i32, i32, Vec<u8>)> {
+    fn sunset(
+        &self,
+        app: &mut App,
+        r: &Rest,
+        before: &Sight,
+        scale: f32,
+        checks: &mut Vec<Check>,
+    ) -> Option<(i32, i32, Vec<u8>)> {
         let wait = |s: f64| std::thread::sleep(std::time::Duration::from_secs_f64(s));
         let (hour, minute) = ((HOUSE_DAY.1 / 60.0) as u8, (HOUSE_DAY.1 % 60.0) as u8);
-        let at = |lens: f32| Moment { minute: HOUSE_DAY.1, lens, clock: before.moment.clock.map(|c| Clock { hour, minute, ..c }), ..before.moment };
+        let at = |lens: f32| Moment {
+            minute: HOUSE_DAY.1,
+            lens,
+            clock: before.moment.clock.map(|c| Clock { hour, minute, ..c }),
+            ..before.moment
+        };
         let (rest, shown) = before.sizes();
         // One frame of the roll: whether it asked for another, and how much
         // of it is the picture with the ball `lens` of the way across.
@@ -2438,11 +3351,23 @@ impl SelfTest {
             let (w, h, px, _) = app.selftest_capture();
             let wants = app.selftest_frames_wanted();
             let origin = app.selftest_capture_rect();
-            let seen = picture_match(&Frame { w, h, px: &px }, app.island_body(), (origin.left, origin.top), scale, &at(lens), rest, shown);
+            let seen = picture_match(
+                &Frame { w, h, px: &px },
+                app.island_body(),
+                (origin.left, origin.top),
+                scale,
+                &at(lens),
+                rest,
+                shown,
+            );
             (wants, seen, (w, h, px))
         };
         clock::hold(Some(clock::mono()));
-        clock::hold_local(Some(LocalDateTime { hour, minute, ..r.time() }));
+        clock::hold_local(Some(LocalDateTime {
+            hour,
+            minute,
+            ..r.time()
+        }));
         let (sets_off, _, _) = look(app, 0.0);
         let t0 = app.st.now;
         wait(ROLL_S / 2.0);
@@ -2452,7 +3377,13 @@ impl SelfTest {
         clock::hold(Some(t0 + ROLL_S + 0.05));
         let (still_wants, arrived, _) = look(app, 1.0);
         clock::hold(None);
-        let said = |on: bool| if on { "asked for frames" } else { "asked for none" };
+        let said = |on: bool| {
+            if on {
+                "asked for frames"
+            } else {
+                "asked for none"
+            }
+        };
         checks.push(check(
             "diorama-roll",
             sets_off && rolling && picture_ok(halfway),
@@ -2477,7 +3408,8 @@ impl SelfTest {
                 arrived.2
             ),
         ));
-        Some(mid).filter(|(w, h, px)| *w > 0 && *h > 0 && px.len() == (*w as usize) * (*h as usize) * 4)
+        Some(mid)
+            .filter(|(w, h, px)| *w > 0 && *h > 0 && px.len() == (*w as usize) * (*h as usize) * 4)
     }
 
     fn media_session(&self, timeline: Timeline) -> MediaSession {
@@ -2501,7 +3433,9 @@ impl SelfTest {
 
     fn seed_shelf(&mut self, st: &mut AppState) {
         let home = paths::data_dir();
-        let base = std::path::absolute(&home).unwrap_or(home).join("shelf-demo");
+        let base = std::path::absolute(&home)
+            .unwrap_or(home)
+            .join("shelf-demo");
         let txt = base.join("Trip notes.txt");
         let img = base.join("Harbor sketch.png");
         let folder = base.join("Project assets");
@@ -2509,7 +3443,10 @@ impl SelfTest {
         if let Err(e) = fs::create_dir_all(&folder) {
             errors.push(format!("{}: {e}", folder.display()));
         }
-        if let Err(e) = fs::write(folder.join("readme.txt"), "Drafts and exports for the harbor poster.\n") {
+        if let Err(e) = fs::write(
+            folder.join("readme.txt"),
+            "Drafts and exports for the harbor poster.\n",
+        ) {
             errors.push(format!("readme.txt: {e}"));
         }
         if let Err(e) = fs::write(&txt, "Trip notes\nHarbor poster drafts and exports.\n") {
@@ -2521,13 +3458,23 @@ impl SelfTest {
             }
         }
         let made = [&folder, &img, &txt].iter().filter(|p| p.exists()).count();
-        self.checks.push(check("shelf-files", errors.is_empty() && made == 3, if errors.is_empty() { format!("{made} items in {}", base.display()) } else { errors.join("; ") }));
+        self.checks.push(check(
+            "shelf-files",
+            errors.is_empty() && made == 3,
+            if errors.is_empty() {
+                format!("{made} items in {}", base.display())
+            } else {
+                errors.join("; ")
+            },
+        ));
 
         // Oldest first: add_paths puts each new path at the front.
         let unix = st.unix;
         for (k, p) in [&folder, &img, &txt].into_iter().enumerate() {
             let s = p.to_string_lossy().into_owned();
-            st.store.shelf.add_paths(&[s.as_str()], unix - 3600 + k as i64 * 600);
+            st.store
+                .shelf
+                .add_paths(&[s.as_str()], unix - 3600 + k as i64 * 600);
             // Pre-seeded thumbnails keep the screenshots identical on every machine
             // (the app skips LoadThumb for paths it already has an entry for).
             let thumb = if p == &img { self.art.clone() } else { None };
@@ -2562,10 +3509,18 @@ impl SelfTest {
         // time. Scenes are numbered; those pictures come after them, by name.
         let (scene, rest, index) = match shot {
             Shot::Scene(i) => (SCENES[i], None, i + 1),
-            Shot::Rest(k) => (Scene::IdleClock, Some(&RESTS[k]), self.shots() - RESTS.len() + k + 1),
+            Shot::Rest(k) => (
+                Scene::IdleClock,
+                Some(&RESTS[k]),
+                self.shots() - RESTS.len() + k + 1,
+            ),
         };
         let label = rest.map_or_else(|| scene.name(), |r| format!("diorama-{}", r.name));
-        let name = if rest.is_some() { label.clone() } else { format!("{index:02}-{label}") };
+        let name = if rest.is_some() {
+            label.clone()
+        } else {
+            format!("{index:02}-{label}")
+        };
         let (budget, tries) = self.frame_budget(app);
         self.budget_ms = budget;
         let mut samples = Vec::with_capacity(tries);
@@ -2588,15 +3543,31 @@ impl SelfTest {
         let frame = Frame { w, h, px: &px };
         let best = samples.iter().copied().fold(f64::INFINITY, f64::min);
 
-        let mut checks = vec![check("settled", settled, format!("{:.0} ms (limit {:.0} ms)", waited * 1000.0, self.settle_limit(app) * 1000.0))];
+        let mut checks = vec![check(
+            "settled",
+            settled,
+            format!(
+                "{:.0} ms (limit {:.0} ms)",
+                waited * 1000.0,
+                self.settle_limit(app) * 1000.0
+            ),
+        )];
         let mut measured = 0;
         if w <= 0 || h <= 0 || px.len() != (w as usize) * (h as usize) * 4 {
-            checks.push(check("pixels", false, format!("{w}x{h} frame with {} bytes", px.len())));
+            checks.push(check(
+                "pixels",
+                false,
+                format!("{w}x{h} frame with {} bytes", px.len()),
+            ));
         } else if scene.rests_aside() {
             // Nothing drawn over the window under the island: the strip it
             // rests as is there only for the pointer (alpha 1/255 at most).
             let seen = px.chunks_exact(4).filter(|p| p[3] > 1).count();
-            checks.push(check("aside-invisible", seen == 0, format!("{seen} pixels drawn with alpha above 1/255")));
+            checks.push(check(
+                "aside-invisible",
+                seen == 0,
+                format!("{seen} pixels drawn with alpha above 1/255"),
+            ));
             let (mode, aside) = app.selftest_mode();
             // The Hidden look's strip: 150 wide, as short as the island gets (8).
             checks.push(check(
@@ -2611,7 +3582,9 @@ impl SelfTest {
             let pill = crate::pill::on(self.theme);
             // The Diorama theme's resting pill is its picture (for the clock,
             // the Minimal look and, the status bar being Pill's own, Status).
-            let picture = self.theme == Theme::Diorama && app.selftest_mode().0 == Mode::Idle && crate::pill::diorama::shows(&app.st);
+            let picture = self.theme == Theme::Diorama
+                && app.selftest_mode().0 == Mode::Idle
+                && crate::pill::diorama::shows(&app.st);
             let edge = if pill { body.y } else { 0.0 };
             let top = ((edge + 3.0) * scale).round() as i32;
             let [b, g, r, a] = frame.at(cx, top);
@@ -2619,16 +3592,39 @@ impl SelfTest {
                 // Glass shows what's under it, so no one ground colour: opaque is
                 // the rule, and smoked glass (no backdrop) lets the screen through.
                 let copy = app.selftest_glass_state().1;
-                let min = if copy { 254 } else { (poni_core::glass::SMOKED_OPACITY * 255.0) as u8 - 3 };
-                checks.push(check("glass-opaque", a >= min, format!("pixel ({cx}, {top}) = rgba({r}, {g}, {b}, {a}), want alpha >= {min}")));
+                let min = if copy {
+                    254
+                } else {
+                    (poni_core::glass::SMOKED_OPACITY * 255.0) as u8 - 3
+                };
+                checks.push(check(
+                    "glass-opaque",
+                    a >= min,
+                    format!("pixel ({cx}, {top}) = rgba({r}, {g}, {b}, {a}), want alpha >= {min}"),
+                ));
             } else if picture {
                 // A picture covers the island's ground: opaque is the rule
                 // here, and `diorama_checks` look at what it shows.
-                checks.push(check("diorama-opaque", a >= 254, format!("pixel ({cx}, {top}) = rgba({r}, {g}, {b}, {a}), 3 DIPs inside the picture")));
+                checks.push(check(
+                    "diorama-opaque",
+                    a >= 254,
+                    format!(
+                        "pixel ({cx}, {top}) = rgba({r}, {g}, {b}, {a}), 3 DIPs inside the picture"
+                    ),
+                ));
             } else {
                 let ground = rgb8(poni_core::look::of(self.theme).ground);
-                let off = [r, g, b].iter().zip(ground).map(|(&p, q)| p.abs_diff(q)).max().unwrap_or(0);
-                let inside = if pill { ", 3 DIPs inside the floating body" } else { "" };
+                let off = [r, g, b]
+                    .iter()
+                    .zip(ground)
+                    .map(|(&p, q)| p.abs_diff(q))
+                    .max()
+                    .unwrap_or(0);
+                let inside = if pill {
+                    ", 3 DIPs inside the floating body"
+                } else {
+                    ""
+                };
                 checks.push(check(
                     "body-opaque-ground",
                     a >= 254 && off <= 6,
@@ -2636,8 +3632,13 @@ impl SelfTest {
                 ));
             }
 
-            let corners = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)].map(|(x, y)| frame.at(x, y)[3]);
-            checks.push(check("corners-transparent", corners.iter().all(|&a| a <= 1), format!("corner alpha {corners:?}")));
+            let corners =
+                [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)].map(|(x, y)| frame.at(x, y)[3]);
+            checks.push(check(
+                "corners-transparent",
+                corners.iter().all(|&a| a <= 1),
+                format!("corner alpha {corners:?}"),
+            ));
 
             let mid = ((body.y + body.h / 2.0) * scale).floor() as i32;
             measured = frame.opaque_run(cx, mid);
@@ -2652,15 +3653,35 @@ impl SelfTest {
                 checks.push(check(
                     "expanded-width",
                     (measured as f32 - ew).abs() <= 2.0,
-                    format!("{measured} px vs settings.expanded_width {:.0} x {scale:.2} = {ew:.1} px", app.st.settings.expanded_width),
+                    format!(
+                        "{measured} px vs settings.expanded_width {:.0} x {scale:.2} = {ew:.1} px",
+                        app.st.settings.expanded_width
+                    ),
                 ));
             }
 
-            let look = if self.glass.is_some() { app.selftest_glass_state().2 } else { poni_core::look::of(self.theme) };
+            let look = if self.glass.is_some() {
+                app.selftest_glass_state().2
+            } else {
+                poni_core::look::of(self.theme)
+            };
             // Glass: away from the bright rim, which isn't content.
-            let area = if self.glass.is_some() { Rect::new(body.x + 10.0, body.y, (body.w - 20.0).max(1.0), (body.h - 10.0).max(1.0)) } else { body };
+            let area = if self.glass.is_some() {
+                Rect::new(
+                    body.x + 10.0,
+                    body.y,
+                    (body.w - 20.0).max(1.0),
+                    (body.h - 10.0).max(1.0),
+                )
+            } else {
+                body
+            };
             let lit = frame.content_pixels(area, scale, rgb8(look.ground));
-            checks.push(check("content-drawn", lit >= 20, format!("{lit} content pixels inside the island")));
+            checks.push(check(
+                "content-drawn",
+                lit >= 20,
+                format!("{lit} content pixels inside the island"),
+            ));
             // Not where the island moved: the backdrop is a page laid out
             // for the island in the middle.
             if let Some(run) = self.glass.filter(|_| !scene.moved()) {
@@ -2671,32 +3692,73 @@ impl SelfTest {
             }
             // In the Diorama theme the clock rests as the picture, and so does
             // the status bar's look (the bar itself is the Pill theme's own).
-            if self.theme == Theme::Diorama && (rest.is_some() || matches!(scene, Scene::IdleClock | Scene::IdleStatus)) {
+            if self.theme == Theme::Diorama
+                && (rest.is_some() || matches!(scene, Scene::IdleClock | Scene::IdleStatus))
+            {
                 let (mode, _) = app.selftest_mode();
-                let said = if picture { "the resting pill is the picture" } else { "the resting pill is not the picture" };
-                checks.push(check("diorama-shows", picture, format!("{mode:?} with the {:?} look: {said}", app.st.settings.idle_style)));
+                let said = if picture {
+                    "the resting pill is the picture"
+                } else {
+                    "the resting pill is not the picture"
+                };
+                checks.push(check(
+                    "diorama-shows",
+                    picture,
+                    format!(
+                        "{mode:?} with the {:?} look: {said}",
+                        app.st.settings.idle_style
+                    ),
+                ));
             }
             if let Some(r) = rest {
                 // The PC's clock is the picture's, held: the hour it shows
                 // doesn't depend on when the run is.
                 let (l, t) = (app.st.local, r.time());
-                let held = (l.year, l.month, l.day, l.hour, l.minute) == (t.year, t.month, t.day, t.hour, t.minute);
-                checks.push(check("diorama-time", held, format!("the app's clock reads {} {:02}:{:02}, the picture is of {} {:02}:{:02}", l.day_key(), l.hour, l.minute, t.day_key(), t.hour, t.minute)));
+                let held = (l.year, l.month, l.day, l.hour, l.minute)
+                    == (t.year, t.month, t.day, t.hour, t.minute);
+                checks.push(check(
+                    "diorama-time",
+                    held,
+                    format!(
+                        "the app's clock reads {} {:02}:{:02}, the picture is of {} {:02}:{:02}",
+                        l.day_key(),
+                        l.hour,
+                        l.minute,
+                        t.day_key(),
+                        t.hour,
+                        t.minute
+                    ),
+                ));
             }
             if picture {
                 let sight = Sight::of(&app.st, rest);
                 let origin = app.selftest_capture_rect();
-                diorama_checks(&frame, app.island_body(), (origin.left, origin.top), scale, &sight, crate::pill::diorama::geom(&app.st), &mut checks);
+                diorama_checks(
+                    &frame,
+                    app.island_body(),
+                    (origin.left, origin.top),
+                    scale,
+                    &sight,
+                    crate::pill::diorama::geom(&app.st),
+                    &mut checks,
+                );
                 // Nothing runs at rest: once painted, the picture waits for
                 // the minute tick. Only the rolling ball asks for frames.
                 checks.push(check(
                     "diorama-rests",
                     !wants_frames,
-                    if wants_frames { "the frame asked for another one: something keeps the resting pill drawing" } else { "the frame asked for no other: the frame clock is parked" },
+                    if wants_frames {
+                        "the frame asked for another one: something keeps the resting pill drawing"
+                    } else {
+                        "the frame asked for no other: the frame clock is parked"
+                    },
                 ));
                 if let Some(r) = rest.filter(|r| r.roll) {
                     // Kept as the picture: the ball halfway to the tree.
-                    if let Some((_, _, mid)) = self.sunset(app, r, &sight, scale, &mut checks).filter(|(mw, mh, _)| (*mw, *mh) == (w, h)) {
+                    if let Some((_, _, mid)) = self
+                        .sunset(app, r, &sight, scale, &mut checks)
+                        .filter(|(mw, mh, _)| (*mw, *mh) == (w, h))
+                    {
                         px = mid;
                     }
                 }
@@ -2704,16 +3766,30 @@ impl SelfTest {
         }
         // Frame time counts on a real GPU only (see FRAME_BUDGET_MS).
         let soft_gpu = app.selftest_software_gpu();
-        let why = if budget > FRAME_BUDGET_MS { ", Glass on a software GPU" } else { "" };
+        let why = if budget > FRAME_BUDGET_MS {
+            ", Glass on a software GPU"
+        } else {
+            ""
+        };
         let timing = format!("best {best:.2} ms of {samples:?} (budget {budget} ms{why})");
         let slow = soft_gpu && best >= budget;
         if !soft_gpu {
             checks.push(check("frame-time", best < budget, timing.clone()));
         }
-        checks.push(window_check(app.hwnd(), app.selftest_surface(), present, w, h));
+        checks.push(window_check(
+            app.hwnd(),
+            app.selftest_surface(),
+            present,
+            w,
+            h,
+        ));
         if let Some(want) = scene.page() {
             let page = app.st.page;
-            checks.push(check("page", page == want, format!("showing '{}', expected '{}'", page.key(), want.key())));
+            checks.push(check(
+                "page",
+                page == want,
+                format!("showing '{}', expected '{}'", page.key(), want.key()),
+            ));
         }
         if scene == Scene::MediaLyric {
             checks.push(lyric_line_check(&app.st));
@@ -2725,8 +3801,16 @@ impl SelfTest {
         if matches!(scene, Scene::AsidePeek | Scene::AsideHud) {
             // Stepped aside, and still what just happened shows over the window.
             let (mode, aside) = app.selftest_mode();
-            let want = if scene == Scene::AsideHud { Mode::Hud(HudTag::Volume) } else { Mode::Activity(crate::activities::Activity::Media) };
-            checks.push(check("aside-still-shows", aside && mode == want, format!("{mode:?} (stepped aside: {aside}), want {want:?}")));
+            let want = if scene == Scene::AsideHud {
+                Mode::Hud(HudTag::Volume)
+            } else {
+                Mode::Activity(crate::activities::Activity::Media)
+            };
+            checks.push(check(
+                "aside-still-shows",
+                aside && mode == want,
+                format!("{mode:?} (stepped aside: {aside}), want {want:?}"),
+            ));
         }
 
         let ok = checks.iter().all(|c| c.ok);
@@ -2748,7 +3832,13 @@ impl SelfTest {
             let back = self.glass.map(|run| {
                 let r = app.selftest_capture_rect();
                 let (_, _, sw, _) = app.selftest_surface();
-                Backdrop { dark: run.dark_page(), scale, left: r.left, top: r.top, cx_dip: sw as f32 / 2.0 / scale }
+                Backdrop {
+                    dark: run.dark_page(),
+                    scale,
+                    left: r.left,
+                    top: r.top,
+                    cx_dip: sw as f32 / 2.0 / scale,
+                }
             });
             self.queue_write(&name, w, h, px, scale, back);
         }
@@ -2776,12 +3866,27 @@ impl SelfTest {
     /// shows the page (smoked glass looks different), text reads at 4.5:1 on
     /// it, and in the flip run small glass is dark and the open island light.
     #[allow(clippy::too_many_arguments)]
-    fn glass_checks(&self, app: &mut App, scene: Scene, run: GlassRun, px: &[u8], w: i32, h: i32, body: Rect, scale: f32, checks: &mut Vec<Check>) {
+    fn glass_checks(
+        &self,
+        app: &mut App,
+        scene: Scene,
+        run: GlassRun,
+        px: &[u8],
+        w: i32,
+        h: i32,
+        body: Rect,
+        scale: f32,
+        checks: &mut Vec<Check>,
+    ) {
         let (shader, copy, look) = app.selftest_glass_state();
         let frame = Frame { w, h, px };
         let on_gpu = self.renderer != "software";
         if on_gpu {
-            checks.push(check("glass-shader", shader && copy, format!("shader drew the glass: {shader}, backdrop on the GPU: {copy}")));
+            checks.push(check(
+                "glass-shader",
+                shader && copy,
+                format!("shader drew the glass: {shader}, backdrop on the GPU: {copy}"),
+            ));
             if shader && copy {
                 let mut again = |lens: f32, use_copy: bool| {
                     app.selftest_glass_switches(lens, use_copy);
@@ -2799,17 +3904,36 @@ impl SelfTest {
                         // A pill over flat browser chrome bends only a few pixels;
                         // a lens that doesn't run moves none.
                         let n = frame.changed_in(&f, body, scale, 6);
-                        checks.push(check("glass-lens", n >= 10, format!("{n} pixels move when the lens is off")));
+                        checks.push(check(
+                            "glass-lens",
+                            n >= 10,
+                            format!("{n} pixels move when the lens is off"),
+                        ));
                     }
-                    None => checks.push(check("glass-lens", false, "the frame changed size between captures")),
+                    None => checks.push(check(
+                        "glass-lens",
+                        false,
+                        "the frame changed size between captures",
+                    )),
                 }
                 match smoked {
                     Some(f) => {
                         let n = frame.changed_in(&f, body, scale, 4);
                         let share = n as f32 / area;
-                        checks.push(check("glass-shows-backdrop", share >= 0.2, format!("{:.0} % of the island differs from smoked glass", share * 100.0)));
+                        checks.push(check(
+                            "glass-shows-backdrop",
+                            share >= 0.2,
+                            format!(
+                                "{:.0} % of the island differs from smoked glass",
+                                share * 100.0
+                            ),
+                        ));
                     }
-                    None => checks.push(check("glass-shows-backdrop", false, "the frame changed size between captures")),
+                    None => checks.push(check(
+                        "glass-shows-backdrop",
+                        false,
+                        "the frame changed size between captures",
+                    )),
                 }
             }
         }
@@ -2821,7 +3945,11 @@ impl SelfTest {
         let mut seen = px.to_vec();
         for (i, p) in seen.chunks_exact_mut(4).enumerate() {
             let (x, y) = ((i as i32 % w) + r.left, (i as i32 / w) + r.top);
-            let bg = backdrop_dip(run.dark_page(), (x as f32 + 0.5) / scale - cx_dip, (y as f32 + 0.5) / scale);
+            let bg = backdrop_dip(
+                run.dark_page(),
+                (x as f32 + 0.5) / scale - cx_dip,
+                (y as f32 + 0.5) / scale,
+            );
             let inv = 1.0 - p[3] as f32 / 255.0;
             for (k, c) in [2, 1, 0].into_iter().enumerate() {
                 p[k] = (p[k] as f32 + bg[c] as f32 * inv).round().min(255.0) as u8;
@@ -2831,19 +3959,43 @@ impl SelfTest {
         let median = Frame { w, h, px: &seen }.median_in(body, scale);
         let ink = [look.ink.r, look.ink.g, look.ink.b];
         let c = poni_core::glass::contrast(median, ink);
-        checks.push(check("glass-ink-contrast", c >= 4.5, format!("{c:.2}:1 for ink rgb{:?} on glass rgb{:?}", rgb8(look.ink), median.map(|v| (v * 255.0).round() as u8))));
+        checks.push(check(
+            "glass-ink-contrast",
+            c >= 4.5,
+            format!(
+                "{c:.2}:1 for ink rgb{:?} on glass rgb{:?}",
+                rgb8(look.ink),
+                median.map(|v| (v * 255.0).round() as u8)
+            ),
+        ));
         if run == GlassRun::Flip {
             let want_light = scene.expanded();
             checks.push(check(
                 "glass-flip",
                 look.light == want_light,
-                format!("{} glass over the dark page in light mode (want {})", if look.light { "light" } else { "dark" }, if want_light { "light: the open island follows the mode" } else { "dark: small glass flips" }),
+                format!(
+                    "{} glass over the dark page in light mode (want {})",
+                    if look.light { "light" } else { "dark" },
+                    if want_light {
+                        "light: the open island follows the mode"
+                    } else {
+                        "dark: small glass flips"
+                    }
+                ),
             ));
         }
     }
 
     /// Composite + alpha PNGs, encoded off the UI thread.
-    fn queue_write(&mut self, name: &str, w: i32, h: i32, px: Vec<u8>, scale: f32, back: Option<Backdrop>) {
+    fn queue_write(
+        &mut self,
+        name: &str,
+        w: i32,
+        h: i32,
+        px: Vec<u8>,
+        scale: f32,
+        back: Option<Backdrop>,
+    ) {
         let dir = self.dir.clone();
         let base = name.to_string();
         let job = move || {
@@ -2853,14 +4005,26 @@ impl SelfTest {
                 errors.push(e);
             }
             let alpha: Vec<u8> = px.as_chunks::<4>().0.iter().map(|p| p[3]).collect();
-            if let Err(e) = png::save_gray(dir.join(format!("{base}-alpha.png")), w as u32, h as u32, &alpha) {
+            if let Err(e) = png::save_gray(
+                dir.join(format!("{base}-alpha.png")),
+                w as u32,
+                h as u32,
+                &alpha,
+            ) {
                 errors.push(e);
             }
             errors
         };
-        match std::thread::Builder::new().name("poni-selftest-png".into()).spawn(job) {
+        match std::thread::Builder::new()
+            .name("poni-selftest-png".into())
+            .spawn(job)
+        {
             Ok(handle) => self.writes.push((name.to_string(), handle)),
-            Err(e) => self.checks.push(check("png-writer", false, format!("{name}: could not start a writer thread: {e}"))),
+            Err(e) => self.checks.push(check(
+                "png-writer",
+                false,
+                format!("{name}: could not start a writer thread: {e}"),
+            )),
         }
     }
 
@@ -2879,31 +4043,58 @@ impl SelfTest {
             }
         }
         let detail = if write_errors.is_empty() {
-            format!("{written} screenshot pairs written in {:.0} ms after the last capture", waited * 1000.0)
+            format!(
+                "{written} screenshot pairs written in {:.0} ms after the last capture",
+                waited * 1000.0
+            )
         } else {
             write_errors.join("; ")
         };
-        self.checks.push(check("png-files", writers_done && write_errors.is_empty(), detail));
+        self.checks.push(check(
+            "png-files",
+            writers_done && write_errors.is_empty(),
+            detail,
+        ));
         // The GPU renderer presents every frame through DXGI, so the count
         // must have seen them; the software renderer presents none.
         if let Some(f) = self.frames.take() {
             let n = f.total();
             drop(f);
             if self.renderer != "software" {
-                self.checks.push(check("frame-count", n > 0, format!("{n} of Oyenza Studio's own frames counted from Windows' frame log")));
+                self.checks.push(check(
+                    "frame-count",
+                    n > 0,
+                    format!("{n} of Oyenza Studio's own frames counted from Windows' frame log"),
+                ));
             } else {
-                crate::pinfo!("selftest: frame count saw {n} frames (the software renderer presents none)");
+                crate::pinfo!(
+                    "selftest: frame count saw {n} frames (the software renderer presents none)"
+                );
             }
         }
 
         let shots = self.shots();
         if self.states.len() < shots {
-            self.checks.push(check("states-visited", false, format!("{} of {shots} states captured", self.states.len())));
+            self.checks.push(check(
+                "states-visited",
+                false,
+                format!("{} of {shots} states captured", self.states.len()),
+            ));
         }
 
-        let mut failed: Vec<String> = self.checks.iter().filter(|c| !c.ok).map(|c| c.name.clone()).collect();
+        let mut failed: Vec<String> = self
+            .checks
+            .iter()
+            .filter(|c| !c.ok)
+            .map(|c| c.name.clone())
+            .collect();
         for s in &self.states {
-            failed.extend(s.checks.iter().filter(|c| !c.ok).map(|c| format!("{}: {}", s.name, c.name)));
+            failed.extend(
+                s.checks
+                    .iter()
+                    .filter(|c| !c.ok)
+                    .map(|c| format!("{}: {}", s.name, c.name)),
+            );
         }
         let ok = failed.is_empty();
         let mut code = if ok { 0 } else { 1 };
@@ -2926,7 +4117,10 @@ impl SelfTest {
             states: std::mem::take(&mut self.states),
         };
         let path = self.dir.join("report.json");
-        match serde_json::to_vec_pretty(&report).map_err(|e| e.to_string()).and_then(|j| fs::write(&path, j).map_err(|e| e.to_string())) {
+        match serde_json::to_vec_pretty(&report)
+            .map_err(|e| e.to_string())
+            .and_then(|j| fs::write(&path, j).map_err(|e| e.to_string()))
+        {
             Ok(()) => crate::pinfo!("selftest: report written to {}", path.display()),
             Err(e) => {
                 crate::pwarn!("selftest: could not write {}: {e}", path.display());
@@ -2934,24 +4128,40 @@ impl SelfTest {
             }
         }
         if !report.slow_frames.is_empty() {
-            crate::pinfo!("selftest: {} slow frame(s) on a software GPU, reported and not counted", report.slow_frames.len());
+            crate::pinfo!(
+                "selftest: {} slow frame(s) on a software GPU, reported and not counted",
+                report.slow_frames.len()
+            );
         }
         if ok {
-            crate::pinfo!("selftest: all {} states passed in {total_ms} ms", report.states_total);
+            crate::pinfo!(
+                "selftest: all {} states passed in {total_ms} ms",
+                report.states_total
+            );
         } else {
-            crate::pwarn!("selftest: {} check(s) failed in {total_ms} ms: {}", failed.len(), failed.join(", "));
+            crate::pwarn!(
+                "selftest: {} check(s) failed in {total_ms} ms: {}",
+                failed.len(),
+                failed.join(", ")
+            );
         }
         code
     }
 
     /// Remove screenshots and the report from an earlier run (only our own file names).
     fn clear_old_outputs(&self) {
-        let Ok(entries) = fs::read_dir(&self.dir) else { return };
+        let Ok(entries) = fs::read_dir(&self.dir) else {
+            return;
+        };
         for e in entries.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
             let b = name.as_bytes();
             let ours = name == "report.json"
-                || (name.ends_with(".png") && b.len() > 3 && b[0].is_ascii_digit() && b[1].is_ascii_digit() && b[2] == b'-')
+                || (name.ends_with(".png")
+                    && b.len() > 3
+                    && b[0].is_ascii_digit()
+                    && b[1].is_ascii_digit()
+                    && b[2] == b'-')
                 || (name.ends_with(".png") && name.starts_with("diorama-"));
             if ours && e.path().is_file() {
                 if let Err(err) = fs::remove_file(e.path()) {
@@ -3024,16 +4234,26 @@ fn make_art(size: u32) -> Vec<u8> {
 }
 
 fn rgb(hex: u32) -> [f32; 3] {
-    [((hex >> 16) & 0xff) as f32 / 255.0, ((hex >> 8) & 0xff) as f32 / 255.0, (hex & 0xff) as f32 / 255.0]
+    [
+        ((hex >> 16) & 0xff) as f32 / 255.0,
+        ((hex >> 8) & 0xff) as f32 / 255.0,
+        (hex & 0xff) as f32 / 255.0,
+    ]
 }
 
 fn mix(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
     let t = t.clamp(0.0, 1.0);
-    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    ]
 }
 
 fn in_triangle(p: (f32, f32), a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> bool {
-    let edge = |p0: (f32, f32), p1: (f32, f32)| (p1.0 - p0.0) * (p.1 - p0.1) - (p1.1 - p0.1) * (p.0 - p0.0);
+    let edge = |p0: (f32, f32), p1: (f32, f32)| {
+        (p1.0 - p0.0) * (p.1 - p0.1) - (p1.1 - p0.1) * (p.0 - p0.0)
+    };
     let (d1, d2, d3) = (edge(a, b), edge(b, c), edge(c, a));
     let neg = d1 < 0.0 || d2 < 0.0 || d3 < 0.0;
     let pos = d1 > 0.0 || d2 > 0.0 || d3 > 0.0;
@@ -3046,7 +4266,11 @@ fn art_sample(u: f32, v: f32) -> [f32; 3] {
     let mut c = if v < HORIZON {
         mix(rgb(0xFFB37A), rgb(0xE0607E), v / HORIZON)
     } else {
-        mix(rgb(0x2F6F8F), rgb(0x13233F), (v - HORIZON) / (1.0 - HORIZON))
+        mix(
+            rgb(0x2F6F8F),
+            rgb(0x13233F),
+            (v - HORIZON) / (1.0 - HORIZON),
+        )
     };
     let d = ((u - sun_x).powi(2) + (v - sun_y).powi(2)).sqrt();
     if v < HORIZON && d < sun_r {
@@ -3071,7 +4295,11 @@ fn art_sample(u: f32, v: f32) -> [f32; 3] {
         c = mix(paper, rgb(0xD8D0C2), ((v - 0.70) / 0.08) * 0.5);
     }
     if sail {
-        c = if u > 0.34 { mix(paper, rgb(0xD9D2C4), 0.55) } else { paper };
+        c = if u > 0.34 {
+            mix(paper, rgb(0xD9D2C4), 0.55)
+        } else {
+            paper
+        };
     }
     c
 }
@@ -3150,7 +4378,12 @@ impl Frame<'_> {
         for y in (body.y * scale).floor().max(0.0) as i32..y1.min(self.h) {
             for x in x0..x1.min(self.w) {
                 let [b, g, r, a] = self.at(x, y);
-                let off = [r, g, b].iter().zip(ground).map(|(&p, q)| p.abs_diff(q)).max().unwrap_or(0);
+                let off = [r, g, b]
+                    .iter()
+                    .zip(ground)
+                    .map(|(&p, q)| p.abs_diff(q))
+                    .max()
+                    .unwrap_or(0);
                 if a >= 200 && off >= 140 {
                     n += 1;
                 }
@@ -3163,8 +4396,14 @@ impl Frame<'_> {
 impl Frame<'_> {
     /// Pixels inside `body` where `other` differs by at least `min` in some channel.
     fn changed_in(&self, other: &[u8], body: Rect, scale: f32, min: u8) -> usize {
-        let (x0, y0) = ((body.x * scale).floor().max(0.0) as i32, (body.y * scale).floor().max(0.0) as i32);
-        let (x1, y1) = (((body.x + body.w) * scale).ceil() as i32, ((body.y + body.h) * scale).ceil() as i32);
+        let (x0, y0) = (
+            (body.x * scale).floor().max(0.0) as i32,
+            (body.y * scale).floor().max(0.0) as i32,
+        );
+        let (x1, y1) = (
+            ((body.x + body.w) * scale).ceil() as i32,
+            ((body.y + body.h) * scale).ceil() as i32,
+        );
         let mut n = 0;
         for y in y0..y1.min(self.h) {
             for x in x0..x1.min(self.w) {
@@ -3181,7 +4420,12 @@ impl Frame<'_> {
 
     /// What rows `0..rows` hold (see [`GapScan`]).
     fn gap_scan(&self, rows: i32) -> GapScan {
-        let mut g = GapScan { most: 0, edge: 0, coloured: 0, hit: 0 };
+        let mut g = GapScan {
+            most: 0,
+            edge: 0,
+            coloured: 0,
+            hit: 0,
+        };
         for y in 0..rows.min(self.h) {
             for x in 0..self.w {
                 let [b, gr, r, a] = self.at(x, y);
@@ -3211,7 +4455,9 @@ impl Frame<'_> {
         for y in 0..self.h {
             for x in 0..self.w {
                 if self.at(x, y)[3] >= min {
-                    b = Some(b.map_or((x, y, x + 1, y + 1), |(x0, y0, x1, y1)| (x0.min(x), y0.min(y), x1.max(x + 1), y1.max(y + 1))));
+                    b = Some(b.map_or((x, y, x + 1, y + 1), |(x0, y0, x1, y1)| {
+                        (x0.min(x), y0.min(y), x1.max(x + 1), y1.max(y + 1))
+                    }));
                 }
             }
         }
@@ -3221,8 +4467,14 @@ impl Frame<'_> {
     /// The median colour (sRGB, 0..=1, per channel) inside `body`, sampled
     /// every other pixel.
     fn median_in(&self, body: Rect, scale: f32) -> [f32; 3] {
-        let (x0, y0) = ((body.x * scale).floor().max(0.0) as i32, (body.y * scale).floor().max(0.0) as i32);
-        let (x1, y1) = (((body.x + body.w) * scale).ceil() as i32, ((body.y + body.h) * scale).ceil() as i32);
+        let (x0, y0) = (
+            (body.x * scale).floor().max(0.0) as i32,
+            (body.y * scale).floor().max(0.0) as i32,
+        );
+        let (x1, y1) = (
+            ((body.x + body.w) * scale).ceil() as i32,
+            ((body.y + body.h) * scale).ceil() as i32,
+        );
         let mut ch: [Vec<u8>; 3] = [Vec::new(), Vec::new(), Vec::new()];
         for y in (y0..y1.min(self.h)).step_by(2) {
             for x in (x0..x1.min(self.w)).step_by(2) {
@@ -3246,7 +4498,13 @@ impl Frame<'_> {
 
 /// The island window must be a visible, top-most, non-activating layered
 /// tool window, laid out where the app placed it, with the frame inside it.
-fn window_check(hwnd: HWND, surface: (i32, i32, i32, i32), present: (i32, i32), w: i32, h: i32) -> Check {
+fn window_check(
+    hwnd: HWND,
+    surface: (i32, i32, i32, i32),
+    present: (i32, i32),
+    w: i32,
+    h: i32,
+) -> Check {
     let need = WS_EX_LAYERED.0 | WS_EX_TOPMOST.0 | WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0;
     let (visible, ex, rect) = unsafe {
         let visible = IsWindowVisible(hwnd).as_bool();
@@ -3258,10 +4516,26 @@ fn window_check(hwnd: HWND, surface: (i32, i32, i32, i32), present: (i32, i32), 
     let styles_ok = ex & need == need;
     let (sx, sy, sw, sh) = surface;
     let rect_ok = rect.is_some_and(|r| {
-        r.left == sx && r.top == sy && r.right - r.left == sw && r.bottom - r.top == sh
-            && present.0 >= r.left && present.1 >= r.top && present.0 + w <= r.right && present.1 + h <= r.bottom
+        r.left == sx
+            && r.top == sy
+            && r.right - r.left == sw
+            && r.bottom - r.top == sh
+            && present.0 >= r.left
+            && present.1 >= r.top
+            && present.0 + w <= r.right
+            && present.1 + h <= r.bottom
     });
-    let rect_s = rect.map(|r| format!("({}, {}) {}x{}", r.left, r.top, r.right - r.left, r.bottom - r.top)).unwrap_or_else(|| "unavailable".into());
+    let rect_s = rect
+        .map(|r| {
+            format!(
+                "({}, {}) {}x{}",
+                r.left,
+                r.top,
+                r.right - r.left,
+                r.bottom - r.top
+            )
+        })
+        .unwrap_or_else(|| "unavailable".into());
     check(
         "window",
         visible && styles_ok && rect_ok,
@@ -3335,12 +4609,22 @@ fn lyric_line_check(st: &AppState) -> Check {
         return check("lyric-line", false, "no music playing");
     };
     let pos = m.timeline.position_at(st.now);
-    let lyrics = st.lyrics.lyrics.as_ref().filter(|_| st.lyrics.track_key == m.track_key);
+    let lyrics = st
+        .lyrics
+        .lyrics
+        .as_ref()
+        .filter(|_| st.lyrics.track_key == m.track_key);
     match lyrics.and_then(|l| l.line_index_at(pos).map(|k| (k, l.lines[k].text.trim()))) {
-        Some((k, text)) if !text.is_empty() => {
-            check("lyric-line", true, format!("line {} \"{text}\" sung at {pos:.1} s", k + 1))
-        }
-        Some((k, _)) => check("lyric-line", false, format!("line {} at {pos:.1} s has no words", k + 1)),
+        Some((k, text)) if !text.is_empty() => check(
+            "lyric-line",
+            true,
+            format!("line {} \"{text}\" sung at {pos:.1} s", k + 1),
+        ),
+        Some((k, _)) => check(
+            "lyric-line",
+            false,
+            format!("line {} at {pos:.1} s has no words", k + 1),
+        ),
         None => check("lyric-line", false, format!("no synced line at {pos:.1} s")),
     }
 }
@@ -3381,7 +4665,13 @@ struct Backdrop {
 /// Frame over a soft wallpaper-like gradient (or, in the Glass theme, the
 /// page under the island), with room around it, the way the island hangs from
 /// the top of a desktop. Returns straight RGBA.
-fn composite(w: usize, h: usize, pbgra: &[u8], scale: f32, back: Option<Backdrop>) -> (u32, u32, Vec<u8>) {
+fn composite(
+    w: usize,
+    h: usize,
+    pbgra: &[u8],
+    scale: f32,
+    back: Option<Backdrop>,
+) -> (u32, u32, Vec<u8>) {
     let pad_x = (48.0 * scale).round().max(0.0) as usize;
     let pad_b = (40.0 * scale).round().max(0.0) as usize;
     let (ow, oh) = (w + 2 * pad_x, h + pad_b);
@@ -3397,7 +4687,8 @@ fn composite(w: usize, h: usize, pbgra: &[u8], scale: f32, back: Option<Backdrop
                 Some(b) => {
                     let wx = (b.left + x as i32 - pad_x as i32) as f32 + 0.5;
                     let wy = (b.top + y as i32) as f32 + 0.5;
-                    backdrop_dip(b.dark, wx / b.scale - b.cx_dip, wy / b.scale).map(|c| c as f32 / 255.0)
+                    backdrop_dip(b.dark, wx / b.scale - b.cx_dip, wy / b.scale)
+                        .map(|c| c as f32 / 255.0)
                 }
                 None => mix(left, right, x as f32 * fx),
             };
@@ -3406,7 +4697,11 @@ fn composite(w: usize, h: usize, pbgra: &[u8], scale: f32, back: Option<Backdrop
                 let o = (y * w + (x - pad_x)) * 4;
                 if let Some(p) = pbgra.get(o..o + 4) {
                     let inv = 1.0 - p[3] as f32 / 255.0;
-                    c = [p[2] as f32 + c[0] * inv, p[1] as f32 + c[1] * inv, p[0] as f32 + c[2] * inv];
+                    c = [
+                        p[2] as f32 + c[0] * inv,
+                        p[1] as f32 + c[1] * inv,
+                        p[0] as f32 + c[2] * inv,
+                    ];
                 }
             }
             let o = (y * ow + x) * 4;
@@ -3440,7 +4735,10 @@ enum GlassRun {
 
 impl GlassRun {
     fn from_env() -> Self {
-        match std::env::var("PONI_SELFTEST_GLASS").map(|v| v.trim().to_ascii_lowercase()).as_deref() {
+        match std::env::var("PONI_SELFTEST_GLASS")
+            .map(|v| v.trim().to_ascii_lowercase())
+            .as_deref()
+        {
             Ok("dark") => GlassRun::Dark,
             Ok("flip") => GlassRun::Flip,
             _ => GlassRun::Light,
@@ -3462,7 +4760,11 @@ fn glass_backdrop(dark: bool, w: i32, h: i32, scale: f32) -> Vec<u8> {
     let mut px = vec![0u8; (w * h * 4) as usize];
     for y in 0..h {
         for x in 0..w {
-            let c = backdrop_dip(dark, (x as f32 + 0.5) / scale - cx, (y as f32 + 0.5) / scale);
+            let c = backdrop_dip(
+                dark,
+                (x as f32 + 0.5) / scale - cx,
+                (y as f32 + 0.5) / scale,
+            );
             let o = ((y * w + x) * 4) as usize;
             px[o..o + 4].copy_from_slice(&[c[2], c[1], c[0], 255]);
         }
@@ -3501,15 +4803,42 @@ fn mix8(a: [u8; 3], b: [u8; 3], t: f32) -> [u8; 3] {
     [0, 1, 2].map(|i| (a[i] as f32 + (b[i] as f32 - a[i] as f32) * t).round() as u8)
 }
 
-const FAVICONS: [[u8; 3]; 6] = [[232, 69, 60], [240, 137, 46], [26, 115, 232], [24, 128, 56], [147, 52, 230], [95, 99, 104]];
+const FAVICONS: [[u8; 3]; 6] = [
+    [232, 69, 60],
+    [240, 137, 46],
+    [26, 115, 232],
+    [24, 128, 56],
+    [147, 52, 230],
+    [95, 99, 104],
+];
 
 /// A browser's tab strip and toolbar (light or dark), `y` < 85 DIPs. Tabs
 /// are 228 DIPs wide, the active one just left of the island's centre.
 fn browser_chrome(dark: bool, x: f32, y: f32) -> [u8; 3] {
     let (strip, active_bg, sep, text, text_dim, bar, pill, url, url_dim) = if dark {
-        ([0x20, 0x21, 0x24], [0x35, 0x36, 0x3A], [0x5F, 0x63, 0x68], [0xE8, 0xEA, 0xED], [0xBD, 0xC1, 0xC6], [0x35, 0x36, 0x3A], [0x20, 0x21, 0x24], [0xE8, 0xEA, 0xED], [0x9A, 0xA0, 0xA6])
+        (
+            [0x20, 0x21, 0x24],
+            [0x35, 0x36, 0x3A],
+            [0x5F, 0x63, 0x68],
+            [0xE8, 0xEA, 0xED],
+            [0xBD, 0xC1, 0xC6],
+            [0x35, 0x36, 0x3A],
+            [0x20, 0x21, 0x24],
+            [0xE8, 0xEA, 0xED],
+            [0x9A, 0xA0, 0xA6],
+        )
     } else {
-        ([0xDF, 0xE3, 0xE8], [0xFF, 0xFF, 0xFF], [0xA9, 0xAD, 0xB3], [0x20, 0x21, 0x24], [0x3C, 0x40, 0x43], [0xFF, 0xFF, 0xFF], [0xF1, 0xF3, 0xF4], [0x20, 0x21, 0x24], [0x5F, 0x63, 0x68])
+        (
+            [0xDF, 0xE3, 0xE8],
+            [0xFF, 0xFF, 0xFF],
+            [0xA9, 0xAD, 0xB3],
+            [0x20, 0x21, 0x24],
+            [0x3C, 0x40, 0x43],
+            [0xFF, 0xFF, 0xFF],
+            [0xF1, 0xF3, 0xF4],
+            [0x20, 0x21, 0x24],
+            [0x5F, 0x63, 0x68],
+        )
     };
     if y < 41.0 {
         let k = ((x + 150.0) / 228.0).floor() as i32;
@@ -3530,7 +4859,8 @@ fn browser_chrome(dark: bool, x: f32, y: f32) -> [u8; 3] {
     if !dark && y >= 84.0 {
         return [0xE3, 0xE3, 0xE3];
     }
-    let in_pill = (47.0..79.0).contains(&y) && (x.abs() < 544.0 || (x.abs() - 544.0).powi(2) + (y - 63.0).powi(2) < 256.0);
+    let in_pill = (47.0..79.0).contains(&y)
+        && (x.abs() < 544.0 || (x.abs() - 544.0).powi(2) + (y - 63.0).powi(2) < 256.0);
     if in_pill {
         if (59.0..67.0).contains(&y) && on_word(x, -500.0, -60.0, 77) {
             return url;
@@ -3554,7 +4884,9 @@ fn backdrop_dip(dark: bool, x: f32, y: f32) -> [u8; 3] {
     if !dark {
         if y < 137.0 {
             let ink = [0x20, 0x21, 0x24];
-            if ((104.0..118.0).contains(&y) && on_word(x, -672.0, -570.0, 5)) || ((107.0..115.0).contains(&y) && on_word(x, -500.0, 120.0, 13)) {
+            if ((104.0..118.0).contains(&y) && on_word(x, -672.0, -570.0, 5))
+                || ((107.0..115.0).contains(&y) && on_word(x, -500.0, 120.0, 13))
+            {
                 return ink;
             }
             if (131.0..133.0).contains(&y) && (-500.0..-452.0).contains(&x) {
@@ -3591,7 +4923,11 @@ fn backdrop_dip(dark: bool, x: f32, y: f32) -> [u8; 3] {
         }
         if (94.0..132.0).contains(&y) && x.abs() < 270.0 {
             let ring = y < 95.0 || y >= 131.0 || x.abs() >= 269.0;
-            c = if ring { [0x30, 0x30, 0x30] } else { [0x12, 0x12, 0x12] };
+            c = if ring {
+                [0x30, 0x30, 0x30]
+            } else {
+                [0x12, 0x12, 0x12]
+            };
             if (109.0..117.0).contains(&y) && on_word(x, -250.0, -180.0, 41) {
                 c = [0x88, 0x88, 0x88];
             }
@@ -3601,13 +4937,21 @@ fn backdrop_dip(dark: bool, x: f32, y: f32) -> [u8; 3] {
     // The video: a sunset sky, hills, water and a skyline.
     let t = (y - 141.0) / 90.0;
     let u = (x + 720.0) / 1440.0;
-    let mut c = mix8(mix8([255, 172, 120], [232, 160, 150], u), [150, 140, 175], t);
+    let mut c = mix8(
+        mix8([255, 172, 120], [232, 160, 150], u),
+        [150, 140, 175],
+        t,
+    );
     let hills = 205.0 + 12.0 * (x * 0.011).sin() + 7.0 * (x * 0.027 + 1.3).sin();
     if y > hills && y < 236.0 {
         c = mix8([96, 108, 140], [120, 128, 160], (y - hills) / 30.0);
     }
     if (236.0..248.0).contains(&y) {
-        c = mix8([196, 170, 176], [228, 196, 186], ((x * 0.09).sin() * 0.5 + 0.5) * 0.6);
+        c = mix8(
+            [196, 170, 176],
+            [228, 196, 186],
+            ((x * 0.09).sin() * 0.5 + 0.5) * 0.6,
+        );
     }
     let b = ((x + 2000.0) / 14.0).floor() as i32;
     let bx = (x + 2000.0).rem_euclid(14.0);
@@ -3634,10 +4978,20 @@ mod tests {
 
     /// The app's state in the Diorama picture `r`, as `apply_rest` leaves it.
     fn state(r: &Rest) -> AppState {
-        let mut st = AppState::new(Settings { theme: Theme::Diorama, ..Settings::default() }, Store::default());
+        let mut st = AppState::new(
+            Settings {
+                theme: Theme::Diorama,
+                ..Settings::default()
+            },
+            Store::default(),
+        );
         st.local = r.time();
         st.settings.use_24h = !r.h12;
-        st.settings.idle_style = if r.minimal { IdleStyle::Minimal } else { IdleStyle::Clock };
+        st.settings.idle_style = if r.minimal {
+            IdleStyle::Minimal
+        } else {
+            IdleStyle::Clock
+        };
         st.power = r.power();
         st
     }
@@ -3649,20 +5003,54 @@ mod tests {
     /// starts at the window's pixel `origin` and keeps 20 DIPs to the right
     /// of the pill and below it. Returns the frame's size and pixels, and
     /// the body in the window.
-    fn drawn_at(m: &Moment, rest: (f32, f32), shown: (f32, f32), radius: f32, scale: f32, cx: f32, origin: (i32, i32)) -> (i32, i32, Vec<u8>, Rect) {
+    fn drawn_at(
+        m: &Moment,
+        rest: (f32, f32),
+        shown: (f32, f32),
+        radius: f32,
+        scale: f32,
+        cx: f32,
+        origin: (i32, i32),
+    ) -> (i32, i32, Vec<u8>, Rect) {
         // Under the pointer the pill reaches 2 DIPs up into its 8 DIP gap.
-        let body = Rect::new(cx - shown.0 / 2.0, if shown.1 > rest.1 { 6.0 } else { 8.0 }, shown.0, shown.1);
+        let body = Rect::new(
+            cx - shown.0 / 2.0,
+            if shown.1 > rest.1 { 6.0 } else { 8.0 },
+            shown.0,
+            shown.1,
+        );
         let at = crate::pill::shape::snap(body, scale);
-        let p = studio_diorama::render(m, &View { w: at.w, h: at.h, rest_w: rest.0, rest_h: rest.1, scale });
-        let (w, h) = (((body.right() + 20.0) * scale).ceil() as i32 - origin.0, ((body.bottom() + 20.0) * scale).ceil() as i32 - origin.1);
-        let (x0, y0) = ((at.x * scale).round() as i32 - origin.0, (at.y * scale).round() as i32 - origin.1);
+        let p = studio_diorama::render(
+            m,
+            &View {
+                w: at.w,
+                h: at.h,
+                rest_w: rest.0,
+                rest_h: rest.1,
+                scale,
+            },
+        );
+        let (w, h) = (
+            ((body.right() + 20.0) * scale).ceil() as i32 - origin.0,
+            ((body.bottom() + 20.0) * scale).ceil() as i32 - origin.1,
+        );
+        let (x0, y0) = (
+            (at.x * scale).round() as i32 - origin.0,
+            (at.y * scale).round() as i32 - origin.1,
+        );
         let mut px = vec![0u8; (w * h * 4) as usize];
         for j in 0..p.h as i32 {
             for i in 0..p.w as i32 {
                 let (x, y) = ((i as f32 + 0.5) / scale, (j as f32 + 0.5) / scale);
-                let (ax, ay) = (x.clamp(radius, at.w - radius), y.clamp(radius, at.h - radius));
+                let (ax, ay) = (
+                    x.clamp(radius, at.w - radius),
+                    y.clamp(radius, at.h - radius),
+                );
                 if (x - ax).hypot(y - ay) <= radius {
-                    let (to, from) = ((((y0 + j) * w + x0 + i) * 4) as usize, ((j as u32 * p.w + i as u32) * 4) as usize);
+                    let (to, from) = (
+                        (((y0 + j) * w + x0 + i) * 4) as usize,
+                        ((j as u32 * p.w + i as u32) * 4) as usize,
+                    );
                     px[to..to + 4].copy_from_slice(&p.bgra[from..from + 4]);
                 }
             }
@@ -3671,14 +5059,24 @@ mod tests {
     }
 
     /// [`drawn_at`] with the frame at the window's corner, 20 DIPs left of the pill.
-    fn drawn(m: &Moment, rest: (f32, f32), shown: (f32, f32), radius: f32, scale: f32) -> (i32, i32, Vec<u8>, Rect) {
+    fn drawn(
+        m: &Moment,
+        rest: (f32, f32),
+        shown: (f32, f32),
+        radius: f32,
+        scale: f32,
+    ) -> (i32, i32, Vec<u8>, Rect) {
         drawn_at(m, rest, shown, radius, scale, 20.0 + shown.0 / 2.0, (0, 0))
     }
 
     /// The Diorama checks that fail for the picture `r` when the frame is
     /// `change`d from what the app draws: `change` is given the moment, the
     /// size and the radius to draw (and no pixels yet), then the pixels.
-    fn failing(r: &Rest, scale: f32, change: impl Fn(&mut Moment, &mut (f32, f32), &mut f32, &mut Vec<u8>)) -> Vec<String> {
+    fn failing(
+        r: &Rest,
+        scale: f32,
+        change: impl Fn(&mut Moment, &mut (f32, f32), &mut f32, &mut Vec<u8>),
+    ) -> Vec<String> {
         let st = state(r);
         let sight = Sight::of(&st, Some(r));
         let (rest, mut shown) = sight.sizes();
@@ -3688,30 +5086,83 @@ mod tests {
         let (w, h, mut px, body) = drawn(&m, rest, shown, radius, scale);
         change(&mut m, &mut shown, &mut radius, &mut px);
         let mut checks = Vec::new();
-        diorama_checks(&Frame { w, h, px: &px }, body, (0, 0), scale, &sight, crate::pill::diorama::geom(&st), &mut checks);
+        diorama_checks(
+            &Frame { w, h, px: &px },
+            body,
+            (0, 0),
+            scale,
+            &sight,
+            crate::pill::diorama::geom(&st),
+            &mut checks,
+        );
         // Every picture is measured, looked at against the crate's, and has
         // its frame's colour judged (the rolling ball's is the picture after).
-        for name in ["diorama-size", "diorama-capsule", "diorama-frame", "diorama-picture"] {
-            assert!(checks.iter().any(|c| c.name == name), "{}: no {name} check", r.name);
+        for name in [
+            "diorama-size",
+            "diorama-capsule",
+            "diorama-frame",
+            "diorama-picture",
+        ] {
+            assert!(
+                checks.iter().any(|c| c.name == name),
+                "{}: no {name} check",
+                r.name
+            );
         }
-        checks.into_iter().filter(|c| !c.ok).map(|c| format!("{}: {}", c.name, c.detail)).collect()
+        checks
+            .into_iter()
+            .filter(|c| !c.ok)
+            .map(|c| format!("{}: {}", c.name, c.detail))
+            .collect()
     }
 
     fn rest(name: &str) -> &'static Rest {
-        RESTS.iter().find(|r| r.name == name).expect("a Diorama picture of that name")
+        RESTS
+            .iter()
+            .find(|r| r.name == name)
+            .expect("a Diorama picture of that name")
     }
 
     #[test]
     fn the_diorama_pictures_are_the_hours_the_widths_the_pointer_and_the_roll() {
         let at = |name: &str| (rest(name).hour, rest(name).minute);
         assert_eq!(
-            [at("dawn"), at("morning"), at("noon"), at("golden-hour"), at("dusk"), at("night"), at("small-hours"), at("12-hour")],
-            [(6, 10), (10, 8), (12, 30), (17, 40), (18, 20), (21, 30), (2, 30), (17, 5)]
+            [
+                at("dawn"),
+                at("morning"),
+                at("noon"),
+                at("golden-hour"),
+                at("dusk"),
+                at("night"),
+                at("small-hours"),
+                at("12-hour")
+            ],
+            [
+                (6, 10),
+                (10, 8),
+                (12, 30),
+                (17, 40),
+                (18, 20),
+                (21, 30),
+                (2, 30),
+                (17, 5)
+            ]
         );
         // Each is a file of its own: lower-case words with hyphens.
         for (k, r) in RESTS.iter().enumerate() {
-            assert!(RESTS[..k].iter().all(|q| q.name != r.name), "{} twice", r.name);
-            assert!(!r.name.is_empty() && r.name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'), "{}", r.name);
+            assert!(
+                RESTS[..k].iter().all(|q| q.name != r.name),
+                "{} twice",
+                r.name
+            );
+            assert!(
+                !r.name.is_empty()
+                    && r.name
+                        .bytes()
+                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
+                "{}",
+                r.name
+            );
         }
         // The widths the pill has: 100, 112 with a 12-hour clock or a badge, 124 with both, 80 without a clock.
         let wide = |name: &str| Sight::of(&state(rest(name)), Some(rest(name))).sizes();
@@ -3726,14 +5177,22 @@ mod tests {
         // The roll holds the app's clock, so it is the last, a minute before the house's sunset.
         let last = RESTS.last().expect("pictures");
         assert!(last.roll && RESTS.iter().filter(|r| r.roll).count() == 1);
-        assert_eq!((last.hour as f32 * 60.0 + last.minute as f32 + 1.0, DAY_ZERO), (HOUSE_DAY.1, days_from_civil(2000, 1, 1)));
+        assert_eq!(
+            (last.hour as f32 * 60.0 + last.minute as f32 + 1.0, DAY_ZERO),
+            (HOUSE_DAY.1, days_from_civil(2000, 1, 1))
+        );
     }
 
     #[test]
     fn every_diorama_picture_passes_its_checks_as_the_crate_paints_it() {
         for r in &RESTS {
             for scale in [1.0, 1.25, 1.5, 2.0, 4.0] {
-                assert_eq!(failing(r, scale, |_, _, _, _| {}), Vec::<String>::new(), "{} at {scale}", r.name);
+                assert_eq!(
+                    failing(r, scale, |_, _, _, _| {}),
+                    Vec::<String>::new(),
+                    "{} at {scale}",
+                    r.name
+                );
             }
         }
         // The sky is judged where the hour leaves no doubt, the lift under the pointer.
@@ -3743,12 +5202,35 @@ mod tests {
             let (pane, shown) = sight.sizes();
             let (w, h, px, body) = drawn(&sight.moment, pane, shown, shown.1 / 2.0, 1.0);
             let mut checks = Vec::new();
-            diorama_checks(&Frame { w, h, px: &px }, body, (0, 0), 1.0, &sight, crate::pill::diorama::geom(&st), &mut checks);
+            diorama_checks(
+                &Frame { w, h, px: &px },
+                body,
+                (0, 0),
+                1.0,
+                &sight,
+                crate::pill::diorama::geom(&st),
+                &mut checks,
+            );
             checks.into_iter().map(|c| c.name).collect::<Vec<_>>()
         };
-        for (name, sky, lift) in [("noon", true, false), ("night", true, false), ("small-hours", true, false), ("dawn", false, false), ("golden-hour", false, false), ("dusk", false, false), ("hover", true, true)] {
+        for (name, sky, lift) in [
+            ("noon", true, false),
+            ("night", true, false),
+            ("small-hours", true, false),
+            ("dawn", false, false),
+            ("golden-hour", false, false),
+            ("dusk", false, false),
+            ("hover", true, true),
+        ] {
             let got = names(name);
-            assert_eq!((got.iter().any(|n| n == "diorama-sky"), got.iter().any(|n| n == "diorama-lift")), (sky, lift), "{name}: {got:?}");
+            assert_eq!(
+                (
+                    got.iter().any(|n| n == "diorama-sky"),
+                    got.iter().any(|n| n == "diorama-lift")
+                ),
+                (sky, lift),
+                "{name}: {got:?}"
+            );
         }
     }
 
@@ -3757,50 +5239,121 @@ mod tests {
         // The clock and status scenes rest at the PC's own time and date:
         // every seventh minute of the day, through a month of moons, with
         // both clocks. No badge: their battery is at 76 %, not charging.
-        let mut st = AppState::new(Settings { theme: Theme::Diorama, ..Settings::default() }, Store::default());
+        let mut st = AppState::new(
+            Settings {
+                theme: Theme::Diorama,
+                ..Settings::default()
+            },
+            Store::default(),
+        );
         st.power = fake_power(false);
         for (k, minute) in (0..1440u32).step_by(7).enumerate() {
             let (year, month, day) = REST_DAY;
-            st.local = LocalDateTime { year, month, day, hour: (minute / 60) as u8, minute: (minute % 60) as u8, second: 0 }.add_days(k as i64 % 30);
+            st.local = LocalDateTime {
+                year,
+                month,
+                day,
+                hour: (minute / 60) as u8,
+                minute: (minute % 60) as u8,
+                second: 0,
+            }
+            .add_days(k as i64 % 30);
             st.settings.use_24h = k % 2 == 0;
-            st.settings.idle_style = if k % 5 == 0 { IdleStyle::Status } else { IdleStyle::Clock };
+            st.settings.idle_style = if k % 5 == 0 {
+                IdleStyle::Status
+            } else {
+                IdleStyle::Clock
+            };
             let sight = Sight::of(&st, None);
             let (pane, shown) = sight.sizes();
             assert_eq!(pane.0, if st.settings.use_24h { 100.0 } else { 112.0 });
             let (w, h, px, body) = drawn(&sight.moment, pane, shown, shown.1 / 2.0, 1.0);
             let mut checks = Vec::new();
-            diorama_checks(&Frame { w, h, px: &px }, body, (0, 0), 1.0, &sight, crate::pill::diorama::geom(&st), &mut checks);
-            let failed: Vec<String> = checks.into_iter().filter(|c| !c.ok).map(|c| format!("{}: {}", c.name, c.detail)).collect();
+            diorama_checks(
+                &Frame { w, h, px: &px },
+                body,
+                (0, 0),
+                1.0,
+                &sight,
+                crate::pill::diorama::geom(&st),
+                &mut checks,
+            );
+            let failed: Vec<String> = checks
+                .into_iter()
+                .filter(|c| !c.ok)
+                .map(|c| format!("{}: {}", c.name, c.detail))
+                .collect();
             assert_eq!(failed, Vec::<String>::new(), "{:?}", st.local);
         }
     }
 
     #[test]
     fn the_diorama_checks_tell_what_is_wrong_with_a_picture() {
-        let named = |fails: &[String]| fails.iter().map(|f| f.split(':').next().unwrap_or("").to_string()).collect::<Vec<_>>();
+        let named = |fails: &[String]| {
+            fails
+                .iter()
+                .map(|f| f.split(':').next().unwrap_or("").to_string())
+                .collect::<Vec<_>>()
+        };
         for scale in [1.0, 2.0] {
             // A black capsule: Pill's resting pill, where the picture should be.
-            let black = failing(rest("noon"), scale, |_, _, _, px| px.as_chunks_mut::<4>().0.iter_mut().filter(|p| p[3] == 255).for_each(|p| p[..3].fill(0)));
-            assert_eq!(named(&black), ["diorama-frame", "diorama-sky", "diorama-picture"], "{scale}: {black:?}");
+            let black = failing(rest("noon"), scale, |_, _, _, px| {
+                px.as_chunks_mut::<4>()
+                    .0
+                    .iter_mut()
+                    .filter(|p| p[3] == 255)
+                    .for_each(|p| p[..3].fill(0))
+            });
+            assert_eq!(
+                named(&black),
+                ["diorama-frame", "diorama-sky", "diorama-picture"],
+                "{scale}: {black:?}"
+            );
             // The ball on the wrong end, and the night with it.
             let wrong_end = failing(rest("noon"), scale, |m, _, _, _| m.lens = 1.0);
-            assert_eq!(named(&wrong_end), ["diorama-frame", "diorama-sky", "diorama-picture"], "{scale}: {wrong_end:?}");
+            assert_eq!(
+                named(&wrong_end),
+                ["diorama-frame", "diorama-sky", "diorama-picture"],
+                "{scale}: {wrong_end:?}"
+            );
             let wrong_end = failing(rest("night"), scale, |m, _, _, _| m.lens = 0.0);
-            assert_eq!(named(&wrong_end), ["diorama-frame", "diorama-sky", "diorama-picture"], "{scale}: {wrong_end:?}");
+            assert_eq!(
+                named(&wrong_end),
+                ["diorama-frame", "diorama-sky", "diorama-picture"],
+                "{scale}: {wrong_end:?}"
+            );
             // Another hour of the same side of the day, and a clock that isn't the setting's.
-            let hour = failing(rest("morning"), scale, |m, _, _, _| m.clock = m.clock.map(|c| Clock { hour: 11, ..c }));
+            let hour = failing(rest("morning"), scale, |m, _, _, _| {
+                m.clock = m.clock.map(|c| Clock { hour: 11, ..c })
+            });
             assert_eq!(named(&hour), ["diorama-picture"], "{scale}: {hour:?}");
             let no_badge = failing(rest("charging"), scale, |m, _, _, _| m.badge = None);
-            assert_eq!(named(&no_badge), ["diorama-picture"], "{scale}: {no_badge:?}");
+            assert_eq!(
+                named(&no_badge),
+                ["diorama-picture"],
+                "{scale}: {no_badge:?}"
+            );
             // Pill's own resting pill is 32 tall: a capsule still, of the wrong size.
-            let short = failing(rest("noon"), scale, |_, shown, radius, _| (shown.1, *radius) = (32.0, 16.0));
-            assert_eq!(named(&short), ["diorama-size", "diorama-picture"], "{scale}: {short:?}");
+            let short = failing(rest("noon"), scale, |_, shown, radius, _| {
+                (shown.1, *radius) = (32.0, 16.0)
+            });
+            assert_eq!(
+                named(&short),
+                ["diorama-size", "diorama-picture"],
+                "{scale}: {short:?}"
+            );
             // The right size with corners of 12: no capsule.
             let boxy = failing(rest("noon"), scale, |_, _, radius, _| *radius = 12.0);
             assert_eq!(named(&boxy), ["diorama-capsule"], "{scale}: {boxy:?}");
             // Under the pointer, a pill that didn't swell.
-            let flat = failing(rest("hover"), scale, |_, shown, radius, _| (*shown, *radius) = ((100.0, 38.0), 19.0));
-            assert_eq!(named(&flat), ["diorama-size", "diorama-lift", "diorama-picture"], "{scale}: {flat:?}");
+            let flat = failing(rest("hover"), scale, |_, shown, radius, _| {
+                (*shown, *radius) = ((100.0, 38.0), 19.0)
+            });
+            assert_eq!(
+                named(&flat),
+                ["diorama-size", "diorama-lift", "diorama-picture"],
+                "{scale}: {flat:?}"
+            );
         }
     }
 
@@ -3817,13 +5370,38 @@ mod tests {
         let origin = (250, 0);
         // The middle of a 692, a 1000 and a 693 pixel window, and one that is no pixel's edge.
         for cx in [276.8, 400.0, 277.2, 300.3] {
-            let (w, h, px, body) = drawn_at(&sight.moment, pane, shown, shown.1 / 2.0, 1.25, cx, origin);
+            let (w, h, px, body) =
+                drawn_at(&sight.moment, pane, shown, shown.1 / 2.0, 1.25, cx, origin);
             let mut checks = Vec::new();
-            diorama_checks(&Frame { w, h, px: &px }, body, origin, 1.25, &sight, crate::pill::diorama::geom(&st), &mut checks);
-            let failed: Vec<String> = checks.into_iter().filter(|c| !c.ok).map(|c| format!("{}: {}", c.name, c.detail)).collect();
-            assert_eq!(failed, Vec::<String>::new(), "the pill's middle {cx} DIPs in");
+            diorama_checks(
+                &Frame { w, h, px: &px },
+                body,
+                origin,
+                1.25,
+                &sight,
+                crate::pill::diorama::geom(&st),
+                &mut checks,
+            );
+            let failed: Vec<String> = checks
+                .into_iter()
+                .filter(|c| !c.ok)
+                .map(|c| format!("{}: {}", c.name, c.detail))
+                .collect();
+            assert_eq!(
+                failed,
+                Vec::<String>::new(),
+                "the pill's middle {cx} DIPs in"
+            );
             // A frame taken to start a pixel further left has the picture a pixel off.
-            let off = picture_match(&Frame { w, h, px: &px }, body, (origin.0 - 1, 0), 1.25, &sight.moment, pane, shown);
+            let off = picture_match(
+                &Frame { w, h, px: &px },
+                body,
+                (origin.0 - 1, 0),
+                1.25,
+                &sight.moment,
+                pane,
+                shown,
+            );
             assert!(!picture_ok(off), "{cx}: {off:?}");
         }
     }

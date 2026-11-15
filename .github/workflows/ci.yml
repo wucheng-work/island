@@ -21,9 +21,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Check the single project version
         run: python3 tools/release.py check
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
       - name: Existing shared tests
         run: cargo test --locked -p poni-core -p studio-diorama
 

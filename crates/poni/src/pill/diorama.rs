@@ -64,7 +64,10 @@ impl Ball {
         let t = ((now - self.t0) / ROLL).clamp(0.0, 1.0) as f32;
         // Sets off gently and comes to rest gently.
         let eased = t * t * t * (t * (6.0 * t - 15.0) + 10.0);
-        (self.from + (self.to - self.from) * eased, t < 1.0 && self.from != self.to)
+        (
+            self.from + (self.to - self.from) * eased,
+            t < 1.0 && self.from != self.to,
+        )
     }
 }
 
@@ -115,12 +118,22 @@ fn timed(st: &AppState) -> bool {
 
 /// The resting pill's size, or `None` where it isn't the picture.
 pub fn geom(st: &AppState) -> Option<Geom> {
-    shows(st).then(|| Geom::new(studio_diorama::width(clock(st), badge(st)), studio_diorama::H, studio_diorama::H / 2.0))
+    shows(st).then(|| {
+        Geom::new(
+            studio_diorama::width(clock(st), badge(st)),
+            studio_diorama::H,
+            studio_diorama::H / 2.0,
+        )
+    })
 }
 
 /// The time in the sky; Minimal is the place alone.
 fn clock(st: &AppState) -> Option<Clock> {
-    timed(st).then_some(Clock { hour: st.local.hour, minute: st.local.minute, h24: st.settings.use_24h })
+    timed(st).then_some(Clock {
+        hour: st.local.hour,
+        minute: st.local.minute,
+        h24: st.settings.use_24h,
+    })
 }
 
 /// Beside the time, as Classic's clock has it: a bolt while the battery
@@ -161,11 +174,23 @@ fn ball(rest: f32, now: f64) -> (f32, bool) {
     let b = match BALL.with(|b| b.get()) {
         // Just picked: it rolls in from the other end, and the day (or the
         // night) comes with it.
-        _ if picked => Ball { from: 1.0 - rest, to: rest, t0: now },
+        _ if picked => Ball {
+            from: 1.0 - rest,
+            to: rest,
+            t0: now,
+        },
         Some(b) if b.to == rest => b,
         // The sun set or rose: on its way from wherever it is.
-        Some(b) => Ball { from: b.at(now).0, to: rest, t0: now },
-        None => Ball { from: rest, to: rest, t0: now },
+        Some(b) => Ball {
+            from: b.at(now).0,
+            to: rest,
+            t0: now,
+        },
+        None => Ball {
+            from: rest,
+            to: rest,
+            t0: now,
+        },
     };
     BALL.with(|c| c.set(Some(b)));
     b.at(now)
@@ -188,10 +213,22 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, body: Rect) -> bool {
     // swelling goes (and its springs overshoot); a body still on its way
     // here from another shape is larger than that, and the picture waits
     // in its top middle, its frame at its thickest.
-    let (w, h) = (body.w.clamp(rest.w, rest.w + SWELL), body.h.clamp(rest.h, rest.h + SWELL));
+    let (w, h) = (
+        body.w.clamp(rest.w, rest.w + SWELL),
+        body.h.clamp(rest.h, rest.h + SWELL),
+    );
     let scale = ui.c.scale();
     let at = super::shape::snap(Rect::new(body.center().x - w / 2.0, body.y, w, h), scale);
-    let key = Key { moment: m, view: View { w: at.w, h: at.h, rest_w: rest.w, rest_h: rest.h, scale } };
+    let key = Key {
+        moment: m,
+        view: View {
+            w: at.w,
+            h: at.h,
+            rest_w: rest.w,
+            rest_h: rest.h,
+            scale,
+        },
+    };
 
     let image = KEPT.with(|kept| {
         let mut kept = kept.borrow_mut();
@@ -220,9 +257,28 @@ mod tests {
     use poni_core::store::Store;
 
     fn state(hour: u8, minute: u8) -> AppState {
-        let mut st = AppState::new(Settings { theme: Theme::Diorama, ..Settings::default() }, Store::default());
-        st.local = LocalDateTime { year: 2026, month: 11, day: 10, hour, minute, second: 30 };
-        st.power = PowerState { has_battery: false, percent: 100, charging: false, on_ac: true, saver: false };
+        let mut st = AppState::new(
+            Settings {
+                theme: Theme::Diorama,
+                ..Settings::default()
+            },
+            Store::default(),
+        );
+        st.local = LocalDateTime {
+            year: 2026,
+            month: 11,
+            day: 10,
+            hour,
+            minute,
+            second: 30,
+        };
+        st.power = PowerState {
+            has_battery: false,
+            percent: 100,
+            charging: false,
+            on_ac: true,
+            saver: false,
+        };
         st
     }
 
@@ -257,15 +313,35 @@ mod tests {
         assert_eq!((m.minute, m.sunrise, m.sunset), (1025.0, 360.0, 1080.0));
         // 10 November 2026 is 9,810 days after 1 January 2000.
         assert_eq!(m.day, 9810);
-        assert_eq!(m.clock, Some(Clock { hour: 17, minute: 5, h24: true }));
-        assert_eq!((m.lens, moment(&state(18, 0)).lens, moment(&state(5, 59)).lens), (0.0, 1.0, 1.0));
+        assert_eq!(
+            m.clock,
+            Some(Clock {
+                hour: 17,
+                minute: 5,
+                h24: true
+            })
+        );
+        assert_eq!(
+            (
+                m.lens,
+                moment(&state(18, 0)).lens,
+                moment(&state(5, 59)).lens
+            ),
+            (0.0, 1.0, 1.0)
+        );
     }
 
     #[test]
     fn the_badge_is_the_bolt_or_the_low_battery() {
         let mut st = state(10, 8);
         assert_eq!(badge(&st), None);
-        st.power = PowerState { has_battery: true, percent: 64, charging: false, on_ac: false, saver: false };
+        st.power = PowerState {
+            has_battery: true,
+            percent: 64,
+            charging: false,
+            on_ac: false,
+            saver: false,
+        };
         assert_eq!(badge(&st), None);
         st.power.percent = 20;
         assert_eq!(badge(&st), Some(Badge::Low(20)));

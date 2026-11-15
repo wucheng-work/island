@@ -5,9 +5,12 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 use windows::core::{w, Result, PWSTR};
 use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, WPARAM};
-use windows::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION};
+use windows::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    DeregisterShellHookWindow, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, PostMessageW, RegisterShellHookWindow, RegisterWindowMessageW, SetForegroundWindow,
+    DeregisterShellHookWindow, GetForegroundWindow, GetWindowThreadProcessId, IsIconic,
+    PostMessageW, RegisterShellHookWindow, RegisterWindowMessageW, SetForegroundWindow,
     ShowWindowAsync, SW_RESTORE, SW_SHOW,
 };
 
@@ -27,7 +30,10 @@ pub fn forward_message(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
     if shell == 0 || msg != shell {
         return false;
     }
-    if matches!(wp.0, HSHELL_FLASH | HSHELL_WINDOWACTIVATED | HSHELL_RUDEAPPACTIVATED | HSHELL_WINDOWDESTROYED) {
+    if matches!(
+        wp.0,
+        HSHELL_FLASH | HSHELL_WINDOWACTIVATED | HSHELL_RUDEAPPACTIVATED | HSHELL_WINDOWDESTROYED
+    ) {
         if let Err(e) = unsafe { PostMessageW(hwnd, WM_APP_WECHAT, wp, lp) } {
             crate::pwarn!("wechat: couldn't queue attention event ({e})");
         }
@@ -53,12 +59,18 @@ impl Watcher {
             return Err(windows::core::Error::from_win32());
         }
         crate::pinfo!("wechat: attention listener enabled");
-        Ok(Self { hwnd, pending: HashMap::new() })
+        Ok(Self {
+            hwnd,
+            pending: HashMap::new(),
+        })
     }
 
     pub fn attention(&mut self, kind: usize, hwnd: HWND, allow_new: bool) -> Option<Attention> {
         if kind == HSHELL_WINDOWDESTROYED {
-            return self.pending.remove(&(hwnd.0 as isize)).map(|_| Attention::Dismissed(vec![hwnd.0 as isize]));
+            return self
+                .pending
+                .remove(&(hwnd.0 as isize))
+                .map(|_| Attention::Dismissed(vec![hwnd.0 as isize]));
         }
         if matches!(kind, HSHELL_WINDOWACTIVATED | HSHELL_RUDEAPPACTIVATED) {
             if self.pending.is_empty() {
@@ -98,7 +110,9 @@ impl Watcher {
 
     /// 全屏结束可能先于激活事件入队；恢复提醒前再核对它是否仍未查看。
     pub fn can_restore(&self, handle: isize) -> bool {
-        let Some(pid) = self.pending.get(&handle) else { return false };
+        let Some(pid) = self.pending.get(&handle) else {
+            return false;
+        };
         window_process_id(HWND(handle as _)) == *pid
             && window_process_id(unsafe { GetForegroundWindow() }) != *pid
     }
@@ -120,7 +134,11 @@ pub fn open_window(handle: isize) {
         return;
     }
     unsafe {
-        let show = if IsIconic(hwnd).as_bool() { SW_RESTORE } else { SW_SHOW };
+        let show = if IsIconic(hwnd).as_bool() {
+            SW_RESTORE
+        } else {
+            SW_SHOW
+        };
         // 微信窗口属于另一个线程；异步恢复，避免对方无响应时阻塞小岛。
         if !ShowWindowAsync(hwnd, show).as_bool() {
             crate::pwarn!("wechat: couldn't show the window");
@@ -143,10 +161,20 @@ fn wechat_process_id(hwnd: HWND) -> Option<u32> {
     if pid == 0 {
         return None;
     }
-    let Ok(process) = (unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }) else { return None };
+    let Ok(process) = (unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) })
+    else {
+        return None;
+    };
     let mut buf = [0_u16; 1024];
     let mut len = buf.len() as u32;
-    let read = unsafe { QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len) };
+    let read = unsafe {
+        QueryFullProcessImageNameW(
+            process,
+            PROCESS_NAME_WIN32,
+            PWSTR(buf.as_mut_ptr()),
+            &mut len,
+        )
+    };
     unsafe {
         let _ = CloseHandle(process);
     }
@@ -154,6 +182,8 @@ fn wechat_process_id(hwnd: HWND) -> Option<u32> {
         return None;
     }
     let path = String::from_utf16_lossy(&buf[..len as usize]);
-    let matched = path.rsplit(['\\', '/']).next().is_some_and(|name| name.eq_ignore_ascii_case("WeChat.exe") || name.eq_ignore_ascii_case("Weixin.exe"));
+    let matched = path.rsplit(['\\', '/']).next().is_some_and(|name| {
+        name.eq_ignore_ascii_case("WeChat.exe") || name.eq_ignore_ascii_case("Weixin.exe")
+    });
     matched.then_some(pid)
 }

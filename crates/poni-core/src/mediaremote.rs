@@ -58,7 +58,9 @@ pub struct Stream {
 impl Stream {
     /// Take one line the stream printed. Whether anything changed.
     pub fn apply(&mut self, line: &str) -> bool {
-        let Ok(Value::Object(mut msg)) = serde_json::from_str::<Value>(line.trim()) else { return false };
+        let Ok(Value::Object(mut msg)) = serde_json::from_str::<Value>(line.trim()) else {
+            return false;
+        };
         if msg.get("type").and_then(Value::as_str) != Some("data") {
             return false;
         }
@@ -102,11 +104,21 @@ impl Stream {
             Value::Number(value) if value.is_i64() || value.is_u64() => Some(value.to_string()),
             _ => None,
         };
-        let rate = self.now.get("playbackRate").and_then(Value::as_f64).filter(|r| r.is_finite() && *r > 0.0).unwrap_or(1.0);
+        let rate = self
+            .now
+            .get("playbackRate")
+            .and_then(Value::as_f64)
+            .filter(|r| r.is_finite() && *r > 0.0)
+            .unwrap_or(1.0);
         Some(Playing {
-            app_id: self.text("parentApplicationBundleIdentifier").or_else(|| self.text("bundleIdentifier")).unwrap_or_default(),
+            app_id: self
+                .text("parentApplicationBundleIdentifier")
+                .or_else(|| self.text("bundleIdentifier"))
+                .unwrap_or_default(),
             pid: self.now.get("processIdentifier").and_then(Value::as_i64),
-            content_id: content_id("contentItemIdentifier").or_else(|| content_id("uniqueIdentifier")).unwrap_or_default(),
+            content_id: content_id("contentItemIdentifier")
+                .or_else(|| content_id("uniqueIdentifier"))
+                .unwrap_or_default(),
             title,
             artist: self.text("artist").unwrap_or_default(),
             album: self.text("album").unwrap_or_default(),
@@ -125,9 +137,13 @@ impl Stream {
 
     /// Tells one artwork from another without decoding it (0: none).
     pub fn artwork_sig(&self) -> u64 {
-        let Some(s) = self.now.get("artworkData").and_then(Value::as_str) else { return 0 };
+        let Some(s) = self.now.get("artworkData").and_then(Value::as_str) else {
+            return 0;
+        };
         // FNV-1a over the base64 text.
-        s.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x0100_0000_01b3)) | 1
+        s.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
+            (h ^ b as u64).wrapping_mul(0x0100_0000_01b3)
+        }) | 1
     }
 
     fn text(&self, k: &str) -> Option<String> {
@@ -149,8 +165,18 @@ mod tests {
         let p = s.playing().unwrap();
         assert_eq!(p.app_id, "company.thebrowser.dia");
         assert_eq!(p.pid, Some(4242));
-        assert_eq!((p.title.as_str(), p.artist.as_str(), p.album.as_str()), ("This Song Saved My Life", "Simple Plan", "Get Your Heart On!"));
-        assert_eq!((p.duration_s, p.elapsed_s, p.at_unix_s), (192.0, 12.5, Some(1_792_834_860.0)));
+        assert_eq!(
+            (p.title.as_str(), p.artist.as_str(), p.album.as_str()),
+            (
+                "This Song Saved My Life",
+                "Simple Plan",
+                "Get Your Heart On!"
+            )
+        );
+        assert_eq!(
+            (p.duration_s, p.elapsed_s, p.at_unix_s),
+            (192.0, 12.5, Some(1_792_834_860.0))
+        );
         assert!(p.playing);
         assert_eq!(s.artwork().unwrap(), b"hello");
         // The same line again changes nothing.
@@ -206,7 +232,10 @@ mod tests {
         // A player with no bundle (the adapter's test player) has no app id.
         s.apply(r#"{"type":"data","diff":false,"payload":{"processIdentifier":7,"playing":true,"title":"Is It Broken Yet?"}}"#);
         let p = s.playing().unwrap();
-        assert_eq!((p.app_id.as_str(), p.pid, p.duration_s, p.at_unix_s), ("", Some(7), 0.0, None));
+        assert_eq!(
+            (p.app_id.as_str(), p.pid, p.duration_s, p.at_unix_s),
+            ("", Some(7), 0.0, None)
+        );
     }
 
     #[test]

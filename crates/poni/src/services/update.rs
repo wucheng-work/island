@@ -2,8 +2,8 @@
 //! 下载和执行还要校验仓库、版本、安装器文件名、大小及 SHA-256。
 
 use crate::events::{AppEvent, EventSink};
-use crate::services::update_worker::Job;
 use crate::services::http::Client;
+use crate::services::update_worker::Job;
 use poni_core::update::{self, Release};
 use std::time::Duration;
 
@@ -27,7 +27,11 @@ pub fn check_job(sink: EventSink) -> Job {
     Box::new(move |client: Result<&Client, &str>| {
         let r = client.map_err(str::to_string).and_then(check);
         match &r {
-            Ok(rel) => crate::pinfo!("updates: the latest release is {} ({})", rel.version, rel.date),
+            Ok(rel) => crate::pinfo!(
+                "updates: the latest release is {} ({})",
+                rel.version,
+                rel.date
+            ),
             Err(e) => crate::pinfo!("updates: couldn't read the update file ({e})"),
         }
         sink.send(AppEvent::Update(UpdateEvent::Checked(r)));
@@ -39,14 +43,17 @@ fn check(client: &Client) -> Result<Release, String> {
         return Err("在线更新尚未配置可信公钥，未发送网络请求".into());
     }
     let url = update::source()?.feed_url();
-    let (status, body) = client.get_bytes(&url, TIMEOUT, update::MAX_FILE_BYTES, |_| {}).map_err(|e| e.to_string())?;
+    let (status, body) = client
+        .get_bytes(&url, TIMEOUT, update::MAX_FILE_BYTES, |_| {})
+        .map_err(|e| e.to_string())?;
     if status == 404 {
         return Err("尚未发布正式版本，请稍后再检查".into());
     }
     if status != 200 {
         return Err(format!("HTTP {status}"));
     }
-    let release = believe(std::str::from_utf8(&body).map_err(|_| "更新信息不是有效文本".to_string())?)?;
+    let release =
+        believe(std::str::from_utf8(&body).map_err(|_| "更新信息不是有效文本".to_string())?)?;
     if update::newer(&release.version, crate::version::VERSION) {
         validate_release(&release)?;
     }
@@ -65,7 +72,8 @@ pub fn believe(text: &str) -> Result<Release, String> {
     #[cfg(not(test))]
     let release = update::parse_payload(&signed.payload)?;
     #[cfg(test)]
-    let release = update::parse_payload_for_repository(&signed.payload, "lucacadalora/oyenza-studio")?;
+    let release =
+        update::parse_payload_for_repository(&signed.payload, "lucacadalora/oyenza-studio")?;
     Ok(release)
 }
 
@@ -75,7 +83,10 @@ const FIXTURE_KEYS: &str = include_str!("../../../poni-core/data/update-keys.txt
 
 /// 只接受当前仓库指定版本的 Windows 安装器，不允许用任意哈希文件替代。
 pub fn validate_release(release: &Release) -> Result<&update::Download, String> {
-    let download = release.windows.as_ref().ok_or("该发行版缺少 Windows 安装器")?;
+    let download = release
+        .windows
+        .as_ref()
+        .ok_or("该发行版缺少 Windows 安装器")?;
     validate_download(download)?;
     if download.version() != Some(release.version.as_str()) {
         return Err("安装器版本与签名更新信息不一致".into());
@@ -92,9 +103,13 @@ fn validate_download(download: &update::Download) -> Result<(), String> {
         return Err("安装器版本必须高于当前版本".into());
     }
     let expected = format!("Island-For-Windows-Setup-{version}.exe");
-    if download.file_name() != expected || download.size == 0
+    if download.file_name() != expected
+        || download.size == 0
         || download.sha256.len() != 64
-        || !download.sha256.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        || !download
+            .sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
     {
         return Err("Windows 安装器名称、大小或摘要无效".into());
     }
@@ -115,7 +130,11 @@ pub fn download_job(sink: EventSink, d: update::Download, path: std::path::PathB
     })
 }
 
-fn download(client: Result<&Client, &str>, d: &update::Download, path: &std::path::Path) -> Result<(), String> {
+fn download(
+    client: Result<&Client, &str>,
+    d: &update::Download,
+    path: &std::path::Path,
+) -> Result<(), String> {
     use std::fs;
     validate_download(d)?;
     if path.file_name().and_then(|name| name.to_str()) != Some(d.file_name()) {
@@ -125,20 +144,33 @@ fn download(client: Result<&Client, &str>, d: &update::Download, path: &std::pat
     if fs::read(path).is_ok_and(|b| d.matches(&b)) {
         return Ok(());
     }
-    let (status, bytes) = client?.get_bytes(&d.url, SETUP_TIMEOUT, d.size.saturating_add(64 * 1024), |_| {}).map_err(|e| e.to_string())?;
+    let (status, bytes) = client?
+        .get_bytes(
+            &d.url,
+            SETUP_TIMEOUT,
+            d.size.saturating_add(64 * 1024),
+            |_| {},
+        )
+        .map_err(|e| e.to_string())?;
     if status != 200 {
         return Err(format!("HTTP {status}"));
     }
     if !d.matches(&bytes) {
-        return Err(format!("下载内容校验失败（实际 {} 字节，预期 {} 字节）", bytes.len(), d.size));
+        return Err(format!(
+            "下载内容校验失败（实际 {} 字节，预期 {} 字节）",
+            bytes.len(),
+            d.size
+        ));
     }
     let dir = path.parent().ok_or("no folder")?;
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let part = path.with_extension("part");
-    fs::write(&part, &bytes).and_then(|()| fs::rename(&part, path)).map_err(|e| {
-        let _ = fs::remove_file(&part);
-        e.to_string()
-    })
+    fs::write(&part, &bytes)
+        .and_then(|()| fs::rename(&part, path))
+        .map_err(|e| {
+            let _ = fs::remove_file(&part);
+            e.to_string()
+        })
 }
 
 /// Run the Setup at `setup` silently, once it still matches `d`. Like any
@@ -154,7 +186,11 @@ pub fn install(setup: &std::path::Path, d: &update::Download) -> Result<(), Stri
     if !std::fs::read(setup).is_ok_and(|b| d.matches(&b)) {
         return Err("安装器已丢失或内容被更改，请重新检查更新".into());
     }
-    std::process::Command::new(setup).args(["/S", "/reopen"]).spawn().map(drop).map_err(|e| e.to_string())
+    std::process::Command::new(setup)
+        .args(["/S", "/reopen"])
+        .spawn()
+        .map(drop)
+        .map_err(|e| e.to_string())
 }
 
 /// Windows Setup is responsible for replacing the installed application.
@@ -166,9 +202,10 @@ pub fn can_install() -> bool {
 #[cfg(windows)]
 fn verify(message: &[u8], signature: &[u8; 64], key: &[u8; 65]) -> bool {
     use windows::Win32::Security::Cryptography::{
-        BCryptCloseAlgorithmProvider, BCryptDestroyKey, BCryptImportKeyPair, BCryptOpenAlgorithmProvider, BCryptVerifySignature, BCRYPT_ALG_HANDLE,
-        BCRYPT_ECCPUBLIC_BLOB, BCRYPT_ECDSA_P256_ALGORITHM, BCRYPT_ECDSA_PUBLIC_P256_MAGIC, BCRYPT_FLAGS, BCRYPT_KEY_HANDLE,
-        BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS,
+        BCryptCloseAlgorithmProvider, BCryptDestroyKey, BCryptImportKeyPair,
+        BCryptOpenAlgorithmProvider, BCryptVerifySignature, BCRYPT_ALG_HANDLE,
+        BCRYPT_ECCPUBLIC_BLOB, BCRYPT_ECDSA_P256_ALGORITHM, BCRYPT_ECDSA_PUBLIC_P256_MAGIC,
+        BCRYPT_FLAGS, BCRYPT_KEY_HANDLE, BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS,
     };
     // BCRYPT_ECCKEY_BLOB: magic, key length, then X and Y.
     let mut blob = Vec::with_capacity(72);
@@ -178,11 +215,26 @@ fn verify(message: &[u8], signature: &[u8; 64], key: &[u8; 65]) -> bool {
     let hash = poni_core::sha256::sha256(message);
     unsafe {
         let mut alg = BCRYPT_ALG_HANDLE::default();
-        if BCryptOpenAlgorithmProvider(&mut alg, BCRYPT_ECDSA_P256_ALGORITHM, None, BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS(0)).is_err() {
+        if BCryptOpenAlgorithmProvider(
+            &mut alg,
+            BCRYPT_ECDSA_P256_ALGORITHM,
+            None,
+            BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS(0),
+        )
+        .is_err()
+        {
             return false;
         }
         let mut handle = BCRYPT_KEY_HANDLE::default();
-        let ok = BCryptImportKeyPair(alg, BCRYPT_KEY_HANDLE::default(), BCRYPT_ECCPUBLIC_BLOB, &mut handle, &blob, 0).is_ok()
+        let ok = BCryptImportKeyPair(
+            alg,
+            BCRYPT_KEY_HANDLE::default(),
+            BCRYPT_ECCPUBLIC_BLOB,
+            &mut handle,
+            &blob,
+            0,
+        )
+        .is_ok()
             && BCryptVerifySignature(handle, None, &hash, signature, BCRYPT_FLAGS(0)).is_ok();
         if !handle.is_invalid() {
             let _ = BCryptDestroyKey(handle);
@@ -202,7 +254,10 @@ mod tests {
     #[test]
     fn a_signed_file_is_believed() {
         let r = believe(SAMPLE).expect("the sample's signature checks out");
-        assert_eq!((r.version.as_str(), r.headline.as_str()), ("0.2.3", "Sing along from the closed island"));
+        assert_eq!(
+            (r.version.as_str(), r.headline.as_str()),
+            ("0.2.3", "Sing along from the closed island")
+        );
         assert_eq!(r.windows.as_ref().map(|d| d.size), Some(2457657));
     }
 
@@ -210,15 +265,28 @@ mod tests {
     fn a_changed_file_is_not() {
         // One character of the payload, or of the signature.
         let changed = SAMPLE.replacen("2457657", "2457658", 1);
-        assert!(believe(&changed).unwrap_err().contains("signature"), "payload changed");
+        assert!(
+            believe(&changed).unwrap_err().contains("signature"),
+            "payload changed"
+        );
         let signed = update::parse_file_with_keys(SAMPLE, FIXTURE_KEYS).unwrap();
         let mut sig = signed.signature;
         sig[10] ^= 1;
         assert!(!verify(signed.payload.as_bytes(), &sig, &signed.key));
-        assert!(verify(signed.payload.as_bytes(), &signed.signature, &signed.key));
+        assert!(verify(
+            signed.payload.as_bytes(),
+            &signed.signature,
+            &signed.key
+        ));
         // The spare key didn't sign it.
         let spare_file = SAMPLE.replace("4cb3280eaea65b50", "f835f77c60bd2b7f");
-        let spare = update::parse_file_with_keys(&spare_file, FIXTURE_KEYS).unwrap().key;
-        assert!(!verify(signed.payload.as_bytes(), &signed.signature, &spare));
+        let spare = update::parse_file_with_keys(&spare_file, FIXTURE_KEYS)
+            .unwrap()
+            .key;
+        assert!(!verify(
+            signed.payload.as_bytes(),
+            &signed.signature,
+            &spare
+        ));
     }
 }

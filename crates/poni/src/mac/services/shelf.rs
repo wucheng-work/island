@@ -5,8 +5,15 @@ use dispatch2::{DispatchQueue, DispatchQueueGlobalPriority, GlobalQueueIdentifie
 use poni_core::shelf::Shelf;
 
 pub fn prepare(shelf: Shelf, paths: Vec<String>, sink: EventSink) {
-    DispatchQueue::global_queue(GlobalQueueIdentifier::Priority(DispatchQueueGlobalPriority::Low)).exec_async(move || {
+    DispatchQueue::global_queue(GlobalQueueIdentifier::Priority(
+        DispatchQueueGlobalPriority::Low,
+    ))
+    .exec_async(move || {
         let result = shelf.prepare_paths(paths.clone());
-        sink.send(AppEvent::ShelfPrepared { before: shelf.items, requested: paths, result });
+        sink.send(AppEvent::ShelfPrepared {
+            before: shelf.items,
+            requested: paths,
+            result,
+        });
     });
 }

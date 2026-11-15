@@ -5,13 +5,18 @@
 //! 业务代码里到处复制一套语言判断。未收录的文字保留原文，歌曲名、歌词、
 //! 文件名和账户内容也不会被误翻译。
 
-use std::borrow::Cow;
 use poni_core::datetime::LocalDateTime;
+use std::borrow::Cow;
 
 /// 顶部日期与待机状态栏共用的中文短日期。
 pub fn date_short(t: &LocalDateTime) -> String {
     const WEEKDAYS: [&str; 7] = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-    format!("{} {}月{}日", WEEKDAYS[t.weekday() as usize], t.month, t.day)
+    format!(
+        "{} {}月{}日",
+        WEEKDAYS[t.weekday() as usize],
+        t.month,
+        t.day
+    )
 }
 
 /// 将应用内置的英文 UI 文案翻译为简体中文。
@@ -400,10 +405,16 @@ pub fn translate(s: &str) -> Cow<'_, str> {
 }
 
 fn translate_dynamic(s: &str) -> Cow<'_, str> {
-    if let Some(span) = s.strip_suffix(" left").and_then(|span| translate_span(span, true)) {
+    if let Some(span) = s
+        .strip_suffix(" left")
+        .and_then(|span| translate_span(span, true))
+    {
         return Cow::Owned(format!("剩余 {span}"));
     }
-    if let Some(span) = s.strip_prefix("in ").and_then(|span| translate_span(span, false)) {
+    if let Some(span) = s
+        .strip_prefix("in ")
+        .and_then(|span| translate_span(span, false))
+    {
         return Cow::Owned(format!("{span}后"));
     }
     if let Some(rest) = s.strip_prefix("Focus · ") {
@@ -423,7 +434,10 @@ fn translate_dynamic(s: &str) -> Cow<'_, str> {
     if let Some(version) = s.strip_prefix("Download ") {
         return Cow::Owned(format!("下载 {version}"));
     }
-    if let Some(size) = s.strip_prefix("A new version of Oyenza Studio is ready to download (").and_then(|s| s.strip_suffix(").")) {
+    if let Some(size) = s
+        .strip_prefix("A new version of Oyenza Studio is ready to download (")
+        .and_then(|s| s.strip_suffix(")."))
+    {
         return Cow::Owned(format!("Island For Mac 新版本可供下载（{size}）。"));
     }
     if let Some(version) = s.strip_prefix("See what's new in Oyenza Studio ") {
@@ -510,7 +524,10 @@ mod tests {
     fn translates_common_labels_and_preserves_dynamic_content() {
         assert_eq!(translate("Today"), "今天");
         assert_eq!(translate("Drop files here"), "将文件拖到这里");
-        assert_eq!(translate("Drag files or folders onto the island to keep them close"), "将文件或文件夹拖到灵动岛，方便随时取用");
+        assert_eq!(
+            translate("Drag files or folders onto the island to keep them close"),
+            "将文件或文件夹拖到灵动岛，方便随时取用"
+        );
         assert_eq!(translate("A song title"), "A song title");
         assert_eq!(translate("文件 and 名称.png"), "文件 and 名称.png");
         assert_eq!(translate("中文歌词"), "中文歌词");

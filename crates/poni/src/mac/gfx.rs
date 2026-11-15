@@ -17,19 +17,22 @@
 
 use crate::icons::{self, Icon};
 use objc2::rc::Retained;
-use objc2_app_kit::{NSFont, NSFontWeightBold, NSFontWeightMedium, NSFontWeightRegular, NSFontWeightSemibold};
+use objc2_app_kit::{
+    NSFont, NSFontWeightBold, NSFontWeightMedium, NSFontWeightRegular, NSFontWeightSemibold,
+};
 use objc2_core_foundation::{
-    CFAttributedString, CFBoolean, CFData, CFDictionary, CFNumber, CFRange, CFRetained, CFString, CFType, CGAffineTransform, CGFloat, CGPoint, CGRect,
-    CGSize,
+    CFAttributedString, CFBoolean, CFData, CFDictionary, CFNumber, CFRange, CFRetained, CFString,
+    CFType, CGAffineTransform, CGFloat, CGPoint, CGRect, CGSize,
 };
 use objc2_core_graphics::{
-    kCGColorSpaceSRGB, CGBitmapContextCreate, CGBitmapContextCreateImage, CGBitmapContextGetData, CGBitmapInfo, CGColorRenderingIntent, CGColorSpace,
-    CGContext, CGDataProvider, CGGradient, CGGradientDrawingOptions, CGImage, CGImageAlphaInfo, CGImageByteOrderInfo, CGInterpolationQuality, CGLineCap,
-    CGLineJoin, CGMutablePath, CGPath,
+    kCGColorSpaceSRGB, CGBitmapContextCreate, CGBitmapContextCreateImage, CGBitmapContextGetData,
+    CGBitmapInfo, CGColorRenderingIntent, CGColorSpace, CGContext, CGDataProvider, CGGradient,
+    CGGradientDrawingOptions, CGImage, CGImageAlphaInfo, CGImageByteOrderInfo,
+    CGInterpolationQuality, CGLineCap, CGLineJoin, CGMutablePath, CGPath,
 };
 use objc2_core_text::{
-    kCTFontAttributeName, kCTForegroundColorFromContextAttributeName, CTFont, CTFontDescriptor, CTFontManagerCreateFontDescriptorsFromData, CTLine,
-    CTLineTruncationType, CTTypesetter,
+    kCTFontAttributeName, kCTForegroundColorFromContextAttributeName, CTFont, CTFontDescriptor,
+    CTFontManagerCreateFontDescriptorsFromData, CTLine, CTLineTruncationType, CTTypesetter,
 };
 use poni_core::geom::{Color, Point, Rect};
 use poni_core::look::{self, Look};
@@ -65,7 +68,12 @@ static NEXT_IMAGE_ID: AtomicU64 = AtomicU64::new(1);
 impl ImageData {
     pub fn new(width: u32, height: u32, pixels: Vec<u8>) -> Image {
         debug_assert_eq!(pixels.len(), (width * height * 4) as usize);
-        Arc::new(ImageData { id: NEXT_IMAGE_ID.fetch_add(1, Ordering::Relaxed), width, height, pixels })
+        Arc::new(ImageData {
+            id: NEXT_IMAGE_ID.fetch_add(1, Ordering::Relaxed),
+            width,
+            height,
+            pixels,
+        })
     }
 
     /// A saturated, reasonably bright colour from the image (for accents),
@@ -141,19 +149,47 @@ pub struct Matrix3x2 {
 #[allow(dead_code)]
 impl Matrix3x2 {
     pub const fn identity() -> Self {
-        Self { m11: 1.0, m12: 0.0, m21: 0.0, m22: 1.0, m31: 0.0, m32: 0.0 }
+        Self {
+            m11: 1.0,
+            m12: 0.0,
+            m21: 0.0,
+            m22: 1.0,
+            m31: 0.0,
+            m32: 0.0,
+        }
     }
 
     pub const fn translation(x: f32, y: f32) -> Self {
-        Self { m11: 1.0, m12: 0.0, m21: 0.0, m22: 1.0, m31: x, m32: y }
+        Self {
+            m11: 1.0,
+            m12: 0.0,
+            m21: 0.0,
+            m22: 1.0,
+            m31: x,
+            m32: y,
+        }
     }
 
     fn to_cg(self) -> CGAffineTransform {
-        CGAffineTransform { a: self.m11 as CGFloat, b: self.m12 as CGFloat, c: self.m21 as CGFloat, d: self.m22 as CGFloat, tx: self.m31 as CGFloat, ty: self.m32 as CGFloat }
+        CGAffineTransform {
+            a: self.m11 as CGFloat,
+            b: self.m12 as CGFloat,
+            c: self.m21 as CGFloat,
+            d: self.m22 as CGFloat,
+            tx: self.m31 as CGFloat,
+            ty: self.m32 as CGFloat,
+        }
     }
 
     fn from_cg(t: CGAffineTransform) -> Self {
-        Self { m11: t.a as f32, m12: t.b as f32, m21: t.c as f32, m22: t.d as f32, m31: t.tx as f32, m32: t.ty as f32 }
+        Self {
+            m11: t.a as f32,
+            m12: t.b as f32,
+            m21: t.c as f32,
+            m22: t.d as f32,
+            m31: t.tx as f32,
+            m32: t.ty as f32,
+        }
     }
 
     fn inverse(self) -> Self {
@@ -166,7 +202,14 @@ impl Matrix3x2 {
         let m12 = -self.m12 * i;
         let m21 = -self.m21 * i;
         let m22 = self.m11 * i;
-        Self { m11, m12, m21, m22, m31: -(self.m31 * m11 + self.m32 * m21), m32: -(self.m31 * m12 + self.m32 * m22) }
+        Self {
+            m11,
+            m12,
+            m21,
+            m22,
+            m31: -(self.m31 * m11 + self.m32 * m21),
+            m32: -(self.m31 * m12 + self.m32 * m22),
+        }
     }
 }
 
@@ -187,16 +230,37 @@ impl std::ops::Mul for Matrix3x2 {
 
 /// Scale by `s` about `p`.
 pub fn scale_about(p: Point, s: f32) -> Matrix3x2 {
-    Matrix3x2 { m11: s, m12: 0.0, m21: 0.0, m22: s, m31: p.x * (1.0 - s), m32: p.y * (1.0 - s) }
+    Matrix3x2 {
+        m11: s,
+        m12: 0.0,
+        m21: 0.0,
+        m22: s,
+        m31: p.x * (1.0 - s),
+        m32: p.y * (1.0 - s),
+    }
 }
 
 pub fn union_rect(a: Rect, b: Rect) -> Rect {
     let (x0, y0) = (a.x.min(b.x), a.y.min(b.y));
-    Rect::new(x0, y0, a.right().max(b.right()) - x0, a.bottom().max(b.bottom()) - y0)
+    Rect::new(
+        x0,
+        y0,
+        a.right().max(b.right()) - x0,
+        a.bottom().max(b.bottom()) - y0,
+    )
 }
 
 fn cgrect(r: Rect) -> CGRect {
-    CGRect { origin: CGPoint { x: r.x as CGFloat, y: r.y as CGFloat }, size: CGSize { width: r.w.max(0.0) as CGFloat, height: r.h.max(0.0) as CGFloat } }
+    CGRect {
+        origin: CGPoint {
+            x: r.x as CGFloat,
+            y: r.y as CGFloat,
+        },
+        size: CGSize {
+            width: r.w.max(0.0) as CGFloat,
+            height: r.h.max(0.0) as CGFloat,
+        },
+    }
 }
 
 // ---------------------------------------------------------------- fonts and text layout
@@ -262,7 +326,8 @@ pub struct Gfx {
 
 impl Gfx {
     pub fn new(scale: f32) -> Gfx {
-        let srgb = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB })).expect("the sRGB colour space");
+        let srgb = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB }))
+            .expect("the sRGB colour space");
         Gfx {
             scale: scale.max(1.0),
             look: &look::CLASSIC,
@@ -309,7 +374,13 @@ impl Gfx {
         CGContext::set_line_cap(Some(ctx), CGLineCap::Round);
         CGContext::set_line_join(Some(ctx), CGLineJoin::Round);
         let base = Matrix3x2::from_cg(CGContext::ctm(Some(ctx)));
-        Canvas { g: self, ctx, alpha: 1.0, base, stack: 0 }
+        Canvas {
+            g: self,
+            ctx,
+            alpha: 1.0,
+            base,
+            stack: 0,
+        }
     }
 
     fn embedded(&mut self) -> Option<&Vec<CFRetained<CTFontDescriptor>>> {
@@ -319,7 +390,8 @@ impl Gfx {
             for data in EMBEDDED_FONTS {
                 let d = CFData::from_static_bytes(data);
                 let arr = unsafe { CTFontManagerCreateFontDescriptorsFromData(&d) };
-                let arr: &objc2_core_foundation::CFArray<CTFontDescriptor> = unsafe { arr.cast_unchecked() };
+                let arr: &objc2_core_foundation::CFArray<CTFontDescriptor> =
+                    unsafe { arr.cast_unchecked() };
                 let found = arr.get(0);
                 match found {
                     Some(desc) => out.push(desc),
@@ -335,21 +407,28 @@ impl Gfx {
     }
 
     fn font(&mut self, size: f32, weight: Weight, tabular: bool) -> CFRetained<CTFont> {
-        let key = FontKey { size: size.to_bits(), weight, tabular, embedded: self.look.font.is_some() };
+        let key = FontKey {
+            size: size.to_bits(),
+            weight,
+            tabular,
+            embedded: self.look.font.is_some(),
+        };
         if let Some(f) = self.fonts.get(&key) {
             return f.clone();
         }
         let embedded = if key.embedded {
-            self.embedded().map(|d| d[weight.index()].clone()).map(|desc| {
-                let desc = if tabular {
-                    let ty = CFNumber::new_i32(NUMBER_SPACING);
-                    let sel = CFNumber::new_i32(MONOSPACED_NUMBERS);
-                    unsafe { desc.copy_with_feature(&ty, &sel) }
-                } else {
-                    desc
-                };
-                unsafe { CTFont::with_font_descriptor(&desc, size as CGFloat, ptr::null()) }
-            })
+            self.embedded()
+                .map(|d| d[weight.index()].clone())
+                .map(|desc| {
+                    let desc = if tabular {
+                        let ty = CFNumber::new_i32(NUMBER_SPACING);
+                        let sel = CFNumber::new_i32(MONOSPACED_NUMBERS);
+                        unsafe { desc.copy_with_feature(&ty, &sel) }
+                    } else {
+                        desc
+                    };
+                    unsafe { CTFont::with_font_descriptor(&desc, size as CGFloat, ptr::null()) }
+                })
         } else {
             None
         };
@@ -359,7 +438,12 @@ impl Gfx {
     }
 
     fn attributed(font: &CTFont, s: &str) -> Option<CFRetained<CFAttributedString>> {
-        let keys: [&CFString; 2] = unsafe { [kCTFontAttributeName, kCTForegroundColorFromContextAttributeName] };
+        let keys: [&CFString; 2] = unsafe {
+            [
+                kCTFontAttributeName,
+                kCTForegroundColorFromContextAttributeName,
+            ]
+        };
         let values: [&CFType; 2] = [font.as_ref(), CFBoolean::new(true).as_ref()];
         let attrs = CFDictionary::<CFString, CFType>::from_slices(&keys, &values);
         let text = CFString::from_str(s);
@@ -380,28 +464,55 @@ impl Gfx {
     /// every frame would be most of the frame.
     fn layout(&mut self, s: &str, st: &TextStyle, w: f32) -> Rc<TextLayout> {
         let w = w.max(1.0);
-        let fkey = FontKey { size: st.size.to_bits(), weight: st.weight, tabular: st.tabular, embedded: self.look.font.is_some() };
-        let key = LayoutKey { text: s.to_string(), font: fkey.clone(), wrap: st.wrap, line: st.line.to_bits(), w: w.to_bits() };
+        let fkey = FontKey {
+            size: st.size.to_bits(),
+            weight: st.weight,
+            tabular: st.tabular,
+            embedded: self.look.font.is_some(),
+        };
+        let key = LayoutKey {
+            text: s.to_string(),
+            font: fkey.clone(),
+            wrap: st.wrap,
+            line: st.line.to_bits(),
+            w: w.to_bits(),
+        };
         let frame = self.frame_no;
         if let Some((l, used)) = self.layouts.get_mut(&key) {
             *used = frame;
             return l.clone();
         }
         let font = self.font(st.size, st.weight, st.tabular);
-        let (ascent, descent, leading) = unsafe { (font.ascent() as f32, font.descent() as f32, font.leading() as f32) };
-        let line_h = if st.line > 0.0 { st.line * st.size } else { ascent + descent + leading };
+        let (ascent, descent, leading) = unsafe {
+            (
+                font.ascent() as f32,
+                font.descent() as f32,
+                font.leading() as f32,
+            )
+        };
+        let line_h = if st.line > 0.0 {
+            st.line * st.size
+        } else {
+            ascent + descent + leading
+        };
         let mut lines = Vec::new();
         let mut width = 0.0f32;
         if let Some(attr) = Self::attributed(&font, s) {
             if !st.wrap {
                 let line = unsafe { CTLine::with_attributed_string(&attr) };
-                let full = unsafe { line.typographic_bounds(ptr::null_mut(), ptr::null_mut(), ptr::null_mut()) } as f32;
+                let full = unsafe {
+                    line.typographic_bounds(ptr::null_mut(), ptr::null_mut(), ptr::null_mut())
+                } as f32;
                 let trailing = unsafe { line.trailing_whitespace_width() } as f32;
                 if full > w + 0.5 {
                     let token = self.ellipsis_for(&fkey, &font);
-                    let cut = unsafe { line.truncated_line(w as f64, CTLineTruncationType::End, token.as_deref()) };
+                    let cut = unsafe {
+                        line.truncated_line(w as f64, CTLineTruncationType::End, token.as_deref())
+                    };
                     let line = cut.unwrap_or(line);
-                    let lw = unsafe { line.typographic_bounds(ptr::null_mut(), ptr::null_mut(), ptr::null_mut()) } as f32;
+                    let lw = unsafe {
+                        line.typographic_bounds(ptr::null_mut(), ptr::null_mut(), ptr::null_mut())
+                    } as f32;
                     width = lw.min(w);
                     lines.push((line, width));
                 } else {
@@ -417,8 +528,15 @@ impl Gfx {
                     if count <= 0 {
                         break;
                     }
-                    let line = unsafe { ts.line(CFRange { location: start, length: count }) };
-                    let full = unsafe { line.typographic_bounds(ptr::null_mut(), ptr::null_mut(), ptr::null_mut()) } as f32;
+                    let line = unsafe {
+                        ts.line(CFRange {
+                            location: start,
+                            length: count,
+                        })
+                    };
+                    let full = unsafe {
+                        line.typographic_bounds(ptr::null_mut(), ptr::null_mut(), ptr::null_mut())
+                    } as f32;
                     let trailing = unsafe { line.trailing_whitespace_width() } as f32;
                     width = width.max(full);
                     lines.push((line, full - trailing));
@@ -426,7 +544,13 @@ impl Gfx {
                 }
             }
         }
-        let layout = Rc::new(TextLayout { lines, ascent, leading, line_h, width });
+        let layout = Rc::new(TextLayout {
+            lines,
+            ascent,
+            leading,
+            line_h,
+            width,
+        });
         self.layouts.insert(key, (layout.clone(), frame));
         layout
     }
@@ -439,7 +563,9 @@ impl Gfx {
         }
         let data = CFData::from_bytes(&img.pixels);
         let provider = CGDataProvider::with_cf_data(Some(&data))?;
-        let info = CGBitmapInfo(CGImageAlphaInfo::PremultipliedFirst.0 | CGImageByteOrderInfo::Order32Little.0);
+        let info = CGBitmapInfo(
+            CGImageAlphaInfo::PremultipliedFirst.0 | CGImageByteOrderInfo::Order32Little.0,
+        );
         let image = unsafe {
             CGImage::new(
                 img.width as usize,
@@ -522,7 +648,16 @@ pub fn cg_path(segs: &[Seg]) -> CFRetained<CGMutablePath> {
                         CGMutablePath::move_to_point(Some(&p), ptr::null(), f(cur.0), f(cur.1));
                         open = true;
                     }
-                    CGMutablePath::add_curve_to_point(Some(&p), ptr::null(), f(x1), f(y1), f(x2), f(y2), f(x), f(y));
+                    CGMutablePath::add_curve_to_point(
+                        Some(&p),
+                        ptr::null(),
+                        f(x1),
+                        f(y1),
+                        f(x2),
+                        f(y2),
+                        f(x),
+                        f(y),
+                    );
                     cur = (x, y);
                 }
                 Seg::QuadTo(x1, y1, x, y) => {
@@ -530,7 +665,14 @@ pub fn cg_path(segs: &[Seg]) -> CFRetained<CGMutablePath> {
                         CGMutablePath::move_to_point(Some(&p), ptr::null(), f(cur.0), f(cur.1));
                         open = true;
                     }
-                    CGMutablePath::add_quad_curve_to_point(Some(&p), ptr::null(), f(x1), f(y1), f(x), f(y));
+                    CGMutablePath::add_quad_curve_to_point(
+                        Some(&p),
+                        ptr::null(),
+                        f(x1),
+                        f(y1),
+                        f(x),
+                        f(y),
+                    );
                     cur = (x, y);
                 }
                 Seg::ArcTo(rx, ry, rot, large, sweep, x, y) => {
@@ -538,8 +680,19 @@ pub fn cg_path(segs: &[Seg]) -> CFRetained<CGMutablePath> {
                         CGMutablePath::move_to_point(Some(&p), ptr::null(), f(cur.0), f(cur.1));
                         open = true;
                     }
-                    for c in poni_core::svgpath::arc_to_cubics(cur.0, cur.1, rx, ry, rot, large, sweep, x, y) {
-                        CGMutablePath::add_curve_to_point(Some(&p), ptr::null(), f(c[0]), f(c[1]), f(c[2]), f(c[3]), f(c[4]), f(c[5]));
+                    for c in poni_core::svgpath::arc_to_cubics(
+                        cur.0, cur.1, rx, ry, rot, large, sweep, x, y,
+                    ) {
+                        CGMutablePath::add_curve_to_point(
+                            Some(&p),
+                            ptr::null(),
+                            f(c[0]),
+                            f(c[1]),
+                            f(c[2]),
+                            f(c[3]),
+                            f(c[4]),
+                            f(c[5]),
+                        );
                     }
                     cur = (x, y);
                 }
@@ -629,7 +782,12 @@ impl<'a> Canvas<'a> {
 
     fn components(&self, c: Color) -> [CGFloat; 4] {
         let c = c.mul_alpha(self.alpha);
-        [c.r as CGFloat, c.g as CGFloat, c.b as CGFloat, c.a.clamp(0.0, 1.0) as CGFloat]
+        [
+            c.r as CGFloat,
+            c.g as CGFloat,
+            c.b as CGFloat,
+            c.a.clamp(0.0, 1.0) as CGFloat,
+        ]
     }
 
     fn set_fill(&self, c: Color) {
@@ -712,12 +870,18 @@ impl<'a> Canvas<'a> {
 
     pub fn fill_circle(&mut self, c: Point, radius: f32, color: Color) {
         self.set_fill(color);
-        CGContext::fill_ellipse_in_rect(self.cg(), cgrect(Rect::from_center(c, 2.0 * radius, 2.0 * radius)));
+        CGContext::fill_ellipse_in_rect(
+            self.cg(),
+            cgrect(Rect::from_center(c, 2.0 * radius, 2.0 * radius)),
+        );
     }
 
     pub fn stroke_circle(&mut self, c: Point, radius: f32, color: Color, width: f32) {
         self.set_stroke(color, width);
-        CGContext::stroke_ellipse_in_rect(self.cg(), cgrect(Rect::from_center(c, 2.0 * radius, 2.0 * radius)));
+        CGContext::stroke_ellipse_in_rect(
+            self.cg(),
+            cgrect(Rect::from_center(c, 2.0 * radius, 2.0 * radius)),
+        );
     }
 
     pub fn line(&mut self, a: Point, b: Point, c: Color, width: f32) {
@@ -743,12 +907,23 @@ impl<'a> Canvas<'a> {
         let (a0, a1) = (ang(start), ang(start + sweep));
         let p0 = (c.x + radius * a0.cos(), c.y + radius * a0.sin());
         let p1 = (c.x + radius * a1.cos(), c.y + radius * a1.sin());
-        let segs = [Seg::MoveTo(p0.0, p0.1), Seg::ArcTo(radius, radius, 0.0, sweep > 0.5, true, p1.0, p1.1)];
+        let segs = [
+            Seg::MoveTo(p0.0, p0.1),
+            Seg::ArcTo(radius, radius, 0.0, sweep > 0.5, true, p1.0, p1.1),
+        ];
         self.path(&segs, None, Some((color, width)));
     }
 
     /// Progress ring: full track circle plus a progress arc on top.
-    pub fn ring(&mut self, c: Point, radius: f32, width: f32, progress: f32, track: Color, fill: Color) {
+    pub fn ring(
+        &mut self,
+        c: Point,
+        radius: f32,
+        width: f32,
+        progress: f32,
+        track: Color,
+        fill: Color,
+    ) {
         self.stroke_circle(c, radius, track, width);
         self.arc(c, radius, 0.0, progress, fill, width);
     }
@@ -774,19 +949,44 @@ impl<'a> Canvas<'a> {
     /// at `y1` (a vertical gradient, as under Stats' charts); above `y0` and
     /// below `y1` the end opacities carry on, as Direct2D's gradient brush
     /// does on Windows.
-    pub fn fill_path_fade(&mut self, segs: &[Seg], c: Color, y0: f32, y1: f32, alpha0: f32, alpha1: f32) {
+    pub fn fill_path_fade(
+        &mut self,
+        segs: &[Seg],
+        c: Color,
+        y0: f32,
+        y1: f32,
+        alpha0: f32,
+        alpha1: f32,
+    ) {
         let paint = self.g.look.paint(c);
-        let (a, b) = (self.components(paint.mul_alpha(alpha0)), self.components(paint.mul_alpha(alpha1)));
+        let (a, b) = (
+            self.components(paint.mul_alpha(alpha0)),
+            self.components(paint.mul_alpha(alpha1)),
+        );
         let stops = [a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3]];
         let at: [CGFloat; 2] = [0.0, 1.0];
-        let Some(grad) = (unsafe { CGGradient::with_color_components(Some(&self.g.srgb), stops.as_ptr(), at.as_ptr(), 2) }) else { return };
+        let Some(grad) = (unsafe {
+            CGGradient::with_color_components(Some(&self.g.srgb), stops.as_ptr(), at.as_ptr(), 2)
+        }) else {
+            return;
+        };
         CGContext::save_g_state(self.cg());
         let p = cg_path(segs);
         CGContext::begin_path(self.cg());
         CGContext::add_path(self.cg(), Some(&p));
         CGContext::clip(self.cg());
-        let (from, to) = (CGPoint { x: 0.0, y: y0 as CGFloat }, CGPoint { x: 0.0, y: y1 as CGFloat });
-        let extend = CGGradientDrawingOptions::DrawsBeforeStartLocation | CGGradientDrawingOptions::DrawsAfterEndLocation;
+        let (from, to) = (
+            CGPoint {
+                x: 0.0,
+                y: y0 as CGFloat,
+            },
+            CGPoint {
+                x: 0.0,
+                y: y1 as CGFloat,
+            },
+        );
+        let extend = CGGradientDrawingOptions::DrawsBeforeStartLocation
+            | CGGradientDrawingOptions::DrawsAfterEndLocation;
         CGContext::draw_linear_gradient(self.cg(), Some(&grad), from, to, extend);
         CGContext::restore_g_state(self.cg());
     }
@@ -799,7 +999,9 @@ impl<'a> Canvas<'a> {
     /// covers its shadow. The same gradient pieces as on Windows (see
     /// `pill::shape::shadow_plan`), each clipped to its rectangle.
     pub fn rrect_shadow(&mut self, r: Rect, radius: f32, c: Color, ramp: &[(f32, f32)]) {
-        let Some(plan) = crate::pill::shape::shadow_plan(r, radius, ramp, self.scale()) else { return };
+        let Some(plan) = crate::pill::shape::shadow_plan(r, radius, ramp, self.scale()) else {
+            return;
+        };
         let paint = self.g.look.paint(c);
         let n = plan.stops.len().min(16);
         let mut comps: [CGFloat; 64] = [0.0; 64];
@@ -808,14 +1010,30 @@ impl<'a> Canvas<'a> {
             comps[i * 4..i * 4 + 4].copy_from_slice(&self.components(paint.mul_alpha(a)));
             at[i] = p as CGFloat;
         }
-        let Some(grad) = (unsafe { CGGradient::with_color_components(Some(&self.g.srgb), comps.as_ptr(), at.as_ptr(), n) }) else { return };
-        let extend = CGGradientDrawingOptions::DrawsBeforeStartLocation | CGGradientDrawingOptions::DrawsAfterEndLocation;
-        let cgpt = |p: Point| CGPoint { x: p.x as CGFloat, y: p.y as CGFloat };
+        let Some(grad) = (unsafe {
+            CGGradient::with_color_components(Some(&self.g.srgb), comps.as_ptr(), at.as_ptr(), n)
+        }) else {
+            return;
+        };
+        let extend = CGGradientDrawingOptions::DrawsBeforeStartLocation
+            | CGGradientDrawingOptions::DrawsAfterEndLocation;
+        let cgpt = |p: Point| CGPoint {
+            x: p.x as CGFloat,
+            y: p.y as CGFloat,
+        };
         let reach = plan.reach as CGFloat;
         for (square, o) in plan.corners.into_iter().flatten() {
             CGContext::save_g_state(self.cg());
             CGContext::clip_to_rect(self.cg(), cgrect(square));
-            CGContext::draw_radial_gradient(self.cg(), Some(&grad), cgpt(o), 0.0, cgpt(o), reach, extend);
+            CGContext::draw_radial_gradient(
+                self.cg(),
+                Some(&grad),
+                cgpt(o),
+                0.0,
+                cgpt(o),
+                reach,
+                extend,
+            );
             CGContext::restore_g_state(self.cg());
         }
         for (strip, a, b) in plan.sides.into_iter().flatten() {
@@ -834,7 +1052,14 @@ impl<'a> Canvas<'a> {
     /// The island silhouette: flat top flush with the screen edge, concave
     /// "shoulders" flaring into the top edge and rounded bottom corners.
     /// `body` is the main rectangle; shoulders extend `shoulder` DIPs outside it.
-    pub fn notch(&mut self, body: Rect, radius: f32, shoulder: f32, fill: Color, border: Option<Color>) {
+    pub fn notch(
+        &mut self,
+        body: Rect,
+        radius: f32,
+        shoulder: f32,
+        fill: Color,
+        border: Option<Color>,
+    ) {
         self.path(&notch_segments(body, radius, shoulder), Some(fill), None);
         if let Some(b) = border {
             // Stroke only the sides and bottom: stroking the closing top segment
@@ -914,10 +1139,28 @@ impl<'a> Canvas<'a> {
             self.set_text_fill(st.color);
         }
         let total = lay.lines.len() as f32 * lay.line_h;
-        let mut y = if st.vcenter { r.y + (r.h - total) / 2.0 } else { r.y };
-        let base = if st.line > 0.0 { 0.8 * lay.line_h } else { lay.leading / 2.0 + lay.ascent };
+        let mut y = if st.vcenter {
+            r.y + (r.h - total) / 2.0
+        } else {
+            r.y
+        };
+        let base = if st.line > 0.0 {
+            0.8 * lay.line_h
+        } else {
+            lay.leading / 2.0 + lay.ascent
+        };
         // Glyphs are drawn upright in this y-down space.
-        CGContext::set_text_matrix(self.cg(), CGAffineTransform { a: 1.0, b: 0.0, c: 0.0, d: -1.0, tx: 0.0, ty: 0.0 });
+        CGContext::set_text_matrix(
+            self.cg(),
+            CGAffineTransform {
+                a: 1.0,
+                b: 0.0,
+                c: 0.0,
+                d: -1.0,
+                tx: 0.0,
+                ty: 0.0,
+            },
+        );
         for (line, lw) in &lay.lines {
             let x = match st.align {
                 Align::Left => r.x,
@@ -961,7 +1204,9 @@ impl<'a> Canvas<'a> {
         if img.width == 0 || img.height == 0 || r.w <= 0.0 || r.h <= 0.0 {
             return;
         }
-        let Some(cg) = self.g.cg_image(img) else { return };
+        let Some(cg) = self.g.cg_image(img) else {
+            return;
+        };
         let (iw, ih) = (img.width as f32, img.height as f32);
         let s = (r.w / iw).max(r.h / ih);
         let (dw, dh) = (iw * s, ih * s);
@@ -1064,7 +1309,13 @@ impl<'a> Canvas<'a> {
     /// don't show through each other while it fades. `f` always runs, even
     /// when the group ends up invisible, so hit regions and animation state
     /// stay continuous.
-    pub fn layered<R>(&mut self, bounds: Rect, alpha: f32, xf: Matrix3x2, f: impl FnOnce(&mut Canvas<'a>) -> R) -> R {
+    pub fn layered<R>(
+        &mut self,
+        bounds: Rect,
+        alpha: f32,
+        xf: Matrix3x2,
+        f: impl FnOnce(&mut Canvas<'a>) -> R,
+    ) -> R {
         let a = (alpha * self.alpha).clamp(0.0, 1.0);
         CGContext::save_g_state(self.cg());
         CGContext::concat_ctm(self.cg(), xf.to_cg());
@@ -1107,7 +1358,8 @@ impl Bitmap {
     pub fn new(w: usize, h: usize, scale: f32) -> Option<Bitmap> {
         let srgb = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB }))?;
         let info = CGImageAlphaInfo::PremultipliedFirst.0 | CGImageByteOrderInfo::Order32Little.0;
-        let ctx = unsafe { CGBitmapContextCreate(ptr::null_mut(), w, h, 8, w * 4, Some(&srgb), info) }?;
+        let ctx =
+            unsafe { CGBitmapContextCreate(ptr::null_mut(), w, h, 8, w * 4, Some(&srgb), info) }?;
         CGContext::translate_ctm(Some(&ctx), 0.0, h as CGFloat);
         CGContext::scale_ctm(Some(&ctx), scale as CGFloat, -(scale as CGFloat));
         Some(Bitmap { ctx, w, h })

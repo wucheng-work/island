@@ -91,7 +91,11 @@ def trusted_keys():
         if not line or line.startswith("#"):
             continue
         parts = line.split()
-        if len(parts) != 2 or not re.fullmatch(r"[0-9a-f]{16}", parts[0]) or not re.fullmatch(r"04[0-9a-f]{128}", parts[1]):
+        if (
+            len(parts) != 2
+            or not re.fullmatch(r"[0-9a-f]{16}", parts[0])
+            or not re.fullmatch(r"04[0-9a-f]{128}", parts[1])
+        ):
             raise ValueError(f"invalid public key at release/update-keys.txt:{number}")
         public = bytes.fromhex(parts[1])
         if hashlib.sha256(public).hexdigest()[:16] != parts[0] or parts[0] in keys:

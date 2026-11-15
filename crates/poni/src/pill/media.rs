@@ -119,8 +119,23 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, body: Rect) -> bool {
     let moving = (playing || level > 0.0) && !st.power.saver;
     let eq_x = body.right() - EQ_RIGHT - EQ_W;
     // The open card's equalizer colour, so the bars keep it through a morph.
-    equalizer(ui, eq_x, cy, super::music::eq_color(accent), level, moving, now);
-    middle(ui, st, body, art.right() + TEXT_CLEAR, eq_x - TEXT_CLEAR, lerp(PAUSED_TEXT, 1.0, level));
+    equalizer(
+        ui,
+        eq_x,
+        cy,
+        super::music::eq_color(accent),
+        level,
+        moving,
+        now,
+    );
+    middle(
+        ui,
+        st,
+        body,
+        art.right() + TEXT_CLEAR,
+        eq_x - TEXT_CLEAR,
+        lerp(PAUSED_TEXT, 1.0, level),
+    );
     true
 }
 
@@ -133,7 +148,12 @@ pub(crate) fn middle(ui: &mut Ui, st: &AppState, body: Rect, x0: f32, x1: f32, a
     // The text centres on the pill in a box as wide as the widest pill's
     // text, so its layout doesn't change with the pill's width on each
     // frame of a morph, cut where the art and the bars are.
-    let area = Rect::new(body.center().x - (MAX_W - SIDES) / 2.0, body.center().y - H / 2.0, MAX_W - SIDES, H);
+    let area = Rect::new(
+        body.center().x - (MAX_W - SIDES) / 2.0,
+        body.center().y - H / 2.0,
+        MAX_W - SIDES,
+        H,
+    );
     ui.c.clip(Rect::new(x0, body.y, (x1 - x0).max(0.0), body.h));
     let want = draw_text(ui, st, area, alpha, st.now);
     ui.c.unclip();
@@ -215,7 +235,11 @@ fn draw_text(ui: &mut Ui, st: &AppState, area: Rect, paused_a: f32, now: f64) ->
     let peeking = now < st.ui.peek_until;
     let (was_sung, since) = SUNG.get();
     let k = smooth(clamp01(((now - since) / HANDOFF) as f32));
-    let line_a = if was_sung && !peeking { k * paused_a } else { 0.0 };
+    let line_a = if was_sung && !peeking {
+        k * paused_a
+    } else {
+        0.0
+    };
     let line_w = faded(ui, line_a, |ui| super::lyric::draw(ui, st, area));
     let sung = line_w.is_some() && !peeking;
     let since = if sung == was_sung {
@@ -228,7 +252,12 @@ fn draw_text(ui: &mut Ui, st: &AppState, area: Rect, paused_a: f32, now: f64) ->
     if k < 1.0 {
         ui.request_anim();
     }
-    let song = Rect::new(area.center().x - (SONG_MAX_W - SIDES) / 2.0, area.y, SONG_MAX_W - SIDES, area.h);
+    let song = Rect::new(
+        area.center().x - (SONG_MAX_W - SIDES) / 2.0,
+        area.y,
+        SONG_MAX_W - SIDES,
+        area.h,
+    );
     if !sung {
         // A line that just ended can't be drawn fading out (the lyric lane
         // has let go of it), so the title fades in on its own.
@@ -245,7 +274,9 @@ fn draw_text(ui: &mut Ui, st: &AppState, area: Rect, paused_a: f32, now: f64) ->
 /// and the artist only whole or with [`ARTIST_MIN`] of it showing (a stub
 /// such as "The L…" says nothing). Returns how wide what it shows is.
 fn draw_song(ui: &mut Ui, st: &AppState, area: Rect, alpha: f32) -> f32 {
-    let Some(m) = st.media.as_ref() else { return 0.0 };
+    let Some(m) = st.media.as_ref() else {
+        return 0.0;
+    };
     let (title, artist) = (m.title.trim(), m.artist.trim());
     // A player that names no song: its artist, or at least the player.
     let (main, rest) = match (title.is_empty(), artist.is_empty()) {
@@ -258,9 +289,17 @@ fn draw_song(ui: &mut Ui, st: &AppState, area: Rect, alpha: f32) -> f32 {
     }
     let main_st = TextStyle::body().weight(Weight::Semibold);
     let rest_st = TextStyle::body().color(palette::TEXT_DIM);
-    let rest = if rest.is_empty() { String::new() } else { format!(" \u{b7} {rest}") };
+    let rest = if rest.is_empty() {
+        String::new()
+    } else {
+        format!(" \u{b7} {rest}")
+    };
     let mw = ui.c.measure_raw(main, &main_st, 10_000.0).0;
-    let rw = if rest.is_empty() { 0.0 } else { ui.c.measure_raw(&rest, &rest_st, 10_000.0).0 };
+    let rw = if rest.is_empty() {
+        0.0
+    } else {
+        ui.c.measure_raw(&rest, &rest_st, 10_000.0).0
+    };
     // A new song fades in (the old one is gone from the player by now).
     let mut h = DefaultHasher::new();
     (main, &rest).hash(&mut h);
@@ -279,7 +318,11 @@ fn draw_song(ui: &mut Ui, st: &AppState, area: Rect, alpha: f32) -> f32 {
         ui.request_anim();
     }
     let room = area.w - mw;
-    let shown = if room > 0.0 && rw > 0.0 && (rw <= room || room >= ARTIST_MIN) { rw.min(room) } else { 0.0 };
+    let shown = if room > 0.0 && rw > 0.0 && (rw <= room || room >= ARTIST_MIN) {
+        rw.min(room)
+    } else {
+        0.0
+    };
     let alpha = alpha * k;
     if alpha > 0.002 {
         ui.c.with_alpha(alpha, |c| {
@@ -365,7 +408,10 @@ fn glow(ui: &mut Ui, body: Rect, color: Color, level: f32) {
             continue;
         }
         let dx = r - (r * r - dy * dy).max(0.0).sqrt();
-        ui.c.fill_rect(Rect::new(body.x + dx, y0, body.w - 2.0 * dx, row), color.mul_alpha(alpha));
+        ui.c.fill_rect(
+            Rect::new(body.x + dx, y0, body.w - 2.0 * dx, row),
+            color.mul_alpha(alpha),
+        );
     }
 }
 
@@ -403,9 +449,21 @@ mod tests {
         assert_eq!(fit(0.0, MAX_W), MIN_W, "short text: the narrowest pill");
         assert_eq!(fit(200.0, MAX_W), 288.0, "text + 88, already a whole step");
         assert_eq!(fit(153.0, MAX_W), 248.0, "241 rounds up to the next 8");
-        assert_eq!(fit(1_000.0, MAX_W), MAX_W, "a long line: the widest pill, ellipsized");
-        assert_eq!(fit(1_000.0, SONG_MAX_W), SONG_MAX_W, "a long title stops at the peek's width");
-        assert_eq!(fit(200.0, SONG_MAX_W), 288.0, "a title that fits is the same either way");
+        assert_eq!(
+            fit(1_000.0, MAX_W),
+            MAX_W,
+            "a long line: the widest pill, ellipsized"
+        );
+        assert_eq!(
+            fit(1_000.0, SONG_MAX_W),
+            SONG_MAX_W,
+            "a long title stops at the peek's width"
+        );
+        assert_eq!(
+            fit(200.0, SONG_MAX_W),
+            288.0,
+            "a title that fits is the same either way"
+        );
         for max in [SONG_MAX_W, MAX_W] {
             let mut w = 0.0;
             while w < 600.0 {
@@ -432,22 +490,50 @@ mod tests {
     fn the_width_follows_long_and_short_lines() {
         assert_eq!(fit(180.0, MAX_W), 272.0);
         assert_eq!(fit(240.0, MAX_W), 328.0, "a longer line grows the pill");
-        assert_eq!(fit(120.0, MAX_W), MIN_W, "a shorter line shrinks without changing tracks");
-        assert_eq!(fit(1000.0, MAX_W), MAX_W, "a very long line stays within the cap");
-        assert_eq!(fit(120.0, MAX_W), MIN_W, "a capped line does not hold the next one wide");
+        assert_eq!(
+            fit(120.0, MAX_W),
+            MIN_W,
+            "a shorter line shrinks without changing tracks"
+        );
+        assert_eq!(
+            fit(1000.0, MAX_W),
+            MAX_W,
+            "a very long line stays within the cap"
+        );
+        assert_eq!(
+            fit(120.0, MAX_W),
+            MIN_W,
+            "a capped line does not hold the next one wide"
+        );
     }
 
     #[test]
     fn play_and_pause_ease_and_settle() {
         // Each test runs on its own thread, so this starts "paused since ever".
-        assert_eq!(play_level(false, 5.0), (0.0, false), "a pill that first shows paused doesn't fade");
+        assert_eq!(
+            play_level(false, 5.0),
+            (0.0, false),
+            "a pill that first shows paused doesn't fade"
+        );
         // The first frame of a change already asks for the next one: a pause
         // comes as one event, and nothing else would draw the ease.
-        assert_eq!(play_level(true, 10.0), (0.0, true), "playing starts the ease");
+        assert_eq!(
+            play_level(true, 10.0),
+            (0.0, true),
+            "playing starts the ease"
+        );
         let (mid, easing) = play_level(true, 10.0 + PLAY_FADE / 2.0);
         assert!(mid > 0.0 && mid < 1.0 && easing, "halfway: {mid}");
-        assert_eq!(play_level(true, 10.0 + PLAY_FADE), (1.0, false), "settled: no more frames asked for");
-        assert_eq!(play_level(false, 20.0), (1.0, true), "a pause eases out from playing");
+        assert_eq!(
+            play_level(true, 10.0 + PLAY_FADE),
+            (1.0, false),
+            "settled: no more frames asked for"
+        );
+        assert_eq!(
+            play_level(false, 20.0),
+            (1.0, true),
+            "a pause eases out from playing"
+        );
         assert_eq!(play_level(false, 20.0 + PLAY_FADE), (0.0, false));
     }
 

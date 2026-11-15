@@ -12,10 +12,10 @@
 //! synced lyrics, its usual lyric clock also drives the combined capsule.
 
 use crate::activities::Activity;
+use crate::focus::phase_color;
 use crate::gfx::{TextStyle, Weight};
 use crate::icons::Icon;
 use crate::island::Geom;
-use crate::focus::phase_color;
 use crate::state::{AppState, FpsAccess};
 use crate::ui::Ui;
 use poni_core::datetime::fmt_countdown;
@@ -133,7 +133,9 @@ fn long_countdown(st: &AppState) -> bool {
 
 /// The countdown: 15 semibold tabular, white while it runs, grey paused.
 fn digits(paused: bool) -> TextStyle {
-    TextStyle::headline().tabular().color(if paused { palette::TEXT_DIM } else { INK })
+    TextStyle::headline()
+        .tabular()
+        .color(if paused { palette::TEXT_DIM } else { INK })
 }
 
 /// The timer's mark, centred on `c`: a ring filling in the phase's colour
@@ -149,7 +151,14 @@ fn timer_mark(ui: &mut Ui, c: Point, progress: f32, col: Color, paused: bool) {
             ui.c.fill_rrect(Rect::new(x0, y0, x1 - x0, y1 - y0), 1.25, col);
         }
     } else {
-        ui.c.ring(c, (RING_D - RING_STROKE) / 2.0, RING_STROKE, progress, RING_TRACK, col);
+        ui.c.ring(
+            c,
+            (RING_D - RING_STROKE) / 2.0,
+            RING_STROKE,
+            progress,
+            RING_TRACK,
+            col,
+        );
     }
 }
 
@@ -160,7 +169,11 @@ fn draw_timer(ui: &mut Ui, st: &AppState, body: Rect) {
     timer_mark(ui, c, p.progress(st.now), phase_color(p.phase), paused);
     let text = fmt_countdown(p.remaining(st.now));
     let right = body.right() - DIGITS_RIGHT;
-    ui.c.text(&text, Rect::new(right - 80.0, body.y, 80.0, body.h), &digits(paused).right());
+    ui.c.text(
+        &text,
+        Rect::new(right - 80.0, body.y, 80.0, body.h),
+        &digits(paused).right(),
+    );
 }
 
 /// Album art in the left end cap (or a note on a grey tile), dimmed while
@@ -183,10 +196,26 @@ pub(crate) fn draw_media_timer(ui: &mut Ui, st: &AppState, body: Rect) {
     art(ui, st, cover, playing);
     if super::lyric::sings(st) {
         let music = Rect::new(body.x, body.y, body.w - TIMER_LANE_W, body.h);
-        let alpha = if playing { 1.0 } else { super::media::PAUSED_TEXT };
-        super::media::middle(ui, st, music, cover.right() + super::media::TEXT_CLEAR, music.right() - 8.0, alpha);
+        let alpha = if playing {
+            1.0
+        } else {
+            super::media::PAUSED_TEXT
+        };
+        super::media::middle(
+            ui,
+            st,
+            music,
+            cover.right() + super::media::TEXT_CLEAR,
+            music.right() - 8.0,
+            alpha,
+        );
         let divider = music.right() + 4.0;
-        ui.c.line(Point::new(divider, cy - 8.0), Point::new(divider, cy + 8.0), palette::TEXT_FAINT.mul_alpha(0.35), 1.0);
+        ui.c.line(
+            Point::new(divider, cy - 8.0),
+            Point::new(divider, cy + 8.0),
+            palette::TEXT_FAINT.mul_alpha(0.35),
+            1.0,
+        );
     }
     let p = &st.pomodoro;
     let paused = !p.is_running();
@@ -196,7 +225,11 @@ pub(crate) fn draw_media_timer(ui: &mut Ui, st: &AppState, body: Rect) {
     // so the ring stays put as the seconds go.
     let (tw, _) = ui.c.measure(&text, &ts, 200.0);
     let right = body.right() - DIGITS_RIGHT;
-    ui.c.text(&text, Rect::new(right - 80.0, body.y, 80.0, body.h), &ts.right());
+    ui.c.text(
+        &text,
+        Rect::new(right - 80.0, body.y, 80.0, body.h),
+        &ts.right(),
+    );
     let c = Point::new(right - tw - MARK_GAP - RING_D / 2.0, cy);
     timer_mark(ui, c, p.progress(st.now), phase_color(p.phase), paused);
 }
@@ -217,7 +250,10 @@ fn game_temp(st: &AppState) -> Option<f32> {
 }
 
 fn game_key(st: &AppState) -> GameKey {
-    GameKey { fps4: st.game.rate.is_some_and(|r| r.fps.round() >= 1000.0), temp: game_temp(st).map(|t| t.round() >= 100.0) }
+    GameKey {
+        fps4: st.game.rate.is_some_and(|r| r.fps.round() >= 1000.0),
+        temp: game_temp(st).map(|t| t.round() >= 100.0),
+    }
 }
 
 fn game_w(st: &AppState) -> f32 {
@@ -231,7 +267,13 @@ fn game_w(st: &AppState) -> f32 {
     // rate's slot, the rest of the run, the dot and the temperature.
     let fps = if key.fps4 { 34.0 } else { 25.0 };
     let temp = match key.temp {
-        Some(hot) => if hot { 36.0 } else { 28.0 },
+        Some(hot) => {
+            if hot {
+                36.0
+            } else {
+                28.0
+            }
+        }
         None => 0.0,
     };
     (2.0 * TEXT_INSET + fps + 175.0 + temp).ceil()
@@ -244,7 +286,12 @@ fn game_w(st: &AppState) -> f32 {
 /// shifts once, when the number arrives. The dot between the GPU's load and
 /// its temperature is drawn: fonts put a middle dot at different heights.
 enum Piece {
-    Text { text: String, style: TextStyle, slot: f32, room: f32 },
+    Text {
+        text: String,
+        style: TextStyle,
+        slot: f32,
+        room: f32,
+    },
     Dot,
 }
 
@@ -252,7 +299,13 @@ impl Piece {
     /// Its width in the readout now (`room` = false) or in the pill's.
     fn width(&self, room: bool) -> f32 {
         match self {
-            Piece::Text { slot, room: r, .. } => if room { *r } else { *slot },
+            Piece::Text { slot, room: r, .. } => {
+                if room {
+                    *r
+                } else {
+                    *slot
+                }
+            }
             Piece::Dot => DOT_R * 2.0,
         }
     }
@@ -266,12 +319,25 @@ fn draw_game(ui: &mut Ui, st: &AppState, body: Rect) {
     let key = game_key(st);
     let reading = st.system.latest.as_ref();
     let big = TextStyle::headline().tabular().color(INK);
-    let value = TextStyle::body().weight(Weight::Semibold).tabular().color(INK);
-    let label = TextStyle::footnote().weight(Weight::Medium).color(palette::TEXT_DIM);
+    let value = TextStyle::body()
+        .weight(Weight::Semibold)
+        .tabular()
+        .color(INK);
+    let label = TextStyle::footnote()
+        .weight(Weight::Medium)
+        .color(palette::TEXT_DIM);
     let dash = || "\u{2013}".to_string();
     // Waiting for the one-time OK: the frame rate's slot stays, dimmer.
-    let waiting = st.game.rate.is_none() && !matches!(st.game.access, FpsAccess::Ready | FpsAccess::Unknown | FpsAccess::Checking);
-    let (fps_style, fps_label) = if waiting { (big.color(palette::DISABLED), label.color(palette::DISABLED)) } else { (big, label) };
+    let waiting = st.game.rate.is_none()
+        && !matches!(
+            st.game.access,
+            FpsAccess::Ready | FpsAccess::Unknown | FpsAccess::Checking
+        );
+    let (fps_style, fps_label) = if waiting {
+        (big.color(palette::DISABLED), label.color(palette::DISABLED))
+    } else {
+        (big, label)
+    };
     let gpu = reading.and_then(|r| r.gpu.as_ref());
     let cpu = reading.and_then(|r| r.cpu.as_ref());
 
@@ -279,27 +345,61 @@ fn draw_game(ui: &mut Ui, st: &AppState, body: Rect) {
     let mut number = |v: Option<String>, style: TextStyle, widest: &str| {
         let room = width(widest, &style);
         match v {
-            Some(text) => Piece::Text { text, style, slot: room, room },
-            None => Piece::Text { slot: width(&dash(), &style), text: dash(), style, room },
+            Some(text) => Piece::Text {
+                text,
+                style,
+                slot: room,
+                room,
+            },
+            None => Piece::Text {
+                slot: width(&dash(), &style),
+                text: dash(),
+                style,
+                room,
+            },
         }
     };
-    let fps = number(st.game.rate.map(|r| fmt_fps(r.fps)), fps_style, if key.fps4 { "0000" } else { "000" });
+    let fps = number(
+        st.game.rate.map(|r| fmt_fps(r.fps)),
+        fps_style,
+        if key.fps4 { "0000" } else { "000" },
+    );
     let gpu_pct = number(gpu.map(|g| fmt_pct(g.util)), value, "100%");
     let cpu_pct = number(cpu.map(|c| fmt_pct(c.load)), value, "100%");
     let temp = gpu.and_then(|g| g.temp_c).zip(key.temp);
-    let temp = temp.map(|(t, hot)| number(Some(format!("{t:.0}\u{b0}")), value, if hot { "000\u{b0}" } else { "00\u{b0}" }));
+    let temp = temp.map(|(t, hot)| {
+        number(
+            Some(format!("{t:.0}\u{b0}")),
+            value,
+            if hot { "000\u{b0}" } else { "00\u{b0}" },
+        )
+    });
     let mut word = |text: &str, style: TextStyle| {
         let w = ui.c.measure(text, &style, 400.0).0;
-        Piece::Text { text: text.into(), style, slot: w, room: w }
+        Piece::Text {
+            text: text.into(),
+            style,
+            slot: w,
+            room: w,
+        }
     };
     let mut gpu_group = vec![word("GPU", label), gpu_pct];
     if let Some(t) = temp {
         gpu_group.extend([Piece::Dot, t]);
     }
-    let groups = [vec![fps, word("fps", fps_label)], gpu_group, vec![word("CPU", label), cpu_pct]];
+    let groups = [
+        vec![fps, word("fps", fps_label)],
+        gpu_group,
+        vec![word("CPU", label), cpu_pct],
+    ];
 
     let run = |room: bool| {
-        groups.iter().map(|g| g.iter().map(|p| p.width(room)).sum::<f32>() + (g.len() - 1) as f32 * LABEL_GAP).sum::<f32>()
+        groups
+            .iter()
+            .map(|g| {
+                g.iter().map(|p| p.width(room)).sum::<f32>() + (g.len() - 1) as f32 * LABEL_GAP
+            })
+            .sum::<f32>()
             + (groups.len() - 1) as f32 * (2.0 * GAME_GAP + 1.0)
     };
     GAME_FIT.with(|f| f.set(Some((key, (run(true) + 2.0 * TEXT_INSET).ceil()))));
@@ -311,7 +411,10 @@ fn draw_game(ui: &mut Ui, st: &AppState, body: Rect) {
     for (i, group) in groups.iter().enumerate() {
         if i > 0 {
             x += GAME_GAP;
-            ui.c.fill_rect(Rect::new(snap(ui, x), snap(ui, cy - DIVIDER_H / 2.0), 1.0, DIVIDER_H), DIVIDER);
+            ui.c.fill_rect(
+                Rect::new(snap(ui, x), snap(ui, cy - DIVIDER_H / 2.0), 1.0, DIVIDER_H),
+                DIVIDER,
+            );
             x += 1.0 + GAME_GAP;
         }
         for (j, p) in group.iter().enumerate() {
@@ -319,13 +422,23 @@ fn draw_game(ui: &mut Ui, st: &AppState, body: Rect) {
                 x += LABEL_GAP;
             }
             match p {
-                Piece::Text { text, style, slot, .. } => {
+                Piece::Text {
+                    text, style, slot, ..
+                } => {
                     let y = body.y + BASELINE_K * (big.size - style.size);
                     // Two DIPs of spare room on the left, so rounding never ellipsizes.
-                    ui.c.text(text, Rect::new(x - 2.0, y, slot + 2.0, body.h), &style.right());
+                    ui.c.text(
+                        text,
+                        Rect::new(x - 2.0, y, slot + 2.0, body.h),
+                        &style.right(),
+                    );
                 }
                 // At the middle of the digits' height.
-                Piece::Dot => ui.c.fill_circle(Point::new(x + DOT_R, baseline - 0.35 * value.size), DOT_R, palette::TEXT_DIM),
+                Piece::Dot => ui.c.fill_circle(
+                    Point::new(x + DOT_R, baseline - 0.35 * value.size),
+                    DOT_R,
+                    palette::TEXT_DIM,
+                ),
             }
             x += p.width(false);
         }
@@ -349,8 +462,19 @@ mod tests {
     }
 
     fn game(st: &mut AppState, fps: f32, util: f32, temp: Option<f32>) {
-        st.game.rate = Some(FrameRate { fps, frame_ms: 1000.0 / fps, worst_ms: 1000.0 / fps });
-        st.system.latest = Some(Reading { gpu: Some(GpuReading { util, temp_c: temp, ..Default::default() }), ..Default::default() });
+        st.game.rate = Some(FrameRate {
+            fps,
+            frame_ms: 1000.0 / fps,
+            worst_ms: 1000.0 / fps,
+        });
+        st.system.latest = Some(Reading {
+            gpu: Some(GpuReading {
+                util,
+                temp_c: temp,
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
     }
 
     #[test]
@@ -361,16 +485,27 @@ mod tests {
             let g = geom(a, &st).expect("a Pill size");
             assert_eq!((g.h, g.r), (32.0, 16.0), "{a:?}");
         }
-        assert!(geom(Activity::Media, &st).is_none(), "the music pill is pill::media's");
+        assert!(
+            geom(Activity::Media, &st).is_none(),
+            "the music pill is pill::media's"
+        );
     }
 
     #[test]
     fn the_timer_widens_only_for_a_third_minute_digit() {
         let mut st = state();
-        st.pomodoro.run = RunState::Running { ends_at: st.now + 99.0 * 60.0 + 59.0 };
+        st.pomodoro.run = RunState::Running {
+            ends_at: st.now + 99.0 * 60.0 + 59.0,
+        };
         assert_eq!(geom(Activity::Timer, &st).unwrap().w, TIMER_W, "99:59");
-        st.pomodoro.run = RunState::Running { ends_at: st.now + 100.0 * 60.0 };
-        assert_eq!(geom(Activity::Timer, &st).unwrap().w, TIMER_LONG_W, "100:00");
+        st.pomodoro.run = RunState::Running {
+            ends_at: st.now + 100.0 * 60.0,
+        };
+        assert_eq!(
+            geom(Activity::Timer, &st).unwrap().w,
+            TIMER_LONG_W,
+            "100:00"
+        );
         // Music with the timer keeps the music pill's width either way.
         assert_eq!(geom(Activity::MediaTimer, &st).unwrap().w, MEDIA_TIMER_W);
     }
@@ -385,7 +520,11 @@ mod tests {
         for (fps, util, temp) in [(144.0, 1.0, 71.0), (999.4, 0.0, 99.4), (9.0, 0.97, 30.0)] {
             game(&mut st, fps, util, Some(temp));
             assert_eq!(game_key(&st), key);
-            assert_eq!(geom(Activity::Game, &st).unwrap().w, 251.0, "{fps} fps, GPU {util} at {temp} deg");
+            assert_eq!(
+                geom(Activity::Game, &st).unwrap().w,
+                251.0,
+                "{fps} fps, GPU {util} at {temp} deg"
+            );
         }
         // Only a fourth frame-rate digit, a GPU at 100 degrees or one without
         // a temperature changes the slots, and so the width.
@@ -401,7 +540,11 @@ mod tests {
         let st = state();
         assert_eq!(is_live(Activity::MediaTimer, &st), Some(false));
         for a in [Activity::Timer, Activity::Game] {
-            assert_eq!(is_live(a, &st), None, "{a:?}: Classic's answer (no frames) stands");
+            assert_eq!(
+                is_live(a, &st),
+                None,
+                "{a:?}: Classic's answer (no frames) stands"
+            );
         }
     }
 }

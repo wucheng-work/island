@@ -17,7 +17,14 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
 extern "C" {
-    fn setxattr(path: *const c_char, name: *const c_char, value: *const c_void, size: usize, position: u32, options: c_int) -> c_int;
+    fn setxattr(
+        path: *const c_char,
+        name: *const c_char,
+        value: *const c_void,
+        size: usize,
+        position: u32,
+        options: c_int,
+    ) -> c_int;
 }
 
 pub fn save(path: &Path, secret: &str) -> io::Result<()> {
@@ -25,7 +32,12 @@ pub fn save(path: &Path, secret: &str) -> io::Result<()> {
         fs::create_dir_all(dir)?;
     }
     let tmp = path.with_extension("tmp");
-    let mut f = fs::OpenOptions::new().create(true).truncate(true).write(true).mode(0o600).open(&tmp)?;
+    let mut f = fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .mode(0o600)
+        .open(&tmp)?;
     f.write_all(secret.as_bytes())?;
     f.sync_all()?;
     fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))?;
@@ -54,9 +66,25 @@ fn keep_out_of_backups(path: &Path) {
     // The attribute's value: the string "com.apple.backupd" as a binary
     // property list, byte for byte what tmutil writes.
     const BACKUPD: &[u8] = b"bplist00_\x10\x11com.apple.backupd\x08\0\0\0\0\0\0\x01\x01\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x1c";
-    let Ok(p) = CString::new(path.as_os_str().as_bytes()) else { return };
+    let Ok(p) = CString::new(path.as_os_str().as_bytes()) else {
+        return;
+    };
     let name = c"com.apple.metadata:com_apple_backup_excludeItem";
-    if unsafe { setxattr(p.as_ptr(), name.as_ptr(), BACKUPD.as_ptr().cast(), BACKUPD.len(), 0, 0) } != 0 {
-        pwarn!("secret: {} stays in backups ({})", path.display(), io::Error::last_os_error());
+    if unsafe {
+        setxattr(
+            p.as_ptr(),
+            name.as_ptr(),
+            BACKUPD.as_ptr().cast(),
+            BACKUPD.len(),
+            0,
+            0,
+        )
+    } != 0
+    {
+        pwarn!(
+            "secret: {} stays in backups ({})",
+            path.display(),
+            io::Error::last_os_error()
+        );
     }
 }

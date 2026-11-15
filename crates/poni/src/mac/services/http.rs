@@ -12,8 +12,10 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{define_class, msg_send, AnyThread, Message};
 use objc2_foundation::{
-    NSData, NSError, NSHTTPCookieAcceptPolicy, NSHTTPURLResponse, NSMutableURLRequest, NSObject, NSObjectProtocol, NSString, NSURLRequest, NSURLRequestCachePolicy, NSURLResponse, NSURLSession,
-    NSURLSessionConfiguration, NSURLSessionDelegate, NSURLSessionTask, NSURLSessionTaskDelegate, NSURL,
+    NSData, NSError, NSHTTPCookieAcceptPolicy, NSHTTPURLResponse, NSMutableURLRequest, NSObject,
+    NSObjectProtocol, NSString, NSURLRequest, NSURLRequestCachePolicy, NSURLResponse, NSURLSession,
+    NSURLSessionConfiguration, NSURLSessionDelegate, NSURLSessionTask, NSURLSessionTaskDelegate,
+    NSURL,
 };
 use std::fmt;
 use std::sync::mpsc;
@@ -27,7 +29,9 @@ const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
 
 /// URL loading system errors (NSURLError.h).
 const URL_ERROR_TIMED_OUT: isize = -1001;
-const URL_NETWORK_ERRORS: [isize; 9] = [-1003, -1004, -1005, -1006, -1009, -1018, -1020, -1200, -1206];
+const URL_NETWORK_ERRORS: [isize; 9] = [
+    -1003, -1004, -1005, -1006, -1009, -1018, -1020, -1200, -1206,
+];
 
 /// The methods [`Client::send`] speaks.
 #[allow(dead_code)]
@@ -104,7 +108,14 @@ define_class!(
 
     unsafe impl NSURLSessionTaskDelegate for NoRedirect {
         #[unsafe(method(URLSession:task:willPerformHTTPRedirection:newRequest:completionHandler:))]
-        fn will_redirect(&self, _session: &NSURLSession, _task: &NSURLSessionTask, _response: &NSHTTPURLResponse, _request: &NSURLRequest, handler: &DynBlock<dyn Fn(*mut NSURLRequest)>) {
+        fn will_redirect(
+            &self,
+            _session: &NSURLSession,
+            _task: &NSURLSessionTask,
+            _response: &NSHTTPURLResponse,
+            _request: &NSURLRequest,
+            handler: &DynBlock<dyn Fn(*mut NSURLRequest)>,
+        ) {
             handler.call((std::ptr::null_mut(),));
         }
     }
@@ -119,7 +130,10 @@ impl NoRedirect {
 
 impl Client {
     pub fn new(user_agent: &str) -> Result<Self, FetchError> {
-        Ok(Client { user_agent: user_agent.to_string(), own: None })
+        Ok(Client {
+            user_agent: user_agent.to_string(),
+            own: None,
+        })
     }
 
     /// A client of its own for requests that carry another service's
@@ -134,8 +148,17 @@ impl Client {
         cfg.setURLCache(None);
         cfg.setRequestCachePolicy(NSURLRequestCachePolicy::ReloadIgnoringLocalCacheData);
         let delegate = NoRedirect::new();
-        let session = unsafe { NSURLSession::sessionWithConfiguration_delegate_delegateQueue(&cfg, Some(ProtocolObject::from_ref(&*delegate)), None) };
-        Ok(Client { user_agent: user_agent.to_string(), own: Some(session) })
+        let session = unsafe {
+            NSURLSession::sessionWithConfiguration_delegate_delegateQueue(
+                &cfg,
+                Some(ProtocolObject::from_ref(&*delegate)),
+                None,
+            )
+        };
+        Ok(Client {
+            user_agent: user_agent.to_string(),
+            own: Some(session),
+        })
     }
 
     fn session(&self) -> Retained<NSURLSession> {
@@ -146,37 +169,72 @@ impl Client {
         self.send(Method::Get, url, &[], None, timeout)
     }
 
-    pub fn get_with_headers(&self, url: &str, headers: &[(&str, &str)], timeout: Duration) -> Result<Response, FetchError> {
+    pub fn get_with_headers(
+        &self,
+        url: &str,
+        headers: &[(&str, &str)],
+        timeout: Duration,
+    ) -> Result<Response, FetchError> {
         self.send(Method::Get, url, headers, None, timeout)
     }
 
-    pub fn send(&self, method: Method, url: &str, headers: &[(&str, &str)], json: Option<&str>, timeout: Duration) -> Result<Response, FetchError> {
+    pub fn send(
+        &self,
+        method: Method,
+        url: &str,
+        headers: &[(&str, &str)],
+        json: Option<&str>,
+        timeout: Duration,
+    ) -> Result<Response, FetchError> {
         let method = match method {
             Method::Get => "GET",
             Method::Post => "POST",
         };
         let req = self.request(method, url, headers, timeout)?;
         if let Some(body) = json {
-            req.setValue_forHTTPHeaderField(Some(&NSString::from_str("application/json")), &NSString::from_str("Content-Type"));
+            req.setValue_forHTTPHeaderField(
+                Some(&NSString::from_str("application/json")),
+                &NSString::from_str("Content-Type"),
+            );
             req.setHTTPBody(Some(&NSData::with_bytes(body.as_bytes())));
         }
         self.perform(&req, timeout)
     }
 
     /// OAuth token endpoints accept form data rather than JSON.
-    pub fn post_form(&self, url: &str, form: &str, timeout: Duration) -> Result<Response, FetchError> {
-        let req = self.request("POST", url, &[("Content-Type", "application/x-www-form-urlencoded")], timeout)?;
+    pub fn post_form(
+        &self,
+        url: &str,
+        form: &str,
+        timeout: Duration,
+    ) -> Result<Response, FetchError> {
+        let req = self.request(
+            "POST",
+            url,
+            &[("Content-Type", "application/x-www-form-urlencoded")],
+            timeout,
+        )?;
         req.setHTTPBody(Some(&NSData::with_bytes(form.as_bytes())));
         self.perform(&req, timeout)
     }
 
     /// A request to `url` with our User-Agent and `headers`.
-    fn request(&self, method: &str, url: &str, headers: &[(&str, &str)], timeout: Duration) -> Result<Retained<NSMutableURLRequest>, FetchError> {
-        let nsurl = NSURL::URLWithString(&NSString::from_str(url)).ok_or_else(|| FetchError::Other(format!("not a URL: {url}")))?;
+    fn request(
+        &self,
+        method: &str,
+        url: &str,
+        headers: &[(&str, &str)],
+        timeout: Duration,
+    ) -> Result<Retained<NSMutableURLRequest>, FetchError> {
+        let nsurl = NSURL::URLWithString(&NSString::from_str(url))
+            .ok_or_else(|| FetchError::Other(format!("not a URL: {url}")))?;
         let req = NSMutableURLRequest::requestWithURL(&nsurl);
         req.setTimeoutInterval(timeout.as_secs_f64());
         req.setHTTPMethod(&NSString::from_str(method));
-        req.setValue_forHTTPHeaderField(Some(&NSString::from_str(&self.user_agent)), &NSString::from_str("User-Agent"));
+        req.setValue_forHTTPHeaderField(
+            Some(&NSString::from_str(&self.user_agent)),
+            &NSString::from_str("User-Agent"),
+        );
         for (k, v) in headers {
             req.setValue_forHTTPHeaderField(Some(&NSString::from_str(v)), &NSString::from_str(k));
         }
@@ -184,13 +242,22 @@ impl Client {
     }
 
     /// Send `req` and wait for its answer.
-    fn perform(&self, req: &NSMutableURLRequest, timeout: Duration) -> Result<Response, FetchError> {
+    fn perform(
+        &self,
+        req: &NSMutableURLRequest,
+        timeout: Duration,
+    ) -> Result<Response, FetchError> {
         let (tx, rx) = mpsc::channel::<Result<Response, FetchError>>();
-        let done = RcBlock::new(move |data: *mut NSData, resp: *mut NSURLResponse, err: *mut NSError| {
-            let result = unsafe { finish(data.as_ref(), resp.as_ref(), err.as_ref()) };
-            let _ = tx.send(result);
-        });
-        let task = unsafe { self.session().dataTaskWithRequest_completionHandler(req, &done) };
+        let done = RcBlock::new(
+            move |data: *mut NSData, resp: *mut NSURLResponse, err: *mut NSError| {
+                let result = unsafe { finish(data.as_ref(), resp.as_ref(), err.as_ref()) };
+                let _ = tx.send(result);
+            },
+        );
+        let task = unsafe {
+            self.session()
+                .dataTaskWithRequest_completionHandler(req, &done)
+        };
         task.resume();
         // URLSession enforces the timeout itself; the extra second only guards
         // against a completion handler that never runs.
@@ -227,18 +294,34 @@ fn classify(e: &NSError) -> FetchError {
 }
 
 /// Turn a finished data task into a response or an error.
-fn finish(data: Option<&NSData>, resp: Option<&NSURLResponse>, err: Option<&NSError>) -> Result<Response, FetchError> {
+fn finish(
+    data: Option<&NSData>,
+    resp: Option<&NSURLResponse>,
+    err: Option<&NSError>,
+) -> Result<Response, FetchError> {
     if let Some(e) = err {
         return Err(classify(e));
     }
-    let http: Option<Retained<NSHTTPURLResponse>> = resp.and_then(|r| r.retain().downcast::<NSHTTPURLResponse>().ok());
-    let Some(http) = http else { return Err(FetchError::Other("not an HTTP response".into())) };
+    let http: Option<Retained<NSHTTPURLResponse>> =
+        resp.and_then(|r| r.retain().downcast::<NSHTTPURLResponse>().ok());
+    let Some(http) = http else {
+        return Err(FetchError::Other("not an HTTP response".into()));
+    };
     let bytes = data.map(|d| d.to_vec()).unwrap_or_default();
     if bytes.len() > MAX_BODY_BYTES {
-        return Err(FetchError::Other(format!("response too large ({} bytes)", bytes.len())));
+        return Err(FetchError::Other(format!(
+            "response too large ({} bytes)",
+            bytes.len()
+        )));
     }
-    let retry_after_s = http.valueForHTTPHeaderField(&NSString::from_str("Retry-After")).and_then(|v| v.to_string().trim().parse::<u64>().ok());
-    Ok(Response { status: http.statusCode().clamp(0, u16::MAX as isize) as u16, body: decode_body(&bytes), retry_after_s })
+    let retry_after_s = http
+        .valueForHTTPHeaderField(&NSString::from_str("Retry-After"))
+        .and_then(|v| v.to_string().trim().parse::<u64>().ok());
+    Ok(Response {
+        status: http.statusCode().clamp(0, u16::MAX as isize) as u16,
+        body: decode_body(&bytes),
+        retry_after_s,
+    })
 }
 
 /// UTF-8 with a leading BOM dropped; invalid bytes become U+FFFD.
@@ -249,24 +332,34 @@ fn decode_body(bytes: &[u8]) -> String {
 
 /// Download raw bytes (album art). Blocking, like the rest.
 pub fn get_bytes(url: &str, user_agent: &str, timeout: Duration) -> Result<Vec<u8>, FetchError> {
-    let nsurl = NSURL::URLWithString(&NSString::from_str(url)).ok_or_else(|| FetchError::Other(format!("not a URL: {url}")))?;
+    let nsurl = NSURL::URLWithString(&NSString::from_str(url))
+        .ok_or_else(|| FetchError::Other(format!("not a URL: {url}")))?;
     let req = NSMutableURLRequest::requestWithURL(&nsurl);
     req.setTimeoutInterval(timeout.as_secs_f64());
-    req.setValue_forHTTPHeaderField(Some(&NSString::from_str(user_agent)), &NSString::from_str("User-Agent"));
+    req.setValue_forHTTPHeaderField(
+        Some(&NSString::from_str(user_agent)),
+        &NSString::from_str("User-Agent"),
+    );
     let (tx, rx) = mpsc::channel::<Result<Vec<u8>, FetchError>>();
-    let done = RcBlock::new(move |data: *mut NSData, resp: *mut NSURLResponse, err: *mut NSError| {
-        let ok = unsafe { resp.as_ref() }.and_then(|r| r.retain().downcast::<NSHTTPURLResponse>().ok()).is_some_and(|h| h.statusCode() == 200);
-        let r = match (unsafe { err.as_ref() }, unsafe { data.as_ref() }) {
-            (Some(e), _) => Err(FetchError::Other(e.localizedDescription().to_string())),
-            (None, Some(d)) if ok && d.len() <= MAX_BODY_BYTES => Ok(d.to_vec()),
-            _ => Err(FetchError::Other("no picture".into())),
-        };
-        let _ = tx.send(r);
-    });
-    let task = unsafe { NSURLSession::sharedSession().dataTaskWithRequest_completionHandler(&req, &done) };
+    let done = RcBlock::new(
+        move |data: *mut NSData, resp: *mut NSURLResponse, err: *mut NSError| {
+            let ok = unsafe { resp.as_ref() }
+                .and_then(|r| r.retain().downcast::<NSHTTPURLResponse>().ok())
+                .is_some_and(|h| h.statusCode() == 200);
+            let r = match (unsafe { err.as_ref() }, unsafe { data.as_ref() }) {
+                (Some(e), _) => Err(FetchError::Other(e.localizedDescription().to_string())),
+                (None, Some(d)) if ok && d.len() <= MAX_BODY_BYTES => Ok(d.to_vec()),
+                _ => Err(FetchError::Other("no picture".into())),
+            };
+            let _ = tx.send(r);
+        },
+    );
+    let task =
+        unsafe { NSURLSession::sharedSession().dataTaskWithRequest_completionHandler(&req, &done) };
     task.resume();
-    rx.recv_timeout(timeout + Duration::from_secs(1)).unwrap_or_else(|_| {
-        task.cancel();
-        Err(FetchError::Timeout)
-    })
+    rx.recv_timeout(timeout + Duration::from_secs(1))
+        .unwrap_or_else(|_| {
+            task.cancel();
+            Err(FetchError::Timeout)
+        })
 }

@@ -27,11 +27,22 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 use windows::core::{IInspectable, Interface, Result, GUID, HSTRING};
-use windows::Devices::Bluetooth::GenericAttributeProfile::{GattCharacteristicUuids, GattCommunicationStatus, GattDeviceService, GattServiceUuids};
-use windows::Devices::Bluetooth::{BluetoothCacheMode, BluetoothConnectionStatus, BluetoothDevice, BluetoothLEDevice, BluetoothMajorClass};
-use windows::Devices::Enumeration::{DeviceInformation, DeviceInformationKind, DeviceInformationUpdate, DeviceWatcher, DeviceWatcherStatus};
+use windows::Devices::Bluetooth::GenericAttributeProfile::{
+    GattCharacteristicUuids, GattCommunicationStatus, GattDeviceService, GattServiceUuids,
+};
+use windows::Devices::Bluetooth::{
+    BluetoothCacheMode, BluetoothConnectionStatus, BluetoothDevice, BluetoothLEDevice,
+    BluetoothMajorClass,
+};
+use windows::Devices::Enumeration::{
+    DeviceInformation, DeviceInformationKind, DeviceInformationUpdate, DeviceWatcher,
+    DeviceWatcherStatus,
+};
 use windows::Foundation::Collections::{IIterable, IMapView};
-use windows::Foundation::{AsyncOperationCompletedHandler, AsyncStatus, EventRegistrationToken, IAsyncOperation, IPropertyValue, PropertyType, TypedEventHandler};
+use windows::Foundation::{
+    AsyncOperationCompletedHandler, AsyncStatus, EventRegistrationToken, IAsyncOperation,
+    IPropertyValue, PropertyType, TypedEventHandler,
+};
 use windows::Storage::Streams::DataReader;
 use windows::Win32::Foundation::E_FAIL;
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
@@ -94,21 +105,29 @@ impl BluetoothService {
                 let _ = done_tx.send(());
             })
             .map_err(|e| windows::core::Error::new(E_FAIL, format!("bluetooth thread: {e}")))?;
-        Ok(Self { tx, done, thread: Some(thread) })
+        Ok(Self {
+            tx,
+            done,
+            thread: Some(thread),
+        })
     }
 }
 
 impl Drop for BluetoothService {
     fn drop(&mut self) {
         let _ = self.tx.send(Msg::Shutdown);
-        let Some(thread) = self.thread.take() else { return };
+        let Some(thread) = self.thread.take() else {
+            return;
+        };
         match self.done.recv_timeout(STOP_TIMEOUT) {
             Ok(()) | Err(RecvTimeoutError::Disconnected) => {
                 let _ = thread.join();
             }
             // Most likely inside a bounded battery lookup; the process is
             // exiting anyway, so don't hold the UI thread hostage.
-            Err(RecvTimeoutError::Timeout) => crate::pwarn!("bluetooth: worker did not stop in time; detaching it"),
+            Err(RecvTimeoutError::Timeout) => {
+                crate::pwarn!("bluetooth: worker did not stop in time; detaching it")
+            }
         }
     }
 }
@@ -142,14 +161,20 @@ impl Kind {
     /// Windows' own filter for connected devices of this kind.
     fn connected_selector(self) -> Result<HSTRING> {
         match self {
-            Kind::Classic => BluetoothDevice::GetDeviceSelectorFromConnectionStatus(BluetoothConnectionStatus::Connected),
-            Kind::Le => BluetoothLEDevice::GetDeviceSelectorFromConnectionStatus(BluetoothConnectionStatus::Connected),
+            Kind::Classic => BluetoothDevice::GetDeviceSelectorFromConnectionStatus(
+                BluetoothConnectionStatus::Connected,
+            ),
+            Kind::Le => BluetoothLEDevice::GetDeviceSelectorFromConnectionStatus(
+                BluetoothConnectionStatus::Connected,
+            ),
         }
     }
 
     /// The watcher's filter: connected and paired with this PC.
     fn selector(self) -> Result<HSTRING> {
-        Ok(HSTRING::from(paired_only(&self.connected_selector()?.to_string_lossy())))
+        Ok(HSTRING::from(paired_only(
+            &self.connected_selector()?.to_string_lossy(),
+        )))
     }
 
     /// The property that hints whether the device is audio gear.
@@ -164,8 +189,16 @@ impl Kind {
     /// may reject a property name; then we retry with fewer).
     fn property_sets(self) -> [&'static [&'static str]; 3] {
         match self {
-            Kind::Classic => [&[PKEY_CONTAINER, PKEY_CONNECTED, PKEY_COD_MAJOR], &[PKEY_CONTAINER, PKEY_CONNECTED], &[]],
-            Kind::Le => [&[PKEY_CONTAINER, PKEY_CONNECTED, PKEY_LE_CATEGORY], &[PKEY_CONTAINER, PKEY_CONNECTED], &[]],
+            Kind::Classic => [
+                &[PKEY_CONTAINER, PKEY_CONNECTED, PKEY_COD_MAJOR],
+                &[PKEY_CONTAINER, PKEY_CONNECTED],
+                &[],
+            ],
+            Kind::Le => [
+                &[PKEY_CONTAINER, PKEY_CONNECTED, PKEY_LE_CATEGORY],
+                &[PKEY_CONTAINER, PKEY_CONNECTED],
+                &[],
+            ],
         }
     }
 }
@@ -184,7 +217,10 @@ struct Seen {
 impl Seen {
     fn read(kind: Kind, info: &DeviceInformation) -> Option<Seen> {
         let id = info.Id().ok()?.to_string_lossy();
-        let name = info.Name().map(|n| n.to_string_lossy().trim().to_string()).unwrap_or_default();
+        let name = info
+            .Name()
+            .map(|n| n.to_string_lossy().trim().to_string())
+            .unwrap_or_default();
         let props = info.Properties().ok();
         let prop_u = |key: &str| props.as_ref().and_then(|p| prop_u32(p, key));
         if props.as_ref().and_then(|p| prop_bool(p, PKEY_CONNECTED)) == Some(false) {
@@ -194,7 +230,10 @@ impl Seen {
             kind,
             id,
             name,
-            container: props.as_ref().and_then(|p| prop_guid(p, PKEY_CONTAINER)).filter(usable_container),
+            container: props
+                .as_ref()
+                .and_then(|p| prop_guid(p, PKEY_CONTAINER))
+                .filter(usable_container),
             class_hint: prop_u(kind.class_key()).filter(|v| *v != 0),
             at: Instant::now(),
         })
@@ -202,11 +241,27 @@ impl Seen {
 }
 
 enum Msg {
-    Added { gen: u32, seen: Seen },
+    Added {
+        gen: u32,
+        seen: Seen,
+    },
     /// A known endpoint (dis)connected (watcher removal or IsConnected update).
-    Changed { gen: u32, kind: Kind, id: String, connected: bool, at: Instant },
-    Enumerated { gen: u32, kind: Kind },
-    Stopped { gen: u32, kind: Kind, aborted: bool },
+    Changed {
+        gen: u32,
+        kind: Kind,
+        id: String,
+        connected: bool,
+        at: Instant,
+    },
+    Enumerated {
+        gen: u32,
+        kind: Kind,
+    },
+    Stopped {
+        gen: u32,
+        kind: Kind,
+        aborted: bool,
+    },
     Shutdown,
 }
 
@@ -233,10 +288,15 @@ impl Watch {
         let watcher = if props.is_empty() {
             DeviceInformation::CreateWatcherAqsFilter(aqs)?
         } else {
-            let list = IIterable::<HSTRING>::try_from(props.iter().map(|p| HSTRING::from(*p)).collect::<Vec<_>>())?;
+            let list = IIterable::<HSTRING>::try_from(
+                props.iter().map(|p| HSTRING::from(*p)).collect::<Vec<_>>(),
+            )?;
             DeviceInformation::CreateWatcherAqsFilterAndAdditionalProperties(aqs, &list)?
         };
-        let mut w = Watch { watcher, tokens: Tokens::default() };
+        let mut w = Watch {
+            watcher,
+            tokens: Tokens::default(),
+        };
         if let Err(e) = w.subscribe(kind, gen, tx).and_then(|()| w.watcher.Start()) {
             w.stop();
             return Err(e);
@@ -246,7 +306,10 @@ impl Watch {
 
     fn subscribe(&mut self, kind: Kind, gen: u32, tx: &Sender<Msg>) -> Result<()> {
         let t = tx.clone();
-        self.tokens.added = Some(self.watcher.Added(&TypedEventHandler::<DeviceWatcher, DeviceInformation>::new(move |_, info| {
+        self.tokens.added = Some(self.watcher.Added(&TypedEventHandler::<
+            DeviceWatcher,
+            DeviceInformation,
+        >::new(move |_, info| {
             if let Some(seen) = info.as_ref().and_then(|i| Seen::read(kind, i)) {
                 let _ = t.send(Msg::Added { gen, seen });
             }
@@ -254,9 +317,18 @@ impl Watch {
         }))?);
 
         let t = tx.clone();
-        self.tokens.removed = Some(self.watcher.Removed(&TypedEventHandler::<DeviceWatcher, DeviceInformationUpdate>::new(move |_, upd| {
+        self.tokens.removed = Some(self.watcher.Removed(&TypedEventHandler::<
+            DeviceWatcher,
+            DeviceInformationUpdate,
+        >::new(move |_, upd| {
             if let Some(id) = upd.as_ref().and_then(|u| u.Id().ok()) {
-                let _ = t.send(Msg::Changed { gen, kind, id: id.to_string_lossy(), connected: false, at: Instant::now() });
+                let _ = t.send(Msg::Changed {
+                    gen,
+                    kind,
+                    id: id.to_string_lossy(),
+                    connected: false,
+                    at: Instant::now(),
+                });
             }
             Ok(())
         }))?);
@@ -264,11 +336,24 @@ impl Watch {
         // Belt and braces: some stacks report (dis)connects as an update of
         // IsConnected instead of removing / re-adding the endpoint.
         let t = tx.clone();
-        self.tokens.updated = Some(self.watcher.Updated(&TypedEventHandler::<DeviceWatcher, DeviceInformationUpdate>::new(move |_, upd| {
+        self.tokens.updated = Some(self.watcher.Updated(&TypedEventHandler::<
+            DeviceWatcher,
+            DeviceInformationUpdate,
+        >::new(move |_, upd| {
             if let Some(u) = upd {
-                if let Some(connected) = u.Properties().ok().and_then(|p| prop_bool(&p, PKEY_CONNECTED)) {
+                if let Some(connected) = u
+                    .Properties()
+                    .ok()
+                    .and_then(|p| prop_bool(&p, PKEY_CONNECTED))
+                {
                     if let Ok(id) = u.Id() {
-                        let _ = t.send(Msg::Changed { gen, kind, id: id.to_string_lossy(), connected, at: Instant::now() });
+                        let _ = t.send(Msg::Changed {
+                            gen,
+                            kind,
+                            id: id.to_string_lossy(),
+                            connected,
+                            at: Instant::now(),
+                        });
                     }
                 }
             }
@@ -276,14 +361,22 @@ impl Watch {
         }))?);
 
         let t = tx.clone();
-        self.tokens.completed = Some(self.watcher.EnumerationCompleted(&TypedEventHandler::<DeviceWatcher, IInspectable>::new(move |_, _| {
-            let _ = t.send(Msg::Enumerated { gen, kind });
-            Ok(())
-        }))?);
+        self.tokens.completed =
+            Some(self.watcher.EnumerationCompleted(&TypedEventHandler::<
+                DeviceWatcher,
+                IInspectable,
+            >::new(move |_, _| {
+                let _ = t.send(Msg::Enumerated { gen, kind });
+                Ok(())
+            }))?);
 
         let t = tx.clone();
-        self.tokens.stopped = Some(self.watcher.Stopped(&TypedEventHandler::<DeviceWatcher, IInspectable>::new(move |w, _| {
-            let aborted = w.as_ref().and_then(|w| w.Status().ok()) == Some(DeviceWatcherStatus::Aborted);
+        self.tokens.stopped = Some(self.watcher.Stopped(&TypedEventHandler::<
+            DeviceWatcher,
+            IInspectable,
+        >::new(move |w, _| {
+            let aborted =
+                w.as_ref().and_then(|w| w.Status().ok()) == Some(DeviceWatcherStatus::Aborted);
             let _ = t.send(Msg::Stopped { gen, kind, aborted });
             Ok(())
         }))?);
@@ -293,7 +386,9 @@ impl Watch {
     /// Stop (if running) and release the handlers (and the senders they hold).
     fn stop(self) {
         let status = self.watcher.Status().ok();
-        if status == Some(DeviceWatcherStatus::Started) || status == Some(DeviceWatcherStatus::EnumerationCompleted) {
+        if status == Some(DeviceWatcherStatus::Started)
+            || status == Some(DeviceWatcherStatus::EnumerationCompleted)
+        {
             if let Err(e) = self.watcher.Stop() {
                 crate::pwarn!("bluetooth: stopping a watcher failed ({e})");
             }
@@ -417,7 +512,9 @@ impl ComApartment {
         if hr.is_err() {
             crate::pwarn!("bluetooth: CoInitializeEx failed ({hr:?})");
         }
-        Self { initialized: hr.is_ok() }
+        Self {
+            initialized: hr.is_ok(),
+        }
     }
 }
 
@@ -435,7 +532,13 @@ fn run(sink: EventSink, tx: Sender<Msg>, rx: Receiver<Msg>) {
     if !com.initialized {
         return;
     }
-    let mut w = Worker { sink, tx, devices: HashMap::new(), keys: HashMap::new(), slots: Default::default() };
+    let mut w = Worker {
+        sink,
+        tx,
+        devices: HashMap::new(),
+        keys: HashMap::new(),
+        slots: Default::default(),
+    };
     let started = Kind::ALL.iter().filter(|k| w.start_watch(**k)).count();
     if started == 0 {
         crate::pwarn!("bluetooth: no device watcher could start; pop-ups disabled");
@@ -483,7 +586,10 @@ impl Worker {
                     slot.level = level;
                     return true;
                 }
-                Err(e) => crate::pwarn!("bluetooth: {} watcher (property set {level}) failed to start ({e})", kind.label()),
+                Err(e) => crate::pwarn!(
+                    "bluetooth: {} watcher (property set {level}) failed to start ({e})",
+                    kind.label()
+                ),
             }
         }
         false
@@ -506,11 +612,21 @@ impl Worker {
     fn handle(&mut self, msg: Msg) {
         match msg {
             Msg::Added { gen, seen } => {
-                let Some(silent) = self.live(seen.kind, gen) else { return };
+                let Some(silent) = self.live(seen.kind, gen) else {
+                    return;
+                };
                 self.on_added(seen, silent);
             }
-            Msg::Changed { gen, kind, id, connected, at } => {
-                let Some(silent) = self.live(kind, gen) else { return };
+            Msg::Changed {
+                gen,
+                kind,
+                id,
+                connected,
+                at,
+            } => {
+                let Some(silent) = self.live(kind, gen) else {
+                    return;
+                };
                 self.on_changed(&id, connected, at, silent);
             }
             Msg::Enumerated { gen, kind } => {
@@ -562,7 +678,12 @@ impl Worker {
                 e.connected = true;
                 e.class_hint = seen.class_hint.or(e.class_hint);
             }
-            None => dev.endpoints.push(Endpoint { id: seen.id.clone(), kind: seen.kind, connected: true, class_hint: seen.class_hint }),
+            None => dev.endpoints.push(Endpoint {
+                id: seen.id.clone(),
+                kind: seen.kind,
+                connected: true,
+                class_hint: seen.class_hint,
+            }),
         }
         self.keys.insert(seen.id, key.clone());
         self.transition(&key, was, seen.at, silent);
@@ -571,10 +692,16 @@ impl Worker {
     /// Only for endpoints we already know (an unknown one that connects
     /// arrives as `Added`, with its name).
     fn on_changed(&mut self, id: &str, connected: bool, at: Instant, silent: bool) {
-        let Some(key) = self.keys.get(id).cloned() else { return };
-        let Some(dev) = self.devices.get_mut(&key) else { return };
+        let Some(key) = self.keys.get(id).cloned() else {
+            return;
+        };
+        let Some(dev) = self.devices.get_mut(&key) else {
+            return;
+        };
         let was = dev.connected();
-        let Some(e) = dev.endpoints.iter_mut().find(|e| e.id == id) else { return };
+        let Some(e) = dev.endpoints.iter_mut().find(|e| e.id == id) else {
+            return;
+        };
         e.connected = connected;
         self.transition(&key, was, at, silent);
     }
@@ -590,13 +717,21 @@ impl Worker {
             slot.level += 1;
         }
         slot.enumerated = false;
-        crate::pwarn!("bluetooth: {} watcher {}", kind.label(), if aborted { "aborted" } else { "stopped" });
+        crate::pwarn!(
+            "bluetooth: {} watcher {}",
+            kind.label(),
+            if aborted { "aborted" } else { "stopped" }
+        );
 
         // Its endpoints are unknown now; the restart re-learns the connected
         // ones silently.
         for dev in self.devices.values_mut() {
             let mut changed = false;
-            for e in dev.endpoints.iter_mut().filter(|e| e.kind == kind && e.connected) {
+            for e in dev
+                .endpoints
+                .iter_mut()
+                .filter(|e| e.kind == kind && e.connected)
+            {
                 e.connected = false;
                 changed = true;
             }
@@ -615,14 +750,19 @@ impl Worker {
             slot.restarts += 1;
             slot.restart_at = Some(Instant::now() + RESTART_DELAY * slot.restarts);
         } else {
-            crate::pwarn!("bluetooth: {} watcher keeps failing; giving up", kind.label());
+            crate::pwarn!(
+                "bluetooth: {} watcher keeps failing; giving up",
+                kind.label()
+            );
         }
     }
 
     /// Apply a possible connection change of device `key` (`was` = state
     /// before the endpoint update).
     fn transition(&mut self, key: &str, was: bool, at: Instant, silent: bool) {
-        let Some(dev) = self.devices.get_mut(key) else { return };
+        let Some(dev) = self.devices.get_mut(key) else {
+            return;
+        };
         if dev.connected() != was {
             dev.changed(at, silent);
         }
@@ -630,7 +770,11 @@ impl Worker {
 
     /// Report changes that have settled, and restart watchers that are due.
     fn tick(&mut self, now: Instant) {
-        let settled: Vec<(String, bool)> = self.devices.iter_mut().filter_map(|(k, d)| d.settled(now).map(|c| (k.clone(), c))).collect();
+        let settled: Vec<(String, bool)> = self
+            .devices
+            .iter_mut()
+            .filter_map(|(k, d)| d.settled(now).map(|c| (k.clone(), c)))
+            .collect();
         for (key, connected) in settled {
             self.report(&key, connected);
         }
@@ -649,24 +793,50 @@ impl Worker {
 
     /// Look up details (bounded) and send the pop-up event.
     fn report(&mut self, key: &str, connected: bool) {
-        let Some(dev) = self.devices.get(key) else { return };
-        let snap = Snapshot { container: dev.container, endpoints: dev.endpoints.clone(), audio: dev.audio };
+        let Some(dev) = self.devices.get(key) else {
+            return;
+        };
+        let snap = Snapshot {
+            container: dev.container,
+            endpoints: dev.endpoints.clone(),
+            audio: dev.audio,
+        };
         let (audio, battery) = describe(&snap, connected);
 
-        let Some(dev) = self.devices.get_mut(key) else { return };
+        let Some(dev) = self.devices.get_mut(key) else {
+            return;
+        };
         if audio.is_some() {
             dev.audio = audio;
         }
         dev.shown = connected;
-        let state = if connected { "connected" } else { "disconnected" };
+        let state = if connected {
+            "connected"
+        } else {
+            "disconnected"
+        };
         if audio == Some(false) {
-            crate::pinfo!("bluetooth: a device that isn't headphones or a speaker {state} (no pop-up)");
+            crate::pinfo!(
+                "bluetooth: a device that isn't headphones or a speaker {state} (no pop-up)"
+            );
             return;
         }
-        let name = if dev.name.is_empty() { FALLBACK_NAME.to_string() } else { dev.name.clone() };
+        let name = if dev.name.is_empty() {
+            FALLBACK_NAME.to_string()
+        } else {
+            dev.name.clone()
+        };
         let audio = audio.unwrap_or(false);
-        crate::pinfo!("bluetooth: device {state} (audio {audio}, battery {})", battery.map_or_else(|| "unknown".to_string(), |b| format!("{b}%")));
-        self.sink.send(AppEvent::Bluetooth { name, connected, battery, audio });
+        crate::pinfo!(
+            "bluetooth: device {state} (audio {audio}, battery {})",
+            battery.map_or_else(|| "unknown".to_string(), |b| format!("{b}%"))
+        );
+        self.sink.send(AppEvent::Bluetooth {
+            name,
+            connected,
+            battery,
+            audio,
+        });
     }
 }
 
@@ -696,7 +866,12 @@ fn describe(dev: &Snapshot, connected: bool) -> (Option<bool>, Option<u8>) {
     let want_battery = connected && battery.is_none();
     if want_battery || audio.is_none() {
         if let Some(ep) = dev.endpoint(Kind::Le) {
-            let probe = le_probe(&ep.id, want_battery && ep.connected, audio.is_none(), soon(GATT_TIMEOUT, deadline));
+            let probe = le_probe(
+                &ep.id,
+                want_battery && ep.connected,
+                audio.is_none(),
+                soon(GATT_TIMEOUT, deadline),
+            );
             audio = audio.or(probe.audio);
             battery = battery.or(probe.battery);
         }
@@ -722,7 +897,11 @@ fn is_audio_class(kind: Kind, hint: u32) -> bool {
     match kind {
         // Major class number, or a raw Class of Device (major in bits 8..=12).
         Kind::Classic => {
-            let major = if hint > 0x1F { (hint >> 8) & 0x1F } else { hint };
+            let major = if hint > 0x1F {
+                (hint >> 8) & 0x1F
+            } else {
+                hint
+            };
             major == BluetoothMajorClass::AudioVideo.0 as u32
         }
         Kind::Le => LE_AUDIO_CATEGORIES.contains(&hint),
@@ -731,21 +910,37 @@ fn is_audio_class(kind: Kind, hint: u32) -> bool {
 
 /// Classic device: Class of Device major class.
 fn classic_is_audio(id: &str, deadline: Instant) -> Option<bool> {
-    let dev = wait(deadline, || BluetoothDevice::FromIdAsync(&HSTRING::from(id)))?;
+    let dev = wait(deadline, || {
+        BluetoothDevice::FromIdAsync(&HSTRING::from(id))
+    })?;
     let major = dev.ClassOfDevice().and_then(|c| c.MajorClass());
     let _ = dev.Close();
-    major.ok().filter(|m| *m != BluetoothMajorClass::Miscellaneous).map(|m| m == BluetoothMajorClass::AudioVideo)
+    major
+        .ok()
+        .filter(|m| *m != BluetoothMajorClass::Miscellaneous)
+        .map(|m| m == BluetoothMajorClass::AudioVideo)
 }
 
 /// The Windows-maintained battery level on any PnP node of the device.
 fn pnp_battery(container: &GUID, deadline: Instant) -> Option<u8> {
-    let aqs = HSTRING::from(format!("System.Devices.ContainerId:=\"{}\"", braced(container)));
+    let aqs = HSTRING::from(format!(
+        "System.Devices.ContainerId:=\"{}\"",
+        braced(container)
+    ));
     let props = IIterable::<HSTRING>::try_from(vec![HSTRING::from(PKEY_BATTERY)]).ok()?;
-    let nodes = wait(deadline, || DeviceInformation::FindAllAsyncWithKindAqsFilterAndAdditionalProperties(&aqs, &props, DeviceInformationKind::Device))?;
+    let nodes = wait(deadline, || {
+        DeviceInformation::FindAllAsyncWithKindAqsFilterAndAdditionalProperties(
+            &aqs,
+            &props,
+            DeviceInformationKind::Device,
+        )
+    })?;
     let n = nodes.Size().ok()?;
     (0..n).find_map(|i| {
         let p = nodes.GetAt(i).ok()?.Properties().ok()?;
-        prop_u32(&p, PKEY_BATTERY).filter(|v| *v <= 100).map(|v| v as u8)
+        prop_u32(&p, PKEY_BATTERY)
+            .filter(|v| *v <= 100)
+            .map(|v| v as u8)
     })
 }
 
@@ -758,9 +953,18 @@ struct LeProbe {
 /// LE device: appearance category and/or the GATT battery level.
 fn le_probe(id: &str, want_battery: bool, want_audio: bool, deadline: Instant) -> LeProbe {
     let mut out = LeProbe::default();
-    let Some(dev) = wait(deadline, || BluetoothLEDevice::FromIdAsync(&HSTRING::from(id))) else { return out };
+    let Some(dev) = wait(deadline, || {
+        BluetoothLEDevice::FromIdAsync(&HSTRING::from(id))
+    }) else {
+        return out;
+    };
     if want_audio {
-        out.audio = dev.Appearance().and_then(|a| a.Category()).ok().filter(|c| *c != 0).map(|c| is_audio_class(Kind::Le, u32::from(c)));
+        out.audio = dev
+            .Appearance()
+            .and_then(|a| a.Category())
+            .ok()
+            .filter(|c| *c != 0)
+            .map(|c| is_audio_class(Kind::Le, u32::from(c)));
     }
     if want_battery && out.audio != Some(false) {
         out.battery = gatt_battery(&dev, deadline);
@@ -776,14 +980,22 @@ fn gatt_battery(dev: &BluetoothLEDevice, deadline: Instant) -> Option<u8> {
     let mut found = None;
     for mode in [BluetoothCacheMode::Cached, BluetoothCacheMode::Uncached] {
         // After a timeout the next `wait` returns at once (deadline passed).
-        let Some(result) = wait(deadline, || dev.GetGattServicesForUuidWithCacheModeAsync(service_uuid, mode)) else { continue };
+        let Some(result) = wait(deadline, || {
+            dev.GetGattServicesForUuidWithCacheModeAsync(service_uuid, mode)
+        }) else {
+            continue;
+        };
         if result.Status().ok() != Some(GattCommunicationStatus::Success) {
             continue;
         }
-        let Ok(services) = result.Services() else { continue };
+        let Ok(services) = result.Services() else {
+            continue;
+        };
         let n = services.Size().unwrap_or(0);
         for i in 0..n {
-            let Ok(service) = services.GetAt(i) else { continue };
+            let Ok(service) = services.GetAt(i) else {
+                continue;
+            };
             if found.is_none() {
                 found = read_battery_level(&service, level_uuid, deadline);
             }
@@ -797,8 +1009,14 @@ fn gatt_battery(dev: &BluetoothLEDevice, deadline: Instant) -> Option<u8> {
     found
 }
 
-fn read_battery_level(service: &GattDeviceService, level_uuid: GUID, deadline: Instant) -> Option<u8> {
-    let chars = wait(deadline, || service.GetCharacteristicsForUuidWithCacheModeAsync(level_uuid, BluetoothCacheMode::Cached))?;
+fn read_battery_level(
+    service: &GattDeviceService,
+    level_uuid: GUID,
+    deadline: Instant,
+) -> Option<u8> {
+    let chars = wait(deadline, || {
+        service.GetCharacteristicsForUuidWithCacheModeAsync(level_uuid, BluetoothCacheMode::Cached)
+    })?;
     if chars.Status().ok()? != GattCommunicationStatus::Success {
         return None;
     }
@@ -807,7 +1025,9 @@ fn read_battery_level(service: &GattDeviceService, level_uuid: GUID, deadline: I
         return None;
     }
     let characteristic = list.GetAt(0).ok()?;
-    let read = wait(deadline, || characteristic.ReadValueWithCacheModeAsync(BluetoothCacheMode::Uncached))?;
+    let read = wait(deadline, || {
+        characteristic.ReadValueWithCacheModeAsync(BluetoothCacheMode::Uncached)
+    })?;
     if read.Status().ok()? != GattCommunicationStatus::Success {
         return None;
     }
@@ -826,7 +1046,9 @@ where
     T: windows::core::RuntimeType + 'static,
     F: FnOnce() -> Result<IAsyncOperation<T>>,
 {
-    let left = deadline.checked_duration_since(Instant::now()).filter(|d| !d.is_zero())?;
+    let left = deadline
+        .checked_duration_since(Instant::now())
+        .filter(|d| !d.is_zero())?;
     let op = start().ok()?;
     let (tx, rx) = mpsc::channel();
     let handler = AsyncOperationCompletedHandler::<T>::new(move |_, status| {
@@ -878,12 +1100,16 @@ fn prop_u32(map: &IMapView<HSTRING, IInspectable>, key: &str) -> Option<u32> {
 
 fn prop_bool(map: &IMapView<HSTRING, IInspectable>, key: &str) -> Option<bool> {
     let v = prop_value(map, key)?;
-    (v.Type().ok()? == PropertyType::Boolean).then(|| v.GetBoolean().ok()).flatten()
+    (v.Type().ok()? == PropertyType::Boolean)
+        .then(|| v.GetBoolean().ok())
+        .flatten()
 }
 
 fn prop_guid(map: &IMapView<HSTRING, IInspectable>, key: &str) -> Option<GUID> {
     let v = prop_value(map, key)?;
-    (v.Type().ok()? == PropertyType::Guid).then(|| v.GetGuid().ok()).flatten()
+    (v.Type().ok()? == PropertyType::Guid)
+        .then(|| v.GetGuid().ok())
+        .flatten()
 }
 
 /// Real device containers only (not "none" or the local machine's).
@@ -912,11 +1138,23 @@ mod tests {
     use super::*;
 
     fn endpoint(kind: Kind, connected: bool, class_hint: Option<u32>) -> Endpoint {
-        Endpoint { id: format!("{kind:?}"), kind, connected, class_hint }
+        Endpoint {
+            id: format!("{kind:?}"),
+            kind,
+            connected,
+            class_hint,
+        }
     }
 
     fn headset() -> Device {
-        Device { name: "Sound Buds".into(), container: None, endpoints: vec![endpoint(Kind::Classic, false, Some(4))], audio: None, shown: false, due: None }
+        Device {
+            name: "Sound Buds".into(),
+            container: None,
+            endpoints: vec![endpoint(Kind::Classic, false, Some(4))],
+            audio: None,
+            shown: false,
+            due: None,
+        }
     }
 
     /// What `tick` does at `now` with a settled change: report it (which
@@ -949,7 +1187,11 @@ mod tests {
         let t0 = Instant::now();
         let mut dev = headset();
         assert_eq!(set(&mut dev, true, t0), None, "not at once");
-        assert_eq!(report(&mut dev, t0 + SETTLE - secs(0.001)), None, "still settling");
+        assert_eq!(
+            report(&mut dev, t0 + SETTLE - secs(0.001)),
+            None,
+            "still settling"
+        );
         assert_eq!(report(&mut dev, t0 + SETTLE), Some(true));
         assert_eq!(report(&mut dev, t0 + SETTLE * 2), None, "reported once");
         assert_eq!(set(&mut dev, false, t0 + SETTLE * 3), None, "not at once");
@@ -1010,7 +1252,13 @@ mod tests {
         assert_eq!(one(Kind::Le, Some(0x0F)), Some(false));
         // A headset whose LE side says nothing is still a headset; a device
         // that says nothing at all may be one, so it still pops up.
-        assert_eq!(audio_from_hints(&[endpoint(Kind::Le, true, None), endpoint(Kind::Classic, true, Some(4))]), Some(true));
+        assert_eq!(
+            audio_from_hints(&[
+                endpoint(Kind::Le, true, None),
+                endpoint(Kind::Classic, true, Some(4))
+            ]),
+            Some(true)
+        );
         assert_eq!(one(Kind::Le, None), None);
     }
 
@@ -1058,9 +1306,16 @@ mod tests {
             println!("{} filter from Windows: {own}", kind.label());
             println!("{} filter used:         {ours}", kind.label());
             let ((a, n), (b, m)) = (first_listing(kind, &own), first_listing(kind, &ours));
-            println!("{}: Windows' own {a} ({n} connected), paired-only {b} ({m} connected)", kind.label());
+            println!(
+                "{}: Windows' own {a} ({n} connected), paired-only {b} ({m} connected)",
+                kind.label()
+            );
             assert_eq!(b, a, "the {} watcher's first listing", kind.label());
-            assert!(m <= n, "the paired-only {} filter listed more devices than Windows' own", kind.label());
+            assert!(
+                m <= n,
+                "the paired-only {} filter listed more devices than Windows' own",
+                kind.label()
+            );
         }
     }
 }

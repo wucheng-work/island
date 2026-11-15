@@ -95,7 +95,8 @@ fn battery_state(st: &AppState) -> Option<(u8, bool)> {
     let p = &st.power;
     // Plugged in counts as charging, as the Charging pop-up has it: a full
     // battery on its charger keeps the bolt.
-    p.has_battery.then_some((p.percent.min(100), p.charging || p.on_ac))
+    p.has_battery
+        .then_some((p.percent.min(100), p.charging || p.on_ac))
 }
 
 fn clock_width(st: &AppState) -> f32 {
@@ -117,13 +118,25 @@ fn draw_clock(ui: &mut Ui, st: &AppState, body: Rect) {
         return;
     };
     let (tw, _) = ui.c.measure(&time, &ts, 400.0);
-    ui.c.text(&time, Rect::new(body.x + SIDE, body.y, tw + 2.0, body.h), &ts);
+    ui.c.text(
+        &time,
+        Rect::new(body.x + SIDE, body.y, tw + 2.0, body.h),
+        &ts,
+    );
 
     let cy = body.center().y;
-    let glyph = Rect::new(body.right() - SIDE - BATTERY_W, cy - BATTERY_H / 2.0, BATTERY_W, BATTERY_H);
+    let glyph = Rect::new(
+        body.right() - SIDE - BATTERY_W,
+        cy - BATTERY_H / 2.0,
+        BATTERY_W,
+        BATTERY_H,
+    );
     battery(ui, glyph, percent, charging);
     let pct = format!("{percent}%");
-    let pct_ts = TextStyle::body().weight(Weight::Medium).tabular().color(PCT_INK);
+    let pct_ts = TextStyle::body()
+        .weight(Weight::Medium)
+        .tabular()
+        .color(PCT_INK);
     let (pw, _) = ui.c.measure(&pct, &pct_ts, 200.0);
     let x = glyph.x - PCT_GAP - pw;
     ui.c.text(&pct, Rect::new(x, body.y, pw + 2.0, body.h), &pct_ts);
@@ -155,28 +168,55 @@ pub fn battery_glyph(c: &mut Canvas, r: Rect, percent: u8, charging: bool) {
     c.stroke_rrect(body, 3.0 * s - line / 2.0, OUTLINE_INK, line);
     let nub_h = whole(4.0 * s);
     let nub_y = snap(body.center().y - nub_h / 2.0);
-    c.fill_rrect(Rect::new(x1 + nub_gap, nub_y, nub_w, nub_h), 0.75 * s, OUTLINE_INK);
+    c.fill_rrect(
+        Rect::new(x1 + nub_gap, nub_y, nub_w, nub_h),
+        0.75 * s,
+        OUTLINE_INK,
+    );
 
     let inset = whole(2.0 * s).max(line + 1.0 / px);
     let inner = body.inset(inset, inset);
     let level = f32::from(percent.min(100)) / 100.0;
     if level > 0.0 && inner.w > 0.0 && inner.h > 0.0 {
-        let color = if !charging && percent <= 20 { palette::RED } else { palette::GREEN };
+        let color = if !charging && percent <= 20 {
+            palette::RED
+        } else {
+            palette::GREEN
+        };
         let w = (inner.w * level).max(2.0 * s).min(inner.w);
-        c.fill_rrect(Rect::new(inner.x, inner.y, w, inner.h), (1.5 * s).min(w / 2.0), color);
+        c.fill_rrect(
+            Rect::new(inner.x, inner.y, w, inner.h),
+            (1.5 * s).min(w / 2.0),
+            color,
+        );
     }
     if charging {
         // The bolt (6 x 8, Icon::Bolt's shape) with a 1 DIP edge of the
         // island's own black cut around it, so it reads on the fill.
         let mid = body.center();
-        let pts = [(0.6, -4.0), (-3.0, 0.674), (-0.343, 0.674), (-0.9, 4.0), (3.0, -0.674), (0.3, -0.674)];
+        let pts = [
+            (0.6, -4.0),
+            (-3.0, 0.674),
+            (-0.343, 0.674),
+            (-0.9, 4.0),
+            (3.0, -0.674),
+            (0.3, -0.674),
+        ];
         let mut segs: Vec<Seg> = Vec::with_capacity(pts.len() + 1);
         for (i, (dx, dy)) in pts.iter().enumerate() {
             let (x, y) = (mid.x + dx * s, mid.y + dy * s);
-            segs.push(if i == 0 { Seg::MoveTo(x, y) } else { Seg::LineTo(x, y) });
+            segs.push(if i == 0 {
+                Seg::MoveTo(x, y)
+            } else {
+                Seg::LineTo(x, y)
+            });
         }
         segs.push(Seg::Close);
-        c.path(&segs, Some(palette::ISLAND), Some((palette::ISLAND, 2.0 * s)));
+        c.path(
+            &segs,
+            Some(palette::ISLAND),
+            Some((palette::ISLAND, 2.0 * s)),
+        );
         c.path(&segs, Some(Color::white(1.0)), None);
     }
 }
@@ -192,7 +232,13 @@ mod tests {
         let mut st = AppState::new(Settings::default(), Store::default());
         st.settings.theme = Theme::Pill;
         st.settings.use_24h = use_24h;
-        st.power = PowerState { has_battery: battery, percent: 99, charging: false, on_ac: !battery, saver: false };
+        st.power = PowerState {
+            has_battery: battery,
+            percent: 99,
+            charging: false,
+            on_ac: !battery,
+            saver: false,
+        };
         st
     }
 

@@ -74,7 +74,14 @@ extern "C" {
     fn IOServiceOpen(service: u32, owning_task: u32, kind: u32, connect: *mut u32) -> i32;
     fn IOServiceClose(connect: u32) -> i32;
     fn IOObjectRelease(object: u32) -> i32;
-    fn IOConnectCallStructMethod(connection: u32, selector: u32, input: *const c_void, input_size: usize, output: *mut c_void, output_size: *mut usize) -> i32;
+    fn IOConnectCallStructMethod(
+        connection: u32,
+        selector: u32,
+        input: *const c_void,
+        input_size: usize,
+        output: *mut c_void,
+        output_size: *mut usize,
+    ) -> i32;
 }
 
 extern "C" {
@@ -107,19 +114,42 @@ impl Smc {
         let mut out = Params::default();
         let mut size = std::mem::size_of::<Params>();
         let r = unsafe {
-            IOConnectCallStructMethod(self.conn, KERNEL_INDEX, input as *const Params as *const c_void, size, &mut out as *mut Params as *mut c_void, &mut size)
+            IOConnectCallStructMethod(
+                self.conn,
+                KERNEL_INDEX,
+                input as *const Params as *const c_void,
+                size,
+                &mut out as *mut Params as *mut c_void,
+                &mut size,
+            )
         };
         (r == 0 && out.result == 0).then_some(out)
     }
 
     /// A key's value when it's a float, the way Apple silicon keeps its power readings.
     pub fn float(&self, key: u32) -> Option<f32> {
-        let info = self.call(&Params { key, command: READ_KEY_INFO, ..Default::default() })?.info;
+        let info = self
+            .call(&Params {
+                key,
+                command: READ_KEY_INFO,
+                ..Default::default()
+            })?
+            .info;
         if info.kind != FLOAT || info.size != 4 {
             return None;
         }
-        let out = self.call(&Params { key, info, command: READ_BYTES, ..Default::default() })?;
-        Some(f32::from_le_bytes([out.bytes[0], out.bytes[1], out.bytes[2], out.bytes[3]]))
+        let out = self.call(&Params {
+            key,
+            info,
+            command: READ_BYTES,
+            ..Default::default()
+        })?;
+        Some(f32::from_le_bytes([
+            out.bytes[0],
+            out.bytes[1],
+            out.bytes[2],
+            out.bytes[3],
+        ]))
     }
 }
 

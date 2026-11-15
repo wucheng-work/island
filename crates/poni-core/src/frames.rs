@@ -64,7 +64,10 @@ pub struct FrameCounter {
 
 impl FrameCounter {
     pub fn new(freq: i64) -> Self {
-        Self { freq: freq.max(1), sources: HashMap::new() }
+        Self {
+            freq: freq.max(1),
+            sources: HashMap::new(),
+        }
     }
 
     pub fn clear(&mut self) {
@@ -93,7 +96,9 @@ impl FrameCounter {
         let best = |runtime: bool| {
             self.sources
                 .iter()
-                .filter(|(s, q)| s.runtime() == runtime && q.back().is_some_and(|&t| now - t <= stale))
+                .filter(|(s, q)| {
+                    s.runtime() == runtime && q.back().is_some_and(|&t| now - t <= stale)
+                })
                 .filter_map(|(_, q)| window_rate(q, window, self.freq))
                 .max_by(|a, b| a.fps.total_cmp(&b.fps))
         };
@@ -108,7 +113,10 @@ impl FrameCounter {
 /// The rate over the last `window` ticks of one source's frames.
 fn window_rate(q: &VecDeque<i64>, window: i64, freq: i64) -> Option<FrameRate> {
     let last = *q.back()?;
-    let start = q.iter().rposition(|&t| last - t > window).map_or(0, |p| p + 1);
+    let start = q
+        .iter()
+        .rposition(|&t| last - t > window)
+        .map_or(0, |p| p + 1);
     let first = *q.get(start)?;
     let n = q.len() - start;
     if n < 2 || last <= first {
@@ -116,8 +124,17 @@ fn window_rate(q: &VecDeque<i64>, window: i64, freq: i64) -> Option<FrameRate> {
     }
     let span = (last - first) as f64 / freq as f64;
     let fps = (n - 1) as f64 / span;
-    let worst = q.range(start..).zip(q.range(start + 1..)).map(|(a, b)| b - a).max().unwrap_or(0);
-    Some(FrameRate { fps: fps as f32, frame_ms: (1000.0 / fps) as f32, worst_ms: (worst as f64 * 1000.0 / freq as f64) as f32 })
+    let worst = q
+        .range(start..)
+        .zip(q.range(start + 1..))
+        .map(|(a, b)| b - a)
+        .max()
+        .unwrap_or(0);
+    Some(FrameRate {
+        fps: fps as f32,
+        frame_ms: (1000.0 / fps) as f32,
+        worst_ms: (worst as f64 * 1000.0 / freq as f64) as f32,
+    })
 }
 
 /// A sharp drop in the frame rate, worth showing the readout for: this
@@ -125,7 +142,13 @@ fn window_rate(q: &VecDeque<i64>, window: i64, freq: i64) -> Option<FrameRate> {
 /// up to the last 30 seconds) and at least 15 fps lower. Needs 10 seconds of
 /// rates first; seconds without one (NaN) don't count.
 pub fn sharp_drop(before: &[f32], now: f32) -> bool {
-    let mut v: Vec<f32> = before.iter().rev().filter(|x| x.is_finite() && **x > 0.0).take(30).copied().collect();
+    let mut v: Vec<f32> = before
+        .iter()
+        .rev()
+        .filter(|x| x.is_finite() && **x > 0.0)
+        .take(30)
+        .copied()
+        .collect();
     if v.len() < 10 || !now.is_finite() {
         return false;
     }

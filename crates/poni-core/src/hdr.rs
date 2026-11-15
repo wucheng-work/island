@@ -48,7 +48,11 @@ pub struct HalfToSrgb {
 
 impl HalfToSrgb {
     pub fn new(white: f32) -> Self {
-        let white = if white.is_finite() && white > 0.0 { white } else { DEFAULT_WHITE };
+        let white = if white.is_finite() && white > 0.0 {
+            white
+        } else {
+            DEFAULT_WHITE
+        };
         let table = (0..=u16::MAX)
             .map(|h| {
                 let v = half_to_f32(h) / white;
@@ -100,12 +104,22 @@ mod tests {
         let t = HalfToSrgb::new(2.5);
         let px = |h: u16| {
             let mut d = [0u8; 4];
-            let s = [h.to_le_bytes(), h.to_le_bytes(), h.to_le_bytes(), 0x3C00u16.to_le_bytes()].concat();
+            let s = [
+                h.to_le_bytes(),
+                h.to_le_bytes(),
+                h.to_le_bytes(),
+                0x3C00u16.to_le_bytes(),
+            ]
+            .concat();
             t.convert_row(&s, &mut d);
             d
         };
         assert_eq!(px(0x4100), [255, 255, 255, 255], "SDR white (2.5) is white");
-        assert_eq!(px(0x4500), [255, 255, 255, 255], "a highlight above white clips");
+        assert_eq!(
+            px(0x4500),
+            [255, 255, 255, 255],
+            "a highlight above white clips"
+        );
         assert_eq!(px(0x0000), [0, 0, 0, 255]);
         assert_eq!(px(0xBC00), [0, 0, 0, 255], "out of gamut is black");
         assert_eq!(px(0x7E00), [0, 0, 0, 255], "NaN is black");
@@ -117,7 +131,10 @@ mod tests {
     #[test]
     fn rows_turn_rgba_into_bgra() {
         let t = HalfToSrgb::new(1.0);
-        let s = [0x3C00u16, 0x0000, 0x0000, 0x3C00].iter().flat_map(|h| h.to_le_bytes()).collect::<Vec<u8>>();
+        let s = [0x3C00u16, 0x0000, 0x0000, 0x3C00]
+            .iter()
+            .flat_map(|h| h.to_le_bytes())
+            .collect::<Vec<u8>>();
         let mut d = [0u8; 4];
         t.convert_row(&s, &mut d);
         assert_eq!(d, [0, 0, 255, 255], "red arrives in the R byte of BGRA");

@@ -22,7 +22,11 @@ const fn make_crc_table() -> [u32; 256] {
         let mut c = n as u32;
         let mut k = 0;
         while k < 8 {
-            c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+            c = if c & 1 != 0 {
+                0xEDB8_8320 ^ (c >> 1)
+            } else {
+                c >> 1
+            };
             k += 1;
         }
         t[n] = c;
@@ -130,9 +134,14 @@ fn check_len(path: &Path, w: u32, h: u32, channels: usize, len: usize) -> Result
     if w == 0 || h == 0 {
         return Err(format!("{}: empty image ({w}x{h})", path.display()));
     }
-    let want = (w as usize).checked_mul(h as usize).and_then(|n| n.checked_mul(channels));
+    let want = (w as usize)
+        .checked_mul(h as usize)
+        .and_then(|n| n.checked_mul(channels));
     if want != Some(len) {
-        return Err(format!("{}: {w}x{h}x{channels} image needs {want:?} bytes, got {len}", path.display()));
+        return Err(format!(
+            "{}: {w}x{h}x{channels} image needs {want:?} bytes, got {len}",
+            path.display()
+        ));
     }
     Ok(())
 }
@@ -147,7 +156,11 @@ fn write_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
 }
 
 fn encode(w: u32, h: u32, ct: ColorType, data: &[u8]) -> Vec<u8> {
-    let (w, h, data) = if w == 0 || h == 0 { (1, 1, &[0u8; 4][..ct.channels()]) } else { (w, h, data) };
+    let (w, h, data) = if w == 0 || h == 0 {
+        (1, 1, &[0u8; 4][..ct.channels()])
+    } else {
+        (w, h, data)
+    };
     let ch = ct.channels();
     let raw = filter_rows(data, w as usize * ch, h as usize, ch);
     let z = zlib_compress(&raw);
@@ -275,11 +288,21 @@ fn deflate_stored_into(out: &mut Vec<u8>, data: &[u8]) {
     }
 }
 
-const LEN_BASE: [u16; 29] = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
-const LEN_EXTRA: [u8; 29] = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
-const DIST_BASE: [u16; 30] =
-    [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
-const DIST_EXTRA: [u8; 30] = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+const LEN_BASE: [u16; 29] = [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131,
+    163, 195, 227, 258,
+];
+const LEN_EXTRA: [u8; 29] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+];
+const DIST_BASE: [u16; 30] = [
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
+    2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+];
+const DIST_EXTRA: [u8; 30] = [
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13,
+    13,
+];
 
 const fn reverse_bits(mut v: u32, len: u32) -> u32 {
     let mut r = 0;
@@ -348,7 +371,11 @@ struct BitWriter {
 
 impl BitWriter {
     fn with_capacity(cap: usize) -> Self {
-        Self { out: Vec::with_capacity(cap), acc: 0, n: 0 }
+        Self {
+            out: Vec::with_capacity(cap),
+            acc: 0,
+            n: 0,
+        }
     }
 
     /// Append the low `len` bits of `bits`, least significant first.
@@ -441,12 +468,18 @@ fn deflate_fixed(data: &[u8]) -> Vec<u8> {
             let li = LEN_INDEX[best_len] as usize;
             w.sym(257 + li);
             if LEN_EXTRA[li] > 0 {
-                w.put((best_len - LEN_BASE[li] as usize) as u32, LEN_EXTRA[li] as u32);
+                w.put(
+                    (best_len - LEN_BASE[li] as usize) as u32,
+                    LEN_EXTRA[li] as u32,
+                );
             }
             let di = dist_code(best_dist);
             w.put(reverse_bits(di as u32, 5), 5);
             if DIST_EXTRA[di] > 0 {
-                w.put((best_dist - DIST_BASE[di] as usize) as u32, DIST_EXTRA[di] as u32);
+                w.put(
+                    (best_dist - DIST_BASE[di] as usize) as u32,
+                    DIST_EXTRA[di] as u32,
+                );
             }
             for p in i..i + best_len {
                 insert(&mut head, &mut prev, p);
@@ -477,7 +510,10 @@ mod tests {
 
     impl BitReader<'_> {
         fn bit(&mut self) -> Result<u32, String> {
-            let byte = *self.d.get(self.pos).ok_or("unexpected end of deflate data")?;
+            let byte = *self
+                .d
+                .get(self.pos)
+                .ok_or("unexpected end of deflate data")?;
             let b = (byte >> self.bit) & 1;
             self.bit += 1;
             if self.bit == 8 {
@@ -530,7 +566,9 @@ mod tests {
                         return Err("LEN/NLEN mismatch".into());
                     }
                     r.pos += 4;
-                    let body = r.d.get(r.pos..r.pos + len as usize).ok_or("short stored block")?;
+                    let body =
+                        r.d.get(r.pos..r.pos + len as usize)
+                            .ok_or("short stored block")?;
                     out.extend_from_slice(body);
                     r.pos += len as usize;
                 }
@@ -571,7 +609,12 @@ mod tests {
             return Err("bad zlib header".into());
         }
         let out = inflate(&z[2..z.len() - 4])?;
-        let want = u32::from_be_bytes([z[z.len() - 4], z[z.len() - 3], z[z.len() - 2], z[z.len() - 1]]);
+        let want = u32::from_be_bytes([
+            z[z.len() - 4],
+            z[z.len() - 3],
+            z[z.len() - 2],
+            z[z.len() - 1],
+        ]);
         if adler32(&out) != want {
             return Err("adler mismatch".into());
         }
@@ -595,10 +638,17 @@ mod tests {
         let mut pos = 8;
         let (mut chunks, mut idat, mut ihdr) = (Vec::new(), Vec::new(), Vec::new());
         while pos < png.len() {
-            let len = u32::from_be_bytes(png[pos..pos + 4].try_into().map_err(|_| "short chunk")?) as usize;
-            let kind: [u8; 4] = png[pos + 4..pos + 8].try_into().map_err(|_| "short chunk")?;
+            let len = u32::from_be_bytes(png[pos..pos + 4].try_into().map_err(|_| "short chunk")?)
+                as usize;
+            let kind: [u8; 4] = png[pos + 4..pos + 8]
+                .try_into()
+                .map_err(|_| "short chunk")?;
             let body = &png[pos + 8..pos + 8 + len];
-            let crc = u32::from_be_bytes(png[pos + 8 + len..pos + 12 + len].try_into().map_err(|_| "short crc")?);
+            let crc = u32::from_be_bytes(
+                png[pos + 8 + len..pos + 12 + len]
+                    .try_into()
+                    .map_err(|_| "short crc")?,
+            );
             if crc32(&png[pos + 4..pos + 8 + len]) != crc {
                 return Err(format!("bad CRC on {}", String::from_utf8_lossy(&kind)));
             }
@@ -619,16 +669,28 @@ mod tests {
         let raw = unzlib(&idat)?;
         let row = w as usize * bpp;
         if raw.len() != (row + 1) * h as usize {
-            return Err(format!("raw size {} != {}", raw.len(), (row + 1) * h as usize));
+            return Err(format!(
+                "raw size {} != {}",
+                raw.len(),
+                (row + 1) * h as usize
+            ));
         }
         let mut pixels = vec![0u8; row * h as usize];
         for y in 0..h as usize {
             let f = raw[y * (row + 1)];
             for i in 0..row {
                 let x = raw[y * (row + 1) + 1 + i];
-                let a = if i >= bpp { pixels[y * row + i - bpp] } else { 0 };
+                let a = if i >= bpp {
+                    pixels[y * row + i - bpp]
+                } else {
+                    0
+                };
                 let b = if y > 0 { pixels[(y - 1) * row + i] } else { 0 };
-                let c = if y > 0 && i >= bpp { pixels[(y - 1) * row + i - bpp] } else { 0 };
+                let c = if y > 0 && i >= bpp {
+                    pixels[(y - 1) * row + i - bpp]
+                } else {
+                    0
+                };
                 pixels[y * row + i] = match f {
                     0 => x,
                     1 => x.wrapping_add(a),
@@ -639,7 +701,15 @@ mod tests {
                 };
             }
         }
-        Ok(Decoded { w, h, depth: ihdr[8], color: ihdr[9], interlace: ihdr[12], chunks, pixels })
+        Ok(Decoded {
+            w,
+            h,
+            depth: ihdr[8],
+            color: ihdr[9],
+            interlace: ihdr[12],
+            chunks,
+            pixels,
+        })
     }
 
     fn noise(n: usize, seed: u32) -> Vec<u8> {
@@ -678,7 +748,10 @@ mod tests {
         assert_eq!(d.chunks.last(), Some(b"IEND"));
         assert!(d.chunks.contains(b"IDAT"));
         // IEND is the fixed 12-byte trailer every PNG ends with.
-        assert_eq!(&png[png.len() - 12..], &[0, 0, 0, 0, b'I', b'E', b'N', b'D', 0xAE, 0x42, 0x60, 0x82]);
+        assert_eq!(
+            &png[png.len() - 12..],
+            &[0, 0, 0, 0, b'I', b'E', b'N', b'D', 0xAE, 0x42, 0x60, 0x82]
+        );
     }
 
     #[test]
@@ -718,7 +791,12 @@ mod tests {
             }
         }
         let png = encode_rgba(w, h, &rgba);
-        assert!(png.len() < rgba.len() / 3, "compressed to {} of {}", png.len(), rgba.len());
+        assert!(
+            png.len() < rgba.len() / 3,
+            "compressed to {} of {}",
+            png.len(),
+            rgba.len()
+        );
         assert_eq!(decode(&png).expect("decodes").pixels, rgba);
     }
 
@@ -728,8 +806,8 @@ mod tests {
             Vec::new(),
             b"a".to_vec(),
             b"abcabcabcabcabcabcabcabc hello hello hello".to_vec(),
-            vec![0u8; 100_000],              // long distance-1 runs (length 258)
-            noise(200_000, 1),                // incompressible → stored blocks
+            vec![0u8; 100_000], // long distance-1 runs (length 258)
+            noise(200_000, 1),  // incompressible → stored blocks
             [noise(40_000, 2), noise(40_000, 2)].concat(), // far matches (distance 40000 > window: literals)
             [noise(20_000, 3), noise(20_000, 3)].concat(), // distance 20000 matches
         ] {
@@ -737,7 +815,10 @@ mod tests {
             assert_eq!(unzlib(&z).expect("inflates"), data, "len {}", data.len());
             assert!(z.len() <= stored_size(data.len()) + 6);
         }
-        assert_eq!(unzlib(&zlib_compress(&[0u8; 100_000])).map(|v| v.len()), Ok(100_000));
+        assert_eq!(
+            unzlib(&zlib_compress(&[0u8; 100_000])).map(|v| v.len()),
+            Ok(100_000)
+        );
         assert!(zlib_compress(&[0u8; 100_000]).len() < 1_000);
     }
 
@@ -745,11 +826,18 @@ mod tests {
     fn distance_and_length_codes() {
         for d in 1..=32_768usize {
             let c = dist_code(d);
-            assert!(DIST_BASE[c] as usize <= d && d < DIST_BASE[c] as usize + (1 << DIST_EXTRA[c]), "d={d}");
+            assert!(
+                DIST_BASE[c] as usize <= d && d < DIST_BASE[c] as usize + (1 << DIST_EXTRA[c]),
+                "d={d}"
+            );
         }
         for len in 3..=258usize {
             let i = LEN_INDEX[len] as usize;
-            assert!(LEN_BASE[i] as usize <= len && len < LEN_BASE[i] as usize + (1 << LEN_EXTRA[i]).max(1), "len={len}");
+            assert!(
+                LEN_BASE[i] as usize <= len
+                    && len < LEN_BASE[i] as usize + (1 << LEN_EXTRA[i]).max(1),
+                "len={len}"
+            );
         }
         assert_eq!(LEN_INDEX[258], 28);
         assert_eq!(LEN_INDEX[257], 27);
@@ -770,7 +858,19 @@ mod tests {
         assert!(decode(&encode_rgba(0, 5, &[])).is_ok());
         let d = decode(&encode_rgba(2, 2, &[1, 2, 3])).expect("short buffer pads");
         assert_eq!(&d.pixels[..4], &[1, 2, 3, 0]);
-        assert!(save_rgba(std::env::temp_dir().join("poni-png-test-bad.png"), 2, 2, &[0; 3]).is_err());
-        assert!(save_gray(std::env::temp_dir().join("poni-png-test-empty.png"), 0, 2, &[]).is_err());
+        assert!(save_rgba(
+            std::env::temp_dir().join("poni-png-test-bad.png"),
+            2,
+            2,
+            &[0; 3]
+        )
+        .is_err());
+        assert!(save_gray(
+            std::env::temp_dir().join("poni-png-test-empty.png"),
+            0,
+            2,
+            &[]
+        )
+        .is_err());
     }
 }

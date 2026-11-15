@@ -53,7 +53,12 @@ pub fn expanded_width(page: PageKind, st: &AppState) -> f32 {
 /// The header row inside the expanded island `body`. Fixed size, so changing
 /// [`HEADER_H`] only moves the content, never the tabs.
 pub fn header_rect(body: Rect) -> Rect {
-    Rect::new(body.x + PAD - 6.0, body.y + 6.0, body.w - 2.0 * PAD + 12.0, HEADER_ROW_H)
+    Rect::new(
+        body.x + PAD - 6.0,
+        body.y + 6.0,
+        body.w - 2.0 * PAD + 12.0,
+        HEADER_ROW_H,
+    )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -111,7 +116,10 @@ impl PageKind {
         if s.eq_ignore_ascii_case("tasks") {
             return PageKind::Today;
         }
-        Self::ALL.into_iter().find(|p| p.key().eq_ignore_ascii_case(s)).unwrap_or(PageKind::Media)
+        Self::ALL
+            .into_iter()
+            .find(|p| p.key().eq_ignore_ascii_case(s))
+            .unwrap_or(PageKind::Media)
     }
 
     pub fn title(self) -> &'static str {
@@ -228,25 +236,30 @@ pub fn step_tab(p: PageKind, st: &AppState, forward: bool) -> PageKind {
     let tabs = tabs(st);
     let n = tabs.len();
     let i = tabs.iter().position(|t| *t == p).unwrap_or(0);
-    tabs[if forward { (i + 1) % n } else { (i + n - 1) % n }]
+    tabs[if forward {
+        (i + 1) % n
+    } else {
+        (i + n - 1) % n
+    }]
 }
 
 pub fn content_height(p: PageKind, st: &AppState) -> f32 {
     let warning = if st.save_errors.any() { 56.0 } else { 0.0 };
-    warning + match p {
-        PageKind::Media => media::height(st),
-        PageKind::Focus => focus::height(st),
-        #[cfg(any(windows, target_os = "macos"))]
-        PageKind::Mail => mail::height(st),
-        PageKind::Shelf => shelf::height(st),
-        PageKind::Today => today::height(st),
-        PageKind::System => system::height(st),
-        PageKind::Oyenza => oyenza::height(st),
-        PageKind::Notifications => notifications::height(st),
-        #[cfg(any(windows, target_os = "macos"))]
-        PageKind::Codex => codex::height(st),
-        PageKind::Settings => settings::height(st),
-    }
+    warning
+        + match p {
+            PageKind::Media => media::height(st),
+            PageKind::Focus => focus::height(st),
+            #[cfg(any(windows, target_os = "macos"))]
+            PageKind::Mail => mail::height(st),
+            PageKind::Shelf => shelf::height(st),
+            PageKind::Today => today::height(st),
+            PageKind::System => system::height(st),
+            PageKind::Oyenza => oyenza::height(st),
+            PageKind::Notifications => notifications::height(st),
+            #[cfg(any(windows, target_os = "macos"))]
+            PageKind::Codex => codex::height(st),
+            PageKind::Settings => settings::height(st),
+        }
 }
 
 /// The next time (mono seconds) the expanded `page` changes on its own and
@@ -292,7 +305,13 @@ const TABS_END: f32 = 0.6;
 /// During a page switch the old page fades out sliding away while the new
 /// one fades in; the old page is drawn without input (it can't be clicked).
 /// `body` is the island at its final size, so nothing reflows while it opens.
-pub fn draw_expanded(ui: &mut Ui, st: &mut AppState, body: Rect, page: PageKind, transition: Option<PageTransition>) {
+pub fn draw_expanded(
+    ui: &mut Ui,
+    st: &mut AppState,
+    body: Rect,
+    page: PageKind,
+    transition: Option<PageTransition>,
+) {
     if crate::pill::expanded::draw(ui, st, body, page, transition) {
         return;
     }
@@ -309,7 +328,12 @@ pub fn draw_expanded(ui: &mut Ui, st: &mut AppState, body: Rect, page: PageKind,
 /// The page content's rect inside the expanded island `body`: below the
 /// header band, `PAD` in from the sides and the bottom.
 pub(crate) fn content_area(body: Rect) -> Rect {
-    Rect::new(body.x + PAD, body.y + HEADER_H, body.w - 2.0 * PAD, (body.h - HEADER_H - PAD).max(0.0))
+    Rect::new(
+        body.x + PAD,
+        body.y + HEADER_H,
+        body.w - 2.0 * PAD,
+        (body.h - HEADER_H - PAD).max(0.0),
+    )
 }
 
 /// The active page in [`content_area`], clipped to the island below the
@@ -317,21 +341,42 @@ pub(crate) fn content_area(body: Rect) -> Rect {
 /// [`draw_expanded`] filters it) the old page fades out sliding away while
 /// the new one fades in. Every theme's frame draws its pages with this, so
 /// a switch moves the same in all of them.
-pub(crate) fn draw_pages(ui: &mut Ui, st: &mut AppState, body: Rect, header: Rect, page: PageKind, tr: Option<PageTransition>) {
+pub(crate) fn draw_pages(
+    ui: &mut Ui,
+    st: &mut AppState,
+    body: Rect,
+    header: Rect,
+    page: PageKind,
+    tr: Option<PageTransition>,
+) {
     let mut area = content_area(body);
     // Content may reach a little above `area` (text boxes whose cap height,
     // not their line box, sits on the content top) but never into the tabs.
     let clip_top = header.bottom() + 2.0;
-    ui.c.clip(Rect::new(body.x, clip_top, body.w, (body.bottom() - clip_top).max(0.0)));
+    ui.c.clip(Rect::new(
+        body.x,
+        clip_top,
+        body.w,
+        (body.bottom() - clip_top).max(0.0),
+    ));
     // 页内保留轻柔底色，让内容与收起时的黑色胶囊形成层次。
-    let panel = Rect::new(body.x + 8.0, clip_top + 2.0, body.w - 16.0, (body.bottom() - clip_top - 10.0).max(0.0));
+    let panel = Rect::new(
+        body.x + 8.0,
+        clip_top + 2.0,
+        body.w - 16.0,
+        (body.bottom() - clip_top - 10.0).max(0.0),
+    );
     let wash = if ui.c.look().light { 0.035 } else { 0.08 };
     ui.c.fill_rrect(panel, 20.0, palette::WARM_ACCENT.with_alpha(wash));
     if st.save_errors.any() {
         let warning = Rect::new(area.x, area.y, area.w, 46.0);
         let (retry, discard) = crate::ui::save_warning(ui, &st.save_errors, warning);
-        if retry { st.cmd(Command::RetrySave); }
-        if discard { st.cmd(Command::QuitWithoutSaving); }
+        if retry {
+            st.cmd(Command::RetrySave);
+        }
+        if discard {
+            st.cmd(Command::QuitWithoutSaving);
+        }
         area.y += 56.0;
         area.h = (area.h - 56.0).max(0.0);
     }
@@ -444,11 +489,25 @@ pub(crate) struct Tip {
 }
 
 /// Tab slots (x, width) of `tabs`, with `active` showing its label.
-fn tab_layout(ui: &mut Ui, x0: f32, tabs: &[PageKind], active: PageKind, label_st: &TextStyle, scale: f32) -> Vec<(f32, f32)> {
+fn tab_layout(
+    ui: &mut Ui,
+    x0: f32,
+    tabs: &[PageKind],
+    active: PageKind,
+    label_st: &TextStyle,
+    scale: f32,
+) -> Vec<(f32, f32)> {
     let mut x = x0;
     tabs.iter()
         .map(|&p| {
-            let w = if p == active { snap(TAB_LABEL_X + ui.c.measure(p.title(), label_st, 200.0).0 + TAB_LABEL_END, scale) } else { TAB_W };
+            let w = if p == active {
+                snap(
+                    TAB_LABEL_X + ui.c.measure(p.title(), label_st, 200.0).0 + TAB_LABEL_END,
+                    scale,
+                )
+            } else {
+                TAB_W
+            };
             let slot = (snap(x, scale), w);
             x += w + TAB_GAP;
             slot
@@ -459,7 +518,13 @@ fn tab_layout(ui: &mut Ui, x0: f32, tabs: &[PageKind], active: PageKind, label_s
 /// Tabs on the left; pin, date and clock on the right. During a page switch
 /// the tabs re-flow, the selection pill slides and the labels cross-fade.
 /// Returns the hover label to paint once the page is drawn.
-pub(crate) fn draw_header(ui: &mut Ui, st: &mut AppState, r: Rect, page: PageKind, tr: Option<PageTransition>) -> Option<Tip> {
+pub(crate) fn draw_header(
+    ui: &mut Ui,
+    st: &mut AppState,
+    r: Rect,
+    page: PageKind,
+    tr: Option<PageTransition>,
+) -> Option<Tip> {
     let scale = ui.c.scale().max(0.5);
     let cy = r.center().y;
     let label_st = TextStyle::body().weight(Weight::Semibold).color(st.accent);
@@ -467,8 +532,21 @@ pub(crate) fn draw_header(ui: &mut Ui, st: &mut AppState, r: Rect, page: PageKin
     let e = tr.map_or(1.0, |t| ease_out_cubic(t.t / TABS_END));
     let row = self::tabs(st);
     let lay_from = tab_layout(ui, r.x, &row, from, &label_st, scale);
-    let lay_to = if from == page { lay_from.clone() } else { tab_layout(ui, r.x, &row, page, &label_st, scale) };
-    let tabs: Vec<Rect> = (0..row.len()).map(|i| Rect::new(lerp(lay_from[i].0, lay_to[i].0, e), cy - TAB_H / 2.0, lerp(lay_from[i].1, lay_to[i].1, e), TAB_H)).collect();
+    let lay_to = if from == page {
+        lay_from.clone()
+    } else {
+        tab_layout(ui, r.x, &row, page, &label_st, scale)
+    };
+    let tabs: Vec<Rect> = (0..row.len())
+        .map(|i| {
+            Rect::new(
+                lerp(lay_from[i].0, lay_to[i].0, e),
+                cy - TAB_H / 2.0,
+                lerp(lay_from[i].1, lay_to[i].1, e),
+                TAB_H,
+            )
+        })
+        .collect();
     // A page that isn't in the row counts as the first tab while its internal
     // transition finishes.
     let place = |p: PageKind| row.iter().position(|t| *t == p).unwrap_or(0);
@@ -480,8 +558,16 @@ pub(crate) fn draw_header(ui: &mut Ui, st: &mut AppState, r: Rect, page: PageKin
 
     // Selection pill, gliding from the old tab to the new one. To or from
     // Settings it stays on its tab and fades while the gear takes it.
-    let (a, b) = (if from.tabbed() { fi } else { pi }, if page.tabbed() { pi } else { fi });
-    let pill = Rect::new(lerp(lay_from[a].0, lay_to[b].0, e), cy - TAB_H / 2.0, lerp(lay_from[a].1, lay_to[b].1, e), TAB_H);
+    let (a, b) = (
+        if from.tabbed() { fi } else { pi },
+        if page.tabbed() { pi } else { fi },
+    );
+    let pill = Rect::new(
+        lerp(lay_from[a].0, lay_to[b].0, e),
+        cy - TAB_H / 2.0,
+        lerp(lay_from[a].1, lay_to[b].1, e),
+        TAB_H,
+    );
     if gear_k < 1.0 {
         ui.c.with_alpha(1.0 - gear_k, |c| {
             c.fill_rrect(pill, TAB_H / 2.0, st.accent.with_alpha(0.18));
@@ -505,7 +591,11 @@ pub(crate) fn draw_header(ui: &mut Ui, st: &mut AppState, r: Rect, page: PageKin
         } else {
             0.0
         };
-        let ic = if resp.hovered && !active { palette::TEXT } else { Color::lerp(palette::TEXT_DIM, st.accent, k) };
+        let ic = if resp.hovered && !active {
+            palette::TEXT
+        } else {
+            Color::lerp(palette::TEXT_DIM, st.accent, k)
+        };
         // 原始图形在 24 格画布中的留白不同；按实际轮廓校正导航专用大小与中心。
         // 轮廓最长边约 14 DIP，密集的 ChatGPT 标志略缩小，点击区域仍使用原 tab。
         let (icon_size, shape_cx, shape_cy) = match p {
@@ -541,7 +631,11 @@ pub(crate) fn draw_header(ui: &mut Ui, st: &mut AppState, r: Rect, page: PageKin
     let time = fmt_clock(&st.local, st.settings.use_24h);
     let time_st = TextStyle::body().weight(Weight::Semibold).tabular().right();
     let tw = ui.c.measure(&time, &time_st, 200.0).0;
-    ui.c.text(&time, Rect::new(right - tw - 4.0, r.y, tw + 4.0, r.h), &time_st);
+    ui.c.text(
+        &time,
+        Rect::new(right - tw - 4.0, r.y, tw + 4.0, r.h),
+        &time_st,
+    );
     let mut left = right - tw;
 
     let date = crate::localization::date_short(&st.local);
@@ -554,12 +648,25 @@ pub(crate) fn draw_header(ui: &mut Ui, st: &mut AppState, r: Rect, page: PageKin
         left = date_left;
     }
 
-    let gear_r = Rect::new(snap(left - PIN_GAP - GEAR, scale), cy - GEAR / 2.0, GEAR, GEAR);
-    let pin_r = Rect::new(snap(gear_r.x - GEAR_GAP - PIN, scale), cy - PIN / 2.0, PIN, PIN);
+    let gear_r = Rect::new(
+        snap(left - PIN_GAP - GEAR, scale),
+        cy - GEAR / 2.0,
+        GEAR,
+        GEAR,
+    );
+    let pin_r = Rect::new(
+        snap(gear_r.x - GEAR_GAP - PIN, scale),
+        cy - PIN / 2.0,
+        PIN,
+        PIN,
+    );
     let oyen_cx = pin_r.x - OYEN_GAP - OYEN_W / 2.0;
     if crate::oyen::on(st.settings.theme) && oyen_cx - OYEN_W / 2.0 > tabs_end + 12.0 {
         // Eyes on the cursor while it is over the island; asleep at night.
-        let look = ui.input.mouse.map(|p| ((p.x - r.center().x) / (r.w / 2.0)).clamp(-1.0, 1.0));
+        let look = ui
+            .input
+            .mouse
+            .map(|p| ((p.x - r.center().x) / (r.w / 2.0)).clamp(-1.0, 1.0));
         let (frame, moving) = crate::oyen::rest(st.now, st.local.hour < 5, look);
         if moving {
             ui.request_anim();
@@ -568,7 +675,11 @@ pub(crate) fn draw_header(ui: &mut Ui, st: &mut AppState, r: Rect, page: PageKin
     }
     if pin_r.x > tabs_end + 8.0 {
         let pinned = st.pinned;
-        let (icon, color) = if pinned { (Icon::PinFill, st.accent) } else { (Icon::Pin, palette::TEXT_FAINT) };
+        let (icon, color) = if pinned {
+            (Icon::PinFill, st.accent)
+        } else {
+            (Icon::Pin, palette::TEXT_FAINT)
+        };
         let resp = ui.icon_button(wid("pin"), pin_r, icon, color, 15.0);
         if resp.hovered {
             hover = Some((PIN_SLOT, pin_r));
@@ -583,7 +694,9 @@ pub(crate) fn draw_header(ui: &mut Ui, st: &mut AppState, r: Rect, page: PageKin
     // window with every setting.
     if gear_r.x > tabs_end + 8.0 {
         if gear_k > 0.0 {
-            ui.c.with_alpha(gear_k, |c| c.fill_rrect(gear_r, GEAR / 2.0, st.accent.with_alpha(0.18)));
+            ui.c.with_alpha(gear_k, |c| {
+                c.fill_rrect(gear_r, GEAR / 2.0, st.accent.with_alpha(0.18))
+            });
         }
         let color = Color::lerp(palette::TEXT_DIM, st.accent, gear_k);
         let resp = ui.icon_button(wid(GEAR_ID), gear_r, Icon::Gear, color, 16.0);
@@ -592,7 +705,12 @@ pub(crate) fn draw_header(ui: &mut Ui, st: &mut AppState, r: Rect, page: PageKin
         }
         if resp.clicked {
             if page == PageKind::Settings {
-                let back = st.ui.before_settings.take().filter(|p| row.contains(p)).unwrap_or(row[0]);
+                let back = st
+                    .ui
+                    .before_settings
+                    .take()
+                    .filter(|p| row.contains(p))
+                    .unwrap_or(row[0]);
                 st.cmd(Command::SetPage(back));
             } else {
                 st.ui.before_settings = Some(page);
@@ -624,7 +742,11 @@ pub(crate) fn draw_header(ui: &mut Ui, st: &mut AppState, r: Rect, page: PageKin
         None if st.pinned => "Unpin",
         None => "Keep open",
     };
-    Some(Tip { anchor, text, alpha })
+    Some(Tip {
+        anchor,
+        text,
+        alpha,
+    })
 }
 
 /// A tab's label, faded by `alpha` and cut (not ellipsized) at the tab's
@@ -643,7 +765,9 @@ fn draw_tab_label(ui: &mut Ui, p: PageKind, tab: Rect, st: &TextStyle, alpha: f3
     if cut {
         ui.c.clip(Rect::new(lx, tab.y, avail, tab.h));
     }
-    ui.c.with_alpha(alpha, |c| c.text(p.title(), Rect::new(lx, tab.y, lw + 2.0, tab.h), st));
+    ui.c.with_alpha(alpha, |c| {
+        c.text(p.title(), Rect::new(lx, tab.y, lw + 2.0, tab.h), st)
+    });
     if cut {
         ui.c.unclip();
     }
@@ -668,9 +792,21 @@ pub fn empty_state(ui: &mut Ui, area: Rect, icon: Icon, title: &str, hint: &str)
     let c = area.center();
     let badge = Point::new(c.x, c.y - 28.0);
     ui.c.fill_circle(badge, 21.0, palette::SURFACE);
-    ui.c.icon(icon, Rect::from_center(badge, 23.0, 23.0), palette::TEXT_DIM);
-    ui.c.text(title, Rect::new(area.x, c.y + 1.0, area.w, 20.0), &TextStyle::headline().center());
-    ui.c.text(hint, Rect::new(area.x, c.y + 22.0, area.w, 18.0), &TextStyle::footnote().color(palette::TEXT_DIM).center());
+    ui.c.icon(
+        icon,
+        Rect::from_center(badge, 23.0, 23.0),
+        palette::TEXT_DIM,
+    );
+    ui.c.text(
+        title,
+        Rect::new(area.x, c.y + 1.0, area.w, 20.0),
+        &TextStyle::headline().center(),
+    );
+    ui.c.text(
+        hint,
+        Rect::new(area.x, c.y + 22.0, area.w, 18.0),
+        &TextStyle::footnote().color(palette::TEXT_DIM).center(),
+    );
 }
 
 #[cfg(test)]
@@ -710,7 +846,12 @@ mod tests {
     fn hidden_tabs_leave_the_row_but_not_while_their_page_is_open() {
         use PageKind::*;
         let mut st = state();
-        st.settings.hidden_tabs = vec!["today".into(), "tasks".into(), "oyenza".into(), "addons".into()];
+        st.settings.hidden_tabs = vec![
+            "today".into(),
+            "tasks".into(),
+            "oyenza".into(),
+            "addons".into(),
+        ];
         st.page = Focus;
         // 旧拓展键不影响保留页面的标签。
         assert_eq!(
@@ -746,7 +887,10 @@ mod tests {
         assert_eq!(st.page, Shelf);
         assert!(!tabs(&st).contains(&Today));
         // 全部标签隐藏时仍保留音乐入口。
-        st.settings.hidden_tabs = PageKind::HIDEABLE.iter().map(|p| p.key().to_string()).collect();
+        st.settings.hidden_tabs = PageKind::HIDEABLE
+            .iter()
+            .map(|p| p.key().to_string())
+            .collect();
         st.page = Oyenza;
         assert_eq!(tabs(&st), [Media]);
         assert_eq!(first_tab(&st), Media);
@@ -763,7 +907,9 @@ mod tests {
         let mut st = state();
         assert!(!tabs(&st).contains(&PageKind::Settings));
         assert!(!tabs(&st).contains(&PageKind::Oyenza));
-        st.oyenza.link = OyenzaLink::Connected { account: "a•••@example.com".into() };
+        st.oyenza.link = OyenzaLink::Connected {
+            account: "a•••@example.com".into(),
+        };
         let row = tabs(&st);
         assert!(!row.contains(&PageKind::Oyenza) && !row.contains(&PageKind::Settings));
         // Stepping through the tabs never lands on Settings.
@@ -777,7 +923,9 @@ mod tests {
     #[test]
     fn settings_keeps_its_key_and_slides_in_from_the_right() {
         assert_eq!(PageKind::from_key("settings"), PageKind::Settings);
-        assert!(PageKind::ALL.iter().all(|p| p.tab_index() <= PageKind::Settings.tab_index()));
+        assert!(PageKind::ALL
+            .iter()
+            .all(|p| p.tab_index() <= PageKind::Settings.tab_index()));
     }
 
     #[test]
@@ -786,9 +934,18 @@ mod tests {
         assert!(!tabs(&st).contains(&PageKind::System));
         st.settings.set_system(true);
         assert!(tabs(&st).contains(&PageKind::System));
-        let store = Store { last_page: "system".into(), ..Store::default() };
-        let mut settings = Settings { remember_page: true, ..Settings::default() };
-        assert_eq!(AppState::new(settings.clone(), store.clone()).page, PageKind::Media);
+        let store = Store {
+            last_page: "system".into(),
+            ..Store::default()
+        };
+        let mut settings = Settings {
+            remember_page: true,
+            ..Settings::default()
+        };
+        assert_eq!(
+            AppState::new(settings.clone(), store.clone()).page,
+            PageKind::Media
+        );
         settings.set_system(true);
         assert_eq!(AppState::new(settings, store).page, PageKind::System);
     }
@@ -798,7 +955,11 @@ mod tests {
         // The download can't read other apps' notifications: no tab, nothing listens.
         let mut st = state();
         assert!(!st.notifications_on() && !tabs(&st).contains(&PageKind::Notifications));
-        assert_eq!(hideable_tabs(&st), &PageKind::HIDEABLE[..PageKind::HIDEABLE.len() - 1], "Settings doesn't offer it");
+        assert_eq!(
+            hideable_tabs(&st),
+            &PageKind::HIDEABLE[..PageKind::HIDEABLE.len() - 1],
+            "Settings doesn't offer it"
+        );
         // The Store copy: on for everyone, without an add-on to switch on.
         st.notify_can = true;
         assert!(st.notifications_on() && tabs(&st).contains(&PageKind::Notifications));
@@ -818,11 +979,21 @@ mod tests {
         let mut st = state();
         assert!(content_height(PageKind::Settings, &st) <= content_height(PageKind::System, &st));
         // Nor its new version's row, nor the Update sheet in its place.
-        let rel = poni_core::update::Release { version: "9.9.9".into(), date: String::new(), headline: "Something new".into(), notes: String::new(), windows: None, mac: None };
+        let rel = poni_core::update::Release {
+            version: "9.9.9".into(),
+            date: String::new(),
+            headline: "Something new".into(),
+            notes: String::new(),
+            windows: None,
+            mac: None,
+        };
         st.update.offer = Some(rel);
         let row = content_height(PageKind::Settings, &st);
         st.update.sheet = true;
         let sheet = content_height(PageKind::Settings, &st);
-        assert!(row <= content_height(PageKind::System, &st) && sheet <= row, "{row} {sheet}");
+        assert!(
+            row <= content_height(PageKind::System, &st) && sheet <= row,
+            "{row} {sheet}"
+        );
     }
 }

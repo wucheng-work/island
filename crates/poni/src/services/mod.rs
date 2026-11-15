@@ -1,37 +1,37 @@
 //! Background services. Each one reports to the UI thread through an
 //! [`EventSink`]; a failing service is logged and skipped, never fatal.
 
-pub mod update_worker;
 pub mod applemusic;
 pub mod applemusic_ui;
 pub mod audio;
-pub mod color;
-pub mod location;
-#[path = "../mac/services/weather.rs"]
-pub mod weather;
 pub mod backdrop;
 pub mod bluetooth;
 pub mod clipboard;
+pub mod color;
+pub mod font;
 pub mod frames;
 pub mod fullscreen;
 pub mod http;
 pub mod imaging;
+pub mod location;
 pub mod lyrics;
-pub mod media;
-mod netease_playback;
 #[path = "../mac/services/mail.rs"]
 pub mod mail;
+pub mod media;
+mod netease_playback;
+pub mod notifications;
 pub mod oyenza;
 pub mod power;
 pub mod psu;
 pub mod secret;
 pub mod sound;
 pub mod sound_picker;
-pub mod notifications;
 pub mod sysmon;
 pub mod update;
+pub mod update_worker;
+#[path = "../mac/services/weather.rs"]
+pub mod weather;
 pub mod wechat;
-pub mod font;
 
 use crate::commands::{MediaCmd, OyenzaCmd};
 use crate::events::EventSink;
@@ -64,15 +64,38 @@ fn started<T, E: std::fmt::Display>(name: &str, r: Result<T, E>) -> Option<T> {
 }
 
 impl Services {
-    pub fn start(sink: &EventSink, _island: HWND, helper: HWND, _settings: &Settings, activity: oyenza::Activity) -> Self {
+    pub fn start(
+        sink: &EventSink,
+        _island: HWND,
+        helper: HWND,
+        _settings: &Settings,
+        activity: oyenza::Activity,
+    ) -> Self {
         let media = started("media", media::MediaService::start(sink.clone()));
         let lyrics = started("lyrics", lyrics::LyricsService::start(sink.clone()));
         let audio = started("audio", audio::AudioService::start(sink.clone()));
-        let bluetooth = started("bluetooth", bluetooth::BluetoothService::start(sink.clone()));
-        let fullscreen = started("fullscreen", fullscreen::FullscreenWatcher::start(helper, sink.clone()));
+        let bluetooth = started(
+            "bluetooth",
+            bluetooth::BluetoothService::start(sink.clone()),
+        );
+        let fullscreen = started(
+            "fullscreen",
+            fullscreen::FullscreenWatcher::start(helper, sink.clone()),
+        );
         // Idle (no calls) until the person signs in to Oyenza from the tray.
-        let oyenza = started("oyenza", oyenza::OyenzaService::start(sink.clone(), activity));
-        Self { media, lyrics, audio, _bluetooth: bluetooth, fullscreen, oyenza, updates: None }
+        let oyenza = started(
+            "oyenza",
+            oyenza::OyenzaService::start(sink.clone(), activity),
+        );
+        Self {
+            media,
+            lyrics,
+            audio,
+            _bluetooth: bluetooth,
+            fullscreen,
+            oyenza,
+            updates: None,
+        }
     }
 
     pub fn stop(self, _helper: HWND) {
@@ -86,7 +109,11 @@ impl Services {
         if self.updates.is_none() {
             self.updates = started("updates", update_worker::UpdateWorker::start());
         }
-        self.updates.as_ref().map(|worker| worker.run(job)).is_some()
+        if let Some(worker) = &self.updates {
+            worker.run(job);
+            return true;
+        }
+        false
     }
 
     /// Step aside on (the band along the top edge of the island's monitor,
@@ -105,11 +132,15 @@ impl Services {
     }
 
     pub fn set_output_volume(&self, level: f32) -> bool {
-        self.audio.as_ref().is_some_and(|audio| audio.set_volume(level))
+        self.audio
+            .as_ref()
+            .is_some_and(|audio| audio.set_volume(level))
     }
 
     pub fn set_output_mute(&self, muted: bool) -> bool {
-        self.audio.as_ref().is_some_and(|audio| audio.set_mute(muted))
+        self.audio
+            .as_ref()
+            .is_some_and(|audio| audio.set_mute(muted))
     }
 
     pub fn media_cmd(&self, c: MediaCmd) {
@@ -167,7 +198,9 @@ impl Services {
     /// Handle the AppBar callback message; `Some(true)` when a full-screen
     /// app covers the island's monitor.
     pub fn on_appbar_message(&self, wp: WPARAM, lp: LPARAM, monitor: isize) -> Option<bool> {
-        self.fullscreen.as_ref().and_then(|f| f.on_appbar_message(wp, lp, monitor))
+        self.fullscreen
+            .as_ref()
+            .and_then(|f| f.on_appbar_message(wp, lp, monitor))
     }
 }
 
@@ -175,7 +208,10 @@ impl Services {
 pub fn apps_use_light_theme() -> bool {
     use windows::UI::ViewManagement::{UIColorType, UISettings};
     // The system background is white in light mode and black in dark mode.
-    UISettings::new().and_then(|s| s.GetColorValue(UIColorType::Background)).map(|c| c.R as u32 + c.G as u32 + c.B as u32 > 382).unwrap_or(true)
+    UISettings::new()
+        .and_then(|s| s.GetColorValue(UIColorType::Background))
+        .map(|c| c.R as u32 + c.G as u32 + c.B as u32 > 382)
+        .unwrap_or(true)
 }
 
 /// The Windows accent colour as it is: the Glass theme's text and fills sit
@@ -184,7 +220,12 @@ pub fn system_accent_base() -> Option<Color> {
     use windows::UI::ViewManagement::{UIColorType, UISettings};
     let s = UISettings::new().ok()?;
     let c = s.GetColorValue(UIColorType::Accent).ok()?;
-    Some(Color::rgba(c.R as f32 / 255.0, c.G as f32 / 255.0, c.B as f32 / 255.0, 1.0))
+    Some(Color::rgba(
+        c.R as f32 / 255.0,
+        c.G as f32 / 255.0,
+        c.B as f32 / 255.0,
+        1.0,
+    ))
 }
 
 /// The Windows accent colour, lightened for use on the black island.
@@ -192,5 +233,13 @@ pub fn system_accent() -> Option<Color> {
     use windows::UI::ViewManagement::{UIColorType, UISettings};
     let s = UISettings::new().ok()?;
     let c = s.GetColorValue(UIColorType::AccentLight2).ok()?;
-    Some(Color::rgba(c.R as f32 / 255.0, c.G as f32 / 255.0, c.B as f32 / 255.0, 1.0).for_island_accent())
+    Some(
+        Color::rgba(
+            c.R as f32 / 255.0,
+            c.G as f32 / 255.0,
+            c.B as f32 / 255.0,
+            1.0,
+        )
+        .for_island_accent(),
+    )
 }

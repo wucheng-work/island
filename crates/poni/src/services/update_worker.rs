@@ -24,7 +24,13 @@ struct Queue {
 
 impl UpdateWorker {
     pub fn start() -> io::Result<Self> {
-        let shared = Arc::new(Shared { queue: Mutex::new(Queue { jobs: Vec::new(), shutdown: false }), ready: Condvar::new() });
+        let shared = Arc::new(Shared {
+            queue: Mutex::new(Queue {
+                jobs: Vec::new(),
+                shutdown: false,
+            }),
+            ready: Condvar::new(),
+        });
         let worker = shared.clone();
         std::thread::Builder::new()
             .name("poni-updates".into())

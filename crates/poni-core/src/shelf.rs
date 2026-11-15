@@ -35,8 +35,17 @@ struct FileEntry {
 
 impl FileEntry {
     fn new(path: String) -> Self {
-        let size = std::fs::metadata(&path).ok().filter(|m| m.is_file()).map(|m| m.len());
-        Self { canonical: std::fs::canonicalize(&path).ok(), path, size, digest: None, checked: false }
+        let size = std::fs::metadata(&path)
+            .ok()
+            .filter(|m| m.is_file())
+            .map(|m| m.len());
+        Self {
+            canonical: std::fs::canonicalize(&path).ok(),
+            path,
+            size,
+            digest: None,
+            checked: false,
+        }
     }
 
     fn digest(&mut self, unreadable: &mut usize) -> Option<[u8; 32]> {
@@ -54,14 +63,25 @@ impl FileEntry {
 impl Shelf {
     /// 仅在后台调用：同大小文件再做流式内容比较，文件夹只比较实际路径。
     pub fn prepare_paths(&self, paths: Vec<String>) -> PreparedPaths {
-        let mut result = PreparedPaths { paths: Vec::new(), duplicates: 0, unreadable: 0 };
-        let mut known: Vec<FileEntry> = self.items.iter().map(|item| FileEntry::new(item.path.clone())).collect();
+        let mut result = PreparedPaths {
+            paths: Vec::new(),
+            duplicates: 0,
+            unreadable: 0,
+        };
+        let mut known: Vec<FileEntry> = self
+            .items
+            .iter()
+            .map(|item| FileEntry::new(item.path.clone()))
+            .collect();
         for path in paths {
             if path.is_empty() {
                 continue;
             }
             let key = path.to_lowercase();
-            if let Some(index) = known.iter().position(|item| item.path.to_lowercase() == key) {
+            if let Some(index) = known
+                .iter()
+                .position(|item| item.path.to_lowercase() == key)
+            {
                 // 同一路径继续交给 add_paths，保留移到最前且新增数为零的行为。
                 let item = known.remove(index);
                 known.insert(0, item);
@@ -78,7 +98,9 @@ impl Shelf {
                 if file.size.is_none() || file.size != item.size {
                     continue;
                 }
-                let Some(digest) = file.digest(&mut result.unreadable) else { continue };
+                let Some(digest) = file.digest(&mut result.unreadable) else {
+                    continue;
+                };
                 if item.digest(&mut result.unreadable) == Some(digest) {
                     duplicate = true;
                     break;
@@ -106,12 +128,28 @@ impl Shelf {
                 continue;
             }
             let key = p.to_lowercase();
-            if let Some(i) = self.items.iter().position(|it| it.path.to_lowercase() == key) {
+            if let Some(i) = self
+                .items
+                .iter()
+                .position(|it| it.path.to_lowercase() == key)
+            {
                 let it = self.items.remove(i);
-                self.items.insert(0, ShelfItem { added_unix: now_unix, ..it });
+                self.items.insert(
+                    0,
+                    ShelfItem {
+                        added_unix: now_unix,
+                        ..it
+                    },
+                );
                 continue;
             }
-            self.items.insert(0, ShelfItem { path: p.to_string(), added_unix: now_unix });
+            self.items.insert(
+                0,
+                ShelfItem {
+                    path: p.to_string(),
+                    added_unix: now_unix,
+                },
+            );
             added += 1;
         }
         self.items.truncate(MAX_SHELF_ITEMS);
@@ -148,7 +186,10 @@ fn file_digest(path: &str) -> io::Result<[u8; 32]> {
     }
     let after = file.metadata()?;
     if before.len() != after.len() || before.modified().ok() != after.modified().ok() {
-        return Err(io::Error::new(io::ErrorKind::Interrupted, "file changed while checking its content"));
+        return Err(io::Error::new(
+            io::ErrorKind::Interrupted,
+            "file changed while checking its content",
+        ));
     }
     Ok(hash.finish())
 }
@@ -168,7 +209,9 @@ pub fn display_name(path: &str) -> String {
 pub fn extension(path: &str) -> String {
     let name = display_name(path);
     match name.rsplit_once('.') {
-        Some((stem, ext)) if !stem.is_empty() && !ext.is_empty() && ext.len() <= 8 => ext.to_lowercase(),
+        Some((stem, ext)) if !stem.is_empty() && !ext.is_empty() && ext.len() <= 8 => {
+            ext.to_lowercase()
+        }
         _ => String::new(),
     }
 }
@@ -200,7 +243,10 @@ mod tests {
 
     #[test]
     fn names_and_extensions() {
-        assert_eq!(display_name("C:\\Users\\x\\report.final.PDF"), "report.final.PDF");
+        assert_eq!(
+            display_name("C:\\Users\\x\\report.final.PDF"),
+            "report.final.PDF"
+        );
         assert_eq!(extension("C:\\Users\\x\\report.final.PDF"), "pdf");
         assert_eq!(display_name("C:\\Projects\\"), "Projects");
         assert_eq!(extension("C:\\Projects"), "");

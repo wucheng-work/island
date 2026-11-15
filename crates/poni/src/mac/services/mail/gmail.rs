@@ -1,13 +1,16 @@
 //! Gmail官方只读API。OAuth使用用户自己的桌面应用、loopback回调和PKCE。
 
-use poni_core::urlenc::encode;
-use super::{account_identity, mime, store_secret, unix_now, Gate, MailboxCache, Secret, MAX_BODY, MAX_TEXT, NETWORK_TIMEOUT};
+use super::{
+    account_identity, mime, store_secret, unix_now, Gate, MailboxCache, Secret, MAX_BODY, MAX_TEXT,
+    NETWORK_TIMEOUT,
+};
 use crate::events::EventSink;
 use crate::mail::{MailAttachment, MailEvent, MailMessage, MailPreview};
 use crate::services::http::{Client, Response};
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
 use poni_core::mail::MailAccount;
+use poni_core::urlenc::encode;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -51,7 +54,10 @@ impl Connection {
             ("refresh_token", &self.secret.refresh_token),
             ("grant_type", "refresh_token"),
         ]);
-        let response = self.client.post_form(TOKEN_URL, &form, NETWORK_TIMEOUT).map_err(|_| "无法刷新Gmail授权，请检查网络".to_string())?;
+        let response = self
+            .client
+            .post_form(TOKEN_URL, &form, NETWORK_TIMEOUT)
+            .map_err(|_| "无法刷新Gmail授权，请检查网络".to_string())?;
         apply_token(&mut self.secret, response, false)?;
         store_secret(&account.id, &self.secret, gate)
     }
@@ -61,7 +67,11 @@ impl Connection {
         let bearer = format!("Bearer {}", self.secret.access_token);
         let response = self
             .client
-            .get_with_headers(&format!("{API}/{path}"), &[("Authorization", &bearer)], NETWORK_TIMEOUT)
+            .get_with_headers(
+                &format!("{API}/{path}"),
+                &[("Authorization", &bearer)],
+                NETWORK_TIMEOUT,
+            )
             .map_err(|_| "Gmail连接失败或超时，请检查网络".to_string())?;
         if !gate.active() {
             return Err("操作已取消".into());
@@ -75,7 +85,12 @@ impl Connection {
         Ok(response)
     }
 
-    pub(super) fn sync(&mut self, cache: &mut MailboxCache, account: &MailAccount, gate: &Gate) -> Result<(Vec<String>, u32), String> {
+    pub(super) fn sync(
+        &mut self,
+        cache: &mut MailboxCache,
+        account: &MailAccount,
+        gate: &Gate,
+    ) -> Result<(Vec<String>, u32), String> {
         let mut baseline = !cache.initialized || cache.history_id.is_empty();
         let mut added = HashSet::new();
         let mut changed = HashSet::new();
@@ -84,7 +99,10 @@ impl Connection {
             let mut page = String::new();
             // 每轮最多十页；用已处理记录的id接续，不能直接跳到服务器最新游标。
             for page_number in 0..10 {
-                let mut path = format!("history?startHistoryId={}&maxResults=100", encode(&cache.history_id));
+                let mut path = format!(
+                    "history?startHistoryId={}&maxResults=100",
+                    encode(&cache.history_id)
+                );
                 if !page.is_empty() {
                     path.push_str(&format!("&pageToken={}", encode(&page)));
                 }
@@ -99,7 +117,12 @@ impl Connection {
                         if let Some(id) = record["id"].as_str() {
                             cursor = id.to_string();
                         }
-                        for field in ["messagesAdded", "messagesDeleted", "labelsAdded", "labelsRemoved"] {
+                        for field in [
+                            "messagesAdded",
+                            "messagesDeleted",
+                            "labelsAdded",
+                            "labelsRemoved",
+                        ] {
                             if let Some(items) = record[field].as_array() {
                                 for item in items {
                                     if let Some(id) = item["message"]["id"].as_str() {
@@ -115,7 +138,10 @@ impl Connection {
                 }
                 page = history["nextPageToken"].as_str().unwrap_or("").to_string();
                 if page.is_empty() {
-                    cursor = history["historyId"].as_str().ok_or("Gmail未返回增量游标")?.to_string();
+                    cursor = history["historyId"]
+                        .as_str()
+                        .ok_or("Gmail未返回增量游标")?
+                        .to_string();
                     break;
                 }
                 if page_number == 9 && cursor == cache.history_id {
@@ -141,23 +167,43 @@ impl Connection {
             }
         }
         let unread_data = json(self.get("labels/INBOX?fields=messagesUnread", account, gate)?)?;
-        let unread = unread_data["messagesUnread"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32;
+        let unread = unread_data["messagesUnread"]
+            .as_u64()
+            .unwrap_or(0)
+            .min(u32::MAX as u64) as u32;
         if baseline {
             // 第一次完整快照建立后才定基线，避免导入历史邮件时弹出提醒。
             let profile = json(self.get("profile", account, gate)?)?;
             verify_address(&profile, account)?;
-            cursor = profile["historyId"].as_str().ok_or("Gmail未返回收信基线")?.to_string();
+            cursor = profile["historyId"]
+                .as_str()
+                .ok_or("Gmail未返回收信基线")?
+                .to_string();
             added.clear();
         }
-        let new_ids = messages.iter().filter(|message| added.contains(&message.id)).map(|message| message.id.clone()).collect();
-        messages.sort_by(|left, right| right.received_unix.cmp(&left.received_unix).then_with(|| right.id.cmp(&left.id)));
+        let new_ids = messages
+            .iter()
+            .filter(|message| added.contains(&message.id))
+            .map(|message| message.id.clone())
+            .collect();
+        messages.sort_by(|left, right| {
+            right
+                .received_unix
+                .cmp(&left.received_unix)
+                .then_with(|| right.id.cmp(&left.id))
+        });
         cache.messages = messages;
         cache.history_id = cursor;
         cache.initialized = true;
         Ok((new_ids, unread))
     }
 
-    fn summary(&mut self, id: &str, account: &MailAccount, gate: &Gate) -> Result<Option<MailMessage>, String> {
+    fn summary(
+        &mut self,
+        id: &str,
+        account: &MailAccount,
+        gate: &Gate,
+    ) -> Result<Option<MailMessage>, String> {
         let path = format!("messages/{}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=Content-Type&fields=id,snippet,internalDate,labelIds,payload(headers,mimeType,filename,parts(mimeType,filename))", encode(id));
         let response = self.get(&path, account, gate)?;
         if response.status == 404 {
@@ -170,11 +216,20 @@ impl Connection {
         Ok(Some(summary(&data)?))
     }
 
-    pub(super) fn preview(&mut self, id: &str, account: &MailAccount, gate: &Gate) -> Result<MailPreview, String> {
+    pub(super) fn preview(
+        &mut self,
+        id: &str,
+        account: &MailAccount,
+        gate: &Gate,
+    ) -> Result<MailPreview, String> {
         if id.is_empty() || !id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err("邮件标识无效，请重新收信".into());
         }
-        let response = self.get(&format!("messages/{}?format=full", encode(id)), account, gate)?;
+        let response = self.get(
+            &format!("messages/{}?format=full", encode(id)),
+            account,
+            gate,
+        )?;
         if response.status == 404 {
             return Err("邮件已被删除，请重新收信".into());
         }
@@ -214,7 +269,14 @@ fn collect_parts(part: &Value, result: &mut Bodies, depth: usize) -> Result<(), 
     if !name.is_empty() || disposition.to_ascii_lowercase().starts_with("attachment") {
         if result.attachments.len() < 100 {
             result.attachments.push(MailAttachment {
-                name: mime::clean(if name.is_empty() { "未命名附件" } else { name }, 1000),
+                name: mime::clean(
+                    if name.is_empty() {
+                        "未命名附件"
+                    } else {
+                        name
+                    },
+                    1000,
+                ),
                 size: part["body"]["size"].as_u64(),
             });
         }
@@ -237,7 +299,11 @@ fn collect_parts(part: &Value, result: &mut Bodies, depth: usize) -> Result<(), 
                 }
                 result.bytes += bytes.len();
                 let content_type = header(part, "Content-Type");
-                let content_type = if content_type.is_empty() { kind.to_string() } else { content_type };
+                let content_type = if content_type.is_empty() {
+                    kind.to_string()
+                } else {
+                    content_type
+                };
                 let mut raw = format!("Content-Type: {content_type}\r\n\r\n").into_bytes();
                 raw.extend_from_slice(&bytes);
                 let preview = mime::preview(&raw, MailMessage::default(), false)?;
@@ -264,9 +330,21 @@ fn collect_parts(part: &Value, result: &mut Bodies, depth: usize) -> Result<(), 
 
 fn summary(data: &Value) -> Result<MailMessage, String> {
     let id = data["id"].as_str().ok_or("Gmail邮件标识无效")?.to_string();
-    let received = data["internalDate"].as_str().and_then(|value| value.parse::<i64>().ok()).unwrap_or(0) / 1000;
-    let mut message = mime::metadata(&header_bytes(&data["payload"]), id, has_label(data, "UNREAD"), received)?;
-    message.snippet = mime::clean(&mail_parser::decoders::html::html_to_text(data["snippet"].as_str().unwrap_or("")), 400);
+    let received = data["internalDate"]
+        .as_str()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(0)
+        / 1000;
+    let mut message = mime::metadata(
+        &header_bytes(&data["payload"]),
+        id,
+        has_label(data, "UNREAD"),
+        received,
+    )?;
+    message.snippet = mime::clean(
+        &mail_parser::decoders::html::html_to_text(data["snippet"].as_str().unwrap_or("")),
+        400,
+    );
     message.attachments |= has_attachment(&data["payload"], 0);
     Ok(message)
 }
@@ -275,20 +353,33 @@ fn has_attachment(part: &Value, depth: usize) -> bool {
     if depth > 30 {
         return false;
     }
-    if part["filename"].as_str().is_some_and(|name| !name.is_empty()) {
+    if part["filename"]
+        .as_str()
+        .is_some_and(|name| !name.is_empty())
+    {
         return true;
     }
-    part["parts"].as_array().is_some_and(|parts| parts.iter().any(|part| has_attachment(part, depth + 1)))
+    part["parts"]
+        .as_array()
+        .is_some_and(|parts| parts.iter().any(|part| has_attachment(part, depth + 1)))
 }
 
 fn has_label(data: &Value, label: &str) -> bool {
-    data["labelIds"].as_array().is_some_and(|labels| labels.iter().any(|value| value.as_str() == Some(label)))
+    data["labelIds"]
+        .as_array()
+        .is_some_and(|labels| labels.iter().any(|value| value.as_str() == Some(label)))
 }
 
 fn header(part: &Value, name: &str) -> String {
     part["headers"]
         .as_array()
-        .and_then(|headers| headers.iter().find(|item| item["name"].as_str().is_some_and(|value| value.eq_ignore_ascii_case(name))))
+        .and_then(|headers| {
+            headers.iter().find(|item| {
+                item["name"]
+                    .as_str()
+                    .is_some_and(|value| value.eq_ignore_ascii_case(name))
+            })
+        })
         .and_then(|item| item["value"].as_str())
         .unwrap_or("")
         .to_string()
@@ -306,13 +397,33 @@ fn header_bytes(part: &Value) -> Vec<u8> {
     bytes
 }
 
-pub(super) fn authorize(account: &MailAccount, client_id: &str, client_secret: &str, gate: &Gate, sink: &EventSink) -> Result<Secret, String> {
-    if !client_id.ends_with(".apps.googleusercontent.com") || client_id.len() > 1024 || client_id.chars().any(char::is_whitespace) || client_secret.is_empty() || client_secret.len() > 4096 {
+pub(super) fn authorize(
+    account: &MailAccount,
+    client_id: &str,
+    client_secret: &str,
+    gate: &Gate,
+    sink: &EventSink,
+) -> Result<Secret, String> {
+    if !client_id.ends_with(".apps.googleusercontent.com")
+        || client_id.len() > 1024
+        || client_id.chars().any(char::is_whitespace)
+        || client_secret.is_empty()
+        || client_secret.len() > 4096
+    {
         return Err("请填写自己的Google OAuth桌面应用客户端ID和密钥".into());
     }
-    let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|_| "无法建立本机Google授权回调".to_string())?;
-    listener.set_nonblocking(true).map_err(|_| "无法配置本机授权回调".to_string())?;
-    let redirect = format!("http://127.0.0.1:{}/oauth2callback", listener.local_addr().map_err(|_| "无法读取本机授权端口".to_string())?.port());
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .map_err(|_| "无法建立本机Google授权回调".to_string())?;
+    listener
+        .set_nonblocking(true)
+        .map_err(|_| "无法配置本机授权回调".to_string())?;
+    let redirect = format!(
+        "http://127.0.0.1:{}/oauth2callback",
+        listener
+            .local_addr()
+            .map_err(|_| "无法读取本机授权端口".to_string())?
+            .port()
+    );
     let state = random_token()?;
     let verifier = random_token()?;
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
@@ -328,7 +439,12 @@ pub(super) fn authorize(account: &MailAccount, client_id: &str, client_secret: &
         ("prompt", "consent"),
         ("login_hint", &account.address),
     ]);
-    gate.emit(sink, MailEvent::AuthorizationUrl(format!("https://accounts.google.com/o/oauth2/v2/auth?{query}")));
+    gate.emit(
+        sink,
+        MailEvent::AuthorizationUrl(format!(
+            "https://accounts.google.com/o/oauth2/v2/auth?{query}"
+        )),
+    );
     let deadline = Instant::now() + Duration::from_secs(180);
     let code = loop {
         if !gate.active() {
@@ -354,7 +470,9 @@ pub(super) fn authorize(account: &MailAccount, client_id: &str, client_secret: &
                     Err(_) => respond(&mut socket, false),
                 }
             }
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(100)),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(100))
+            }
             Err(_) => return Err("本机授权回调失败，请重试".into()),
         }
     };
@@ -388,7 +506,11 @@ pub(super) fn authorize(account: &MailAccount, client_id: &str, client_secret: &
     let bearer = format!("Bearer {}", secret.access_token);
     let profile = json(
         client
-            .get_with_headers(&format!("{API}/profile"), &[("Authorization", &bearer)], NETWORK_TIMEOUT)
+            .get_with_headers(
+                &format!("{API}/profile"),
+                &[("Authorization", &bearer)],
+                NETWORK_TIMEOUT,
+            )
             .map_err(|_| "无法核验Gmail账户，请检查网络后重试".to_string())?,
     )?;
     verify_address(&profile, account)?;
@@ -396,7 +518,10 @@ pub(super) fn authorize(account: &MailAccount, client_id: &str, client_secret: &
 }
 
 fn verify_address(profile: &Value, account: &MailAccount) -> Result<(), String> {
-    if !profile["emailAddress"].as_str().is_some_and(|address| address.eq_ignore_ascii_case(&account.address)) {
+    if !profile["emailAddress"]
+        .as_str()
+        .is_some_and(|address| address.eq_ignore_ascii_case(&account.address))
+    {
         return Err("授权的Google邮箱与填写地址不一致，请选择对应账户重新授权".into());
     }
     Ok(())
@@ -407,14 +532,22 @@ fn apply_token(secret: &mut Secret, response: Response, initial: bool) -> Result
         return Err("Google授权已失效或客户端配置不正确，请重新授权".into());
     }
     let token = json(response)?;
-    secret.access_token = token["access_token"].as_str().filter(|token| !token.is_empty()).ok_or("Google未返回访问令牌，请重新授权")?.to_string();
+    secret.access_token = token["access_token"]
+        .as_str()
+        .filter(|token| !token.is_empty())
+        .ok_or("Google未返回访问令牌，请重新授权")?
+        .to_string();
     if let Some(refresh) = token["refresh_token"].as_str() {
         secret.refresh_token = refresh.to_string();
     }
     if initial && secret.refresh_token.is_empty() {
         return Err("Google未授予离线访问，请重新授权并允许只读邮箱访问".into());
     }
-    secret.expires_at = unix_now() + token["expires_in"].as_i64().unwrap_or(3600).clamp(60, 86400);
+    secret.expires_at = unix_now()
+        + token["expires_in"]
+            .as_i64()
+            .unwrap_or(3600)
+            .clamp(60, 86400);
     Ok(())
 }
 
@@ -424,11 +557,19 @@ fn private_client() -> Result<Client, String> {
 
 fn json(response: Response) -> Result<Value, String> {
     match response.status {
-        200..=299 => serde_json::from_str(&response.body).map_err(|_| "Google返回的数据格式无效".into()),
+        200..=299 => {
+            serde_json::from_str(&response.body).map_err(|_| "Google返回的数据格式无效".into())
+        }
         401 => Err("Gmail授权已失效，请重新授权账户".into()),
-        403 => Err("Gmail拒绝访问，请确认OAuth应用已启用Gmail API、账户在测试用户中并已允许只读访问".into()),
+        403 => Err(
+            "Gmail拒绝访问，请确认OAuth应用已启用Gmail API、账户在测试用户中并已允许只读访问"
+                .into(),
+        ),
         429 | 503 => Err("Gmail暂时限制请求，稍后将自动重试".into()),
-        _ => Err(format!("Gmail请求失败（HTTP {}），请稍后重试", response.status)),
+        _ => Err(format!(
+            "Gmail请求失败（HTTP {}），请稍后重试",
+            response.status
+        )),
     }
 }
 
@@ -440,14 +581,20 @@ fn random_token() -> Result<String, String> {
         .map_err(|_| "无法生成安全授权随机数".to_string())?;
     #[cfg(windows)]
     unsafe {
-        use windows::Win32::Security::Cryptography::{BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG};
-        BCryptGenRandom(None, &mut bytes, BCRYPT_USE_SYSTEM_PREFERRED_RNG).ok().map_err(|_| "无法生成安全授权随机数".to_string())?;
+        use windows::Win32::Security::Cryptography::{
+            BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+        };
+        BCryptGenRandom(None, &mut bytes, BCRYPT_USE_SYSTEM_PREFERRED_RNG)
+            .ok()
+            .map_err(|_| "无法生成安全授权随机数".to_string())?;
     }
     Ok(URL_SAFE_NO_PAD.encode(bytes))
 }
 
 fn callback(socket: &mut TcpStream, expected_state: &str) -> Result<Option<String>, ()> {
-    socket.set_read_timeout(Some(Duration::from_secs(2))).map_err(|_| ())?;
+    socket
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .map_err(|_| ())?;
     let mut request = Vec::new();
     let deadline = Instant::now() + Duration::from_secs(3);
     while request.len() < 8192 && Instant::now() < deadline {
@@ -497,7 +644,10 @@ fn callback(socket: &mut TcpStream, expected_state: &str) -> Result<Option<Strin
     if denied {
         return Ok(None);
     }
-    Ok(Some(code.filter(|code| !code.is_empty() && code.len() <= 4096).ok_or(())?))
+    Ok(Some(
+        code.filter(|code| !code.is_empty() && code.len() <= 4096)
+            .ok_or(())?,
+    ))
 }
 
 fn respond(socket: &mut TcpStream, success: bool) {
@@ -516,9 +666,12 @@ fn respond(socket: &mut TcpStream, success: bool) {
 }
 
 fn form(values: &[(&str, &str)]) -> String {
-    values.iter().map(|(key, value)| format!("{}={}", encode(key), encode(value))).collect::<Vec<_>>().join("&")
+    values
+        .iter()
+        .map(|(key, value)| format!("{}={}", encode(key), encode(value)))
+        .collect::<Vec<_>>()
+        .join("&")
 }
-
 
 fn decode(value: &str) -> Result<String, ()> {
     let bytes = value.as_bytes();
@@ -552,6 +705,9 @@ mod form_tests {
 
     #[test]
     fn oauth_form_preserves_empty_values_and_encodes_separators() {
-        assert_eq!(form(&[("client_secret", ""), ("code", "中文 +&=")]), "client_secret=&code=%E4%B8%AD%E6%96%87%20%2B%26%3D");
+        assert_eq!(
+            form(&[("client_secret", ""), ("code", "中文 +&=")]),
+            "client_secret=&code=%E4%B8%AD%E6%96%87%20%2B%26%3D"
+        );
     }
 }

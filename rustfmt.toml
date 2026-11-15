@@ -1,0 +1,4 @@
+# Workspace-wide Rust formatting. Keep the language edition in Cargo.toml;
+# this file only fixes the formatter's output for every crate.
+edition = "2021"
+style_edition = "2021"

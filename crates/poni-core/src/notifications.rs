@@ -62,7 +62,11 @@ pub struct NotificationSettings {
 
 impl Default for NotificationSettings {
     fn default() -> Self {
-        Self { who: true, text: true, apps: Vec::new() }
+        Self {
+            who: true,
+            text: true,
+            apps: Vec::new(),
+        }
     }
 }
 
@@ -80,8 +84,16 @@ impl NotificationSettings {
             return (a.on, renamed);
         }
         let on = starts_on(app_id, app);
-        let name = if name.is_empty() { app_id.to_string() } else { name };
-        self.apps.push(AppChoice { id: app_id.to_string(), name, on });
+        let name = if name.is_empty() {
+            app_id.to_string()
+        } else {
+            name
+        };
+        self.apps.push(AppChoice {
+            id: app_id.to_string(),
+            name,
+            on,
+        });
         if self.apps.len() > MAX_APPS {
             let i = self.apps.iter().position(|a| !a.on).unwrap_or(0);
             self.apps.remove(i);
@@ -138,7 +150,12 @@ pub struct Said {
 /// The notice for `seen`, with who it's from (`who`) and the message (`text`)
 /// shown or waiting for Show. None for a notification with no words.
 pub fn compose(seen: &Seen, who: bool, text: bool) -> Option<Said> {
-    let lines: Vec<String> = seen.lines.iter().map(|l| clean(l)).filter(|l| !l.is_empty()).collect();
+    let lines: Vec<String> = seen
+        .lines
+        .iter()
+        .map(|l| clean(l))
+        .filter(|l| !l.is_empty())
+        .collect();
     let (from, message) = match lines.split_first() {
         None => return None,
         // One line is the message itself (a group's "3 new messages").
@@ -153,19 +170,31 @@ pub fn compose(seen: &Seen, who: bool, text: bool) -> Option<Said> {
         (Some(from), true) => Said {
             title: from,
             title_dim: app,
-            subtitle: if text { message.clone() } else { MESSAGE_HIDDEN.into() },
+            subtitle: if text {
+                message.clone()
+            } else {
+                MESSAGE_HIDDEN.into()
+            },
             reveal: (!text).then_some(message),
         },
         (Some(from), false) => Said {
             title: app,
             title_dim: String::new(),
-            subtitle: if text { message.clone() } else { BOTH_HIDDEN.into() },
+            subtitle: if text {
+                message.clone()
+            } else {
+                BOTH_HIDDEN.into()
+            },
             reveal: (!text).then(|| cut(&format!("{from}: {message}"))),
         },
         (None, _) => Said {
             title: app,
             title_dim: String::new(),
-            subtitle: if text { message.clone() } else { MESSAGE_HIDDEN.into() },
+            subtitle: if text {
+                message.clone()
+            } else {
+                MESSAGE_HIDDEN.into()
+            },
             reveal: (!text).then_some(message),
         },
     };
@@ -218,18 +247,31 @@ mod tests {
     const OUTLOOK: &str = "Microsoft.Office.OUTLOOK.EXE.15";
 
     fn seen(app_id: &str, app: &str, lines: &[&str]) -> Seen {
-        Seen { app_id: app_id.into(), app: app.into(), lines: lines.iter().map(|l| l.to_string()).collect() }
+        Seen {
+            app_id: app_id.into(),
+            app: app.into(),
+            lines: lines.iter().map(|l| l.to_string()).collect(),
+        }
     }
 
     #[test]
     fn chat_apps_start_on_and_others_off() {
         assert!(starts_on(WA, "WhatsApp"));
         assert!(starts_on(TG, "Telegram Desktop"));
-        assert!(starts_on("TelegramMessengerLLP.TelegramDesktop_t4vj0pshhgkwm!Telegram.TelegramDesktop.Store", "Telegram"));
+        assert!(starts_on(
+            "TelegramMessengerLLP.TelegramDesktop_t4vj0pshhgkwm!Telegram.TelegramDesktop.Store",
+            "Telegram"
+        ));
         assert!(starts_on(PL, "Phone Link"));
-        assert!(starts_on("Some.Id", "WhatsApp Beta"), "found by its name too");
+        assert!(
+            starts_on("Some.Id", "WhatsApp Beta"),
+            "found by its name too"
+        );
         assert!(!starts_on(OUTLOOK, "Outlook"));
-        assert!(!starts_on("Windows.SystemToast.SecurityAndMaintenance", "Security and Maintenance"));
+        assert!(!starts_on(
+            "Windows.SystemToast.SecurityAndMaintenance",
+            "Security and Maintenance"
+        ));
         assert_eq!(color(WA, "WhatsApp"), Some(WHATSAPP));
         assert_eq!(color(TG, "Telegram"), Some(TELEGRAM));
         assert_eq!(color(PL, "Phone Link"), Some(PHONE_LINK));
@@ -239,17 +281,48 @@ mod tests {
     #[test]
     fn apps_are_remembered_once_with_their_switch() {
         let mut s = NotificationSettings::default();
-        assert_eq!(s.remember(WA, "WhatsApp"), (true, true), "a chat app joins, on");
-        assert_eq!(s.remember(OUTLOOK, "Outlook"), (false, true), "another app joins, off");
-        assert_eq!(s.remember(WA, "WhatsApp"), (true, false), "seen before: nothing changes");
+        assert_eq!(
+            s.remember(WA, "WhatsApp"),
+            (true, true),
+            "a chat app joins, on"
+        );
+        assert_eq!(
+            s.remember(OUTLOOK, "Outlook"),
+            (false, true),
+            "another app joins, off"
+        );
+        assert_eq!(
+            s.remember(WA, "WhatsApp"),
+            (true, false),
+            "seen before: nothing changes"
+        );
         s.set(WA, false);
-        assert_eq!(s.remember(WA, "WhatsApp"), (false, false), "switched off by hand stays off");
-        assert_eq!(s.remember(WA, "WhatsApp Beta"), (false, true), "a new name is kept");
+        assert_eq!(
+            s.remember(WA, "WhatsApp"),
+            (false, false),
+            "switched off by hand stays off"
+        );
+        assert_eq!(
+            s.remember(WA, "WhatsApp Beta"),
+            (false, true),
+            "a new name is kept"
+        );
         assert_eq!(s.apps[0].name, "WhatsApp Beta");
-        assert_eq!(s.remember(OUTLOOK, ""), (false, false), "no name: the old one stays");
-        assert_eq!(s.apps.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), [WA, OUTLOOK], "in the order they came");
+        assert_eq!(
+            s.remember(OUTLOOK, ""),
+            (false, false),
+            "no name: the old one stays"
+        );
+        assert_eq!(
+            s.apps.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
+            [WA, OUTLOOK],
+            "in the order they came"
+        );
         s.remember("No.Name", " ");
-        assert_eq!(s.apps[2].name, "No.Name", "an app without a name shows its id");
+        assert_eq!(
+            s.apps[2].name, "No.Name",
+            "an app without a name shows its id"
+        );
     }
 
     #[test]
@@ -261,15 +334,36 @@ mod tests {
         }
         assert_eq!(s.apps.len(), MAX_APPS);
         assert_eq!(s.apps[0].id, WA, "the chat app that's on stays");
-        assert!(s.apps.iter().all(|a| a.id != "App.0"), "the oldest one switched off went");
+        assert!(
+            s.apps.iter().all(|a| a.id != "App.0"),
+            "the oldest one switched off went"
+        );
     }
 
     #[test]
     fn a_message_shows_who_and_what() {
-        let said = compose(&seen(WA, "WhatsApp", &["Mom", "Dinner at 7 tonight?"]), true, true).unwrap();
-        assert_eq!(said, Said { title: "Mom".into(), title_dim: "WhatsApp".into(), subtitle: "Dinner at 7 tonight?".into(), reveal: None });
+        let said = compose(
+            &seen(WA, "WhatsApp", &["Mom", "Dinner at 7 tonight?"]),
+            true,
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            said,
+            Said {
+                title: "Mom".into(),
+                title_dim: "WhatsApp".into(),
+                subtitle: "Dinner at 7 tonight?".into(),
+                reveal: None
+            }
+        );
         // Later lines join the message.
-        let said = compose(&seen(TG, "Telegram", &["Design team", "Rina:", "the deck is up"]), true, true).unwrap();
+        let said = compose(
+            &seen(TG, "Telegram", &["Design team", "Rina:", "the deck is up"]),
+            true,
+            true,
+        )
+        .unwrap();
         assert_eq!(said.subtitle, "Rina: the deck is up");
     }
 
@@ -277,33 +371,69 @@ mod tests {
     fn hidden_parts_wait_for_show() {
         let n = seen(WA, "WhatsApp", &["Mom", "Dinner at 7 tonight?"]);
         let said = compose(&n, true, false).unwrap();
-        assert_eq!((said.title.as_str(), said.subtitle.as_str()), ("Mom", MESSAGE_HIDDEN));
+        assert_eq!(
+            (said.title.as_str(), said.subtitle.as_str()),
+            ("Mom", MESSAGE_HIDDEN)
+        );
         assert_eq!(said.reveal.as_deref(), Some("Dinner at 7 tonight?"));
         let said = compose(&n, false, true).unwrap();
-        assert_eq!((said.title.as_str(), said.title_dim.as_str(), said.subtitle.as_str()), ("WhatsApp", "", "Dinner at 7 tonight?"));
+        assert_eq!(
+            (
+                said.title.as_str(),
+                said.title_dim.as_str(),
+                said.subtitle.as_str()
+            ),
+            ("WhatsApp", "", "Dinner at 7 tonight?")
+        );
         assert_eq!(said.reveal, None);
         let said = compose(&n, false, false).unwrap();
-        assert_eq!((said.title.as_str(), said.subtitle.as_str()), ("WhatsApp", BOTH_HIDDEN));
+        assert_eq!(
+            (said.title.as_str(), said.subtitle.as_str()),
+            ("WhatsApp", BOTH_HIDDEN)
+        );
         assert_eq!(said.reveal.as_deref(), Some("Mom: Dinner at 7 tonight?"));
     }
 
     #[test]
     fn one_line_is_the_message_and_no_words_no_notice() {
         let said = compose(&seen(TG, "Telegram", &["3 new messages"]), true, true).unwrap();
-        assert_eq!((said.title.as_str(), said.title_dim.as_str(), said.subtitle.as_str()), ("Telegram", "", "3 new messages"));
+        assert_eq!(
+            (
+                said.title.as_str(),
+                said.title_dim.as_str(),
+                said.subtitle.as_str()
+            ),
+            ("Telegram", "", "3 new messages")
+        );
         assert_eq!(compose(&seen(TG, "Telegram", &[]), true, true), None);
-        assert_eq!(compose(&seen(TG, "Telegram", &["  ", "\u{200E}"]), true, true), None);
-        assert_eq!(compose(&seen(TG, "", &["Hi"]), true, true).unwrap().title, "An app");
+        assert_eq!(
+            compose(&seen(TG, "Telegram", &["  ", "\u{200E}"]), true, true),
+            None
+        );
+        assert_eq!(
+            compose(&seen(TG, "", &["Hi"]), true, true).unwrap().title,
+            "An app"
+        );
     }
 
     #[test]
     fn lines_are_cleaned_and_cut() {
-        assert_eq!(clean("  Dinner\n at\t7 \r\n tonight?  "), "Dinner at 7 tonight?");
-        assert_eq!(clean("\u{202A}+62 812-3456-7890\u{202C}"), "+62 812-3456-7890");
+        assert_eq!(
+            clean("  Dinner\n at\t7 \r\n tonight?  "),
+            "Dinner at 7 tonight?"
+        );
+        assert_eq!(
+            clean("\u{202A}+62 812-3456-7890\u{202C}"),
+            "+62 812-3456-7890"
+        );
         assert_eq!(clean("a\u{200B}b\u{FEFF}c"), "abc");
         let long = "word ".repeat(100);
         let cut = clean(&long);
-        assert_eq!(cut.chars().count(), LINE_CHARS, "cut at the limit, ellipsis included");
+        assert_eq!(
+            cut.chars().count(),
+            LINE_CHARS,
+            "cut at the limit, ellipsis included"
+        );
         assert!(cut.ends_with('\u{2026}'));
         // Cutting counts characters, not bytes.
         let emoji = "\u{1F602}".repeat(LINE_CHARS + 5);
@@ -316,7 +446,10 @@ mod tests {
         s.remember(WA, "WhatsApp");
         s.text = false;
         let json = serde_json::to_string(&s).unwrap();
-        assert_eq!(serde_json::from_str::<NotificationSettings>(&json).unwrap(), s);
+        assert_eq!(
+            serde_json::from_str::<NotificationSettings>(&json).unwrap(),
+            s
+        );
         let old: NotificationSettings = serde_json::from_str("{}").unwrap();
         assert_eq!(old, NotificationSettings::default());
         assert!(old.who && old.text && old.apps.is_empty());

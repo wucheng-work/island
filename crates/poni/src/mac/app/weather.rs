@@ -5,7 +5,13 @@ use super::*;
 
 impl App {
     pub(super) fn refresh_weather(&mut self, force: bool) {
-        if !self.expanded || self.st.page != PageKind::Today || self.away.0 || self.away.1 || self.st.power.saver || self.smoke.is_some() {
+        if !self.expanded
+            || self.st.page != PageKind::Today
+            || self.away.0
+            || self.away.1
+            || self.st.power.saver
+            || self.smoke.is_some()
+        {
             return;
         }
         // 未选择城市时保持空状态，打开页面和重试都不能触发系统定位授权。
@@ -13,8 +19,15 @@ impl App {
             return;
         }
         // 成功时半小时更新一次；失败后十分钟再试。只在页面可见时运行。
-        let interval = if self.st.weather.snapshot.is_some() { 30 * 60 } else { 10 * 60 };
-        if !force && self.weather_attempt_unix > 0 && self.st.unix - self.weather_attempt_unix < interval {
+        let interval = if self.st.weather.snapshot.is_some() {
+            30 * 60
+        } else {
+            10 * 60
+        };
+        if !force
+            && self.weather_attempt_unix > 0
+            && self.st.unix - self.weather_attempt_unix < interval
+        {
             return;
         }
         self.weather_attempt_unix = self.st.unix;
@@ -23,9 +36,19 @@ impl App {
         self.st.weather.loading = true;
         self.st.weather.message.clear();
         if let Some((latitude, longitude)) = self.st.settings.weather_city_coordinates {
-            services::weather::fetch_location(latitude, longitude, self.st.settings.weather_city.clone(), request_id, self.sink.clone());
+            services::weather::fetch_location(
+                latitude,
+                longitude,
+                self.st.settings.weather_city.clone(),
+                request_id,
+                self.sink.clone(),
+            );
         } else {
-            services::weather::fetch_city(self.st.settings.weather_city.clone(), request_id, self.sink.clone());
+            services::weather::fetch_city(
+                self.st.settings.weather_city.clone(),
+                request_id,
+                self.sink.clone(),
+            );
         }
     }
 
@@ -45,7 +68,14 @@ impl App {
     }
 
     pub(super) fn locate_weather(&mut self) {
-        if !self.expanded || self.st.page != PageKind::Today || self.away.0 || self.away.1 || self.st.power.saver || self.smoke.is_some() || self.location.is_some() {
+        if !self.expanded
+            || self.st.page != PageKind::Today
+            || self.away.0
+            || self.away.1
+            || self.st.power.saver
+            || self.smoke.is_some()
+            || self.location.is_some()
+        {
             return;
         }
         // 保留已保存的城市，定位成功后才替换；失败时仍可刷新原城市。

@@ -33,8 +33,12 @@ pub fn netease_song_id(content_id: &str) -> Option<i64> {
     let id = if value.bytes().all(|c| c.is_ascii_digit()) {
         value
     } else {
-        let path = value.strip_prefix("https://music.163.com/").or_else(|| value.strip_prefix("http://music.163.com/"))?;
-        let query = path.strip_prefix("song?").or_else(|| path.strip_prefix("#/song?"))?;
+        let path = value
+            .strip_prefix("https://music.163.com/")
+            .or_else(|| value.strip_prefix("http://music.163.com/"))?;
+        let query = path
+            .strip_prefix("song?")
+            .or_else(|| path.strip_prefix("#/song?"))?;
         query.split('&').find_map(|part| part.strip_prefix("id="))?
     };
     if id.is_empty() || !id.bytes().all(|c| c.is_ascii_digit()) {
@@ -52,7 +56,9 @@ pub fn is_qq_music(app_id: &str) -> bool {
 /// 网易云音乐的 Mac bundle id、Windows 进程路径或媒体会话 AUMID。
 pub fn is_netease_music(app_id: &str) -> bool {
     let id = app_id.trim().to_ascii_lowercase();
-    !is_browser(&id) && !id.contains("_crx_") && (id == "com.netease.163music" || id.contains("cloudmusic"))
+    !is_browser(&id)
+        && !id.contains("_crx_")
+        && (id == "com.netease.163music" || id.contains("cloudmusic"))
 }
 
 /// Transport controls: what a player reports to Windows' media controls, and
@@ -72,7 +78,11 @@ pub struct Controls {
 /// slider instead, so both stay on for it.
 pub fn island_controls(app_id: &str, reported: Controls, has_duration: bool) -> Controls {
     let apple = is_apple_music(app_id);
-    Controls { prev: reported.prev || apple, seek: (reported.seek || apple) && has_duration, ..reported }
+    Controls {
+        prev: reported.prev || apple,
+        seek: (reported.seek || apple) && has_duration,
+        ..reported
+    }
 }
 
 /// The value that puts a slider whose range is `min..=max` at `fraction`
@@ -128,7 +138,11 @@ pub fn artist_album(app_id: &str, artist: String, album: String) -> (String, Str
     match (parts.next(), parts.next()) {
         (Some(a), Some(b)) if !a.is_empty() => {
             // An album the player reported itself wins over the guessed one.
-            let album = if album.trim().is_empty() { b.to_string() } else { album };
+            let album = if album.trim().is_empty() {
+                b.to_string()
+            } else {
+                album
+            };
             (a.to_string(), album)
         }
         _ => (artist, album),
@@ -160,15 +174,31 @@ mod tests {
     #[test]
     fn apple_music_keeps_previous_and_seeking() {
         // What Apple Music for Windows reports: Next and play/pause only.
-        let reported = Controls { prev: false, next: true, play_pause: true, seek: false };
-        let all = Controls { prev: true, next: true, play_pause: true, seek: true };
+        let reported = Controls {
+            prev: false,
+            next: true,
+            play_pause: true,
+            seek: false,
+        };
+        let all = Controls {
+            prev: true,
+            next: true,
+            play_pause: true,
+            seek: true,
+        };
         assert_eq!(island_controls(APPLE, reported, true), all);
         // A song with no known length (radio) can't be seeked.
-        assert_eq!(island_controls(APPLE, reported, false), Controls { seek: false, ..all });
+        assert_eq!(
+            island_controls(APPLE, reported, false),
+            Controls { seek: false, ..all }
+        );
         // Other players get what they report.
         assert_eq!(island_controls("Spotify.exe", reported, true), reported);
         assert_eq!(island_controls("Spotify.exe", all, true), all);
-        assert_eq!(island_controls("Spotify.exe", all, false), Controls { seek: false, ..all });
+        assert_eq!(
+            island_controls("Spotify.exe", all, false),
+            Controls { seek: false, ..all }
+        );
     }
 
     #[test]
@@ -192,18 +222,42 @@ mod tests {
 
     #[test]
     fn recognises_browsers() {
-        for id in ["Chrome", "MSEdge", "308046B0AF4A39CB", "Brave", "Opera", "C:\\Apps\\Vivaldi\\vivaldi.exe"] {
+        for id in [
+            "Chrome",
+            "MSEdge",
+            "308046B0AF4A39CB",
+            "Brave",
+            "Opera",
+            "C:\\Apps\\Vivaldi\\vivaldi.exe",
+        ] {
             assert!(is_browser(id), "{id}");
         }
         // The Mac's bundle ids.
-        for id in ["com.google.Chrome", "com.apple.Safari", "com.microsoft.edgemac", "company.thebrowser.Browser", "company.thebrowser.dia", "org.mozilla.firefox", "com.brave.Browser"] {
+        for id in [
+            "com.google.Chrome",
+            "com.apple.Safari",
+            "com.microsoft.edgemac",
+            "company.thebrowser.Browser",
+            "company.thebrowser.dia",
+            "org.mozilla.firefox",
+            "com.brave.Browser",
+        ] {
             assert!(is_browser(id), "{id}");
         }
-        for id in [APPLE, "Spotify.exe", "Chrome._crx_cinhimbnkkaeohfgghhklpknlkffjgod", "Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic"] {
+        for id in [
+            APPLE,
+            "Spotify.exe",
+            "Chrome._crx_cinhimbnkkaeohfgghhklpknlkffjgod",
+            "Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic",
+        ] {
             assert!(!is_browser(id), "{id}");
         }
         // A web app Chrome installed on a Mac (YouTube Music) is no browser tab.
-        for id in ["com.spotify.client", "com.apple.Music", "com.google.Chrome.app.cinhimbnkkaeohfgghhklpknlkffjgod"] {
+        for id in [
+            "com.spotify.client",
+            "com.apple.Music",
+            "com.google.Chrome.app.cinhimbnkkaeohfgghhklpknlkffjgod",
+        ] {
             assert!(!is_browser(id), "{id}");
         }
     }
@@ -211,26 +265,60 @@ mod tests {
     #[test]
     fn names_the_site_from_the_window_title() {
         let t = "The Lanterns - Paper Boats (Official Video)";
-        assert_eq!(site_from_window_title(&format!("(2) {t} - YouTube - Google Chrome"), t), Some("YouTube"));
         assert_eq!(
-            site_from_window_title(&format!("{t} - YouTube and 3 more pages - Personal - Microsoft\u{200b} Edge"), t),
+            site_from_window_title(&format!("(2) {t} - YouTube - Google Chrome"), t),
             Some("YouTube")
         );
-        assert_eq!(site_from_window_title("Paper Boats - YouTube Music - Google Chrome", "Paper Boats"), Some("YouTube Music"));
+        assert_eq!(
+            site_from_window_title(
+                &format!("{t} - YouTube and 3 more pages - Personal - Microsoft\u{200b} Edge"),
+                t
+            ),
+            Some("YouTube")
+        );
+        assert_eq!(
+            site_from_window_title("Paper Boats - YouTube Music - Google Chrome", "Paper Boats"),
+            Some("YouTube Music")
+        );
         // Another tab or site in front, or no title to compare.
-        assert_eq!(site_from_window_title("Other Video - YouTube - Google Chrome", t), None);
-        assert_eq!(site_from_window_title(&format!("{t} - Vimeo - Google Chrome"), t), None);
-        assert_eq!(site_from_window_title("Something - YouTube - Google Chrome", " "), None);
+        assert_eq!(
+            site_from_window_title("Other Video - YouTube - Google Chrome", t),
+            None
+        );
+        assert_eq!(
+            site_from_window_title(&format!("{t} - Vimeo - Google Chrome"), t),
+            None
+        );
+        assert_eq!(
+            site_from_window_title("Something - YouTube - Google Chrome", " "),
+            None
+        );
     }
 
     #[test]
     fn splits_apple_music_artist() {
-        assert_eq!(fix(APPLE, "The Lanterns \u{2014} Harbor", ""), pair("The Lanterns", "Harbor"));
-        assert_eq!(fix("AppleMusic.exe", "The Lanterns \u{2014} Harbor", ""), pair("The Lanterns", "Harbor"));
+        assert_eq!(
+            fix(APPLE, "The Lanterns \u{2014} Harbor", ""),
+            pair("The Lanterns", "Harbor")
+        );
+        assert_eq!(
+            fix("AppleMusic.exe", "The Lanterns \u{2014} Harbor", ""),
+            pair("The Lanterns", "Harbor")
+        );
         // Radio: "Artist — Album — Station".
-        assert_eq!(fix(APPLE, "The Lanterns \u{2014} Harbor - EP \u{2014} Night Radio", ""), pair("The Lanterns", "Harbor - EP"));
+        assert_eq!(
+            fix(
+                APPLE,
+                "The Lanterns \u{2014} Harbor - EP \u{2014} Night Radio",
+                ""
+            ),
+            pair("The Lanterns", "Harbor - EP")
+        );
         // An album the player reported itself is kept.
-        assert_eq!(fix(APPLE, "The Lanterns \u{2014} Harbor", "Harbor (Deluxe)"), pair("The Lanterns", "Harbor (Deluxe)"));
+        assert_eq!(
+            fix(APPLE, "The Lanterns \u{2014} Harbor", "Harbor (Deluxe)"),
+            pair("The Lanterns", "Harbor (Deluxe)")
+        );
     }
 
     #[test]
@@ -241,8 +329,14 @@ mod tests {
         assert_eq!(fix(APPLE, "Up - Down", ""), pair("Up - Down", ""));
         assert_eq!(fix(APPLE, "Up\u{2014}Down", ""), pair("Up\u{2014}Down", ""));
         // Nothing before the dash: keep the raw value rather than an empty artist.
-        assert_eq!(fix(APPLE, " \u{2014} Harbor", ""), pair(" \u{2014} Harbor", ""));
+        assert_eq!(
+            fix(APPLE, " \u{2014} Harbor", ""),
+            pair(" \u{2014} Harbor", "")
+        );
         // Other players can have an em dash in a real artist name.
-        assert_eq!(fix("Spotify.exe", "The Lanterns \u{2014} Harbor", ""), pair("The Lanterns \u{2014} Harbor", ""));
+        assert_eq!(
+            fix("Spotify.exe", "The Lanterns \u{2014} Harbor", ""),
+            pair("The Lanterns \u{2014} Harbor", "")
+        );
     }
 }

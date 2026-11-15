@@ -45,7 +45,13 @@ pub struct Thickness {
 pub fn thickness(height: f32) -> Thickness {
     let t = ((height - THIN_H) / (THICK_H - THIN_H)).clamp(0.0, 1.0);
     let bevel = lerp(9.0, 24.0, t);
-    Thickness { t, bevel, mag: RIM_FOLD_GUARD * bevel / RIM_POWER, shadow_reach: lerp(5.0, 7.0, t), shadow_drop: lerp(1.5, 3.0, t) }
+    Thickness {
+        t,
+        bevel,
+        mag: RIM_FOLD_GUARD * bevel / RIM_POWER,
+        shadow_reach: lerp(5.0, 7.0, t),
+        shadow_drop: lerp(1.5, 3.0, t),
+    }
 }
 
 /// How far the lens moves a point `d` inside the edge towards the middle.
@@ -73,12 +79,19 @@ pub const FLIP_HOLD: f64 = 0.25;
 
 impl Flip {
     pub fn new(light: bool) -> Self {
-        Self { light, pending_since: None }
+        Self {
+            light,
+            pending_since: None,
+        }
     }
 
     /// Feed the backdrop's mean luminance at `now`; true when it flipped.
     pub fn update(&mut self, lum: f32, now: f64) -> bool {
-        let wants = if self.light { lum >= FLIP_TO_DARK } else { lum > FLIP_TO_LIGHT };
+        let wants = if self.light {
+            lum >= FLIP_TO_DARK
+        } else {
+            lum > FLIP_TO_LIGHT
+        };
         if wants == self.light {
             self.pending_since = None;
             return false;
@@ -129,14 +142,25 @@ pub fn contrast(a: [f32; 3], b: [f32; 3]) -> f32 {
 }
 
 fn mix3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
-    [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)]
+    [
+        lerp(a[0], b[0], t),
+        lerp(a[1], b[1], t),
+        lerp(a[2], b[2], t),
+    ]
 }
 
 /// The least tint, between `min` and `max`, of `toward` mixed into the glass's
 /// `material` colour that gives `ink` at least `target` contrast on it: as much
 /// of what's behind shows through as legibility allows. `max` when even that
 /// isn't enough.
-pub fn tint_for_contrast(material: [f32; 3], ink: [f32; 3], toward: [f32; 3], min: f32, max: f32, target: f32) -> f32 {
+pub fn tint_for_contrast(
+    material: [f32; 3],
+    ink: [f32; 3],
+    toward: [f32; 3],
+    min: f32,
+    max: f32,
+    target: f32,
+) -> f32 {
     let ok = |t: f32| contrast(mix3(material, toward, t), ink) >= target;
     if ok(min) {
         return min;
@@ -174,7 +198,12 @@ pub const TEXT_CONTRAST: f32 = 4.8;
 
 /// Sample a BGRA picture (`stride` bytes per row) inside `rect` (pixels,
 /// left/top inclusive, right/bottom exclusive), every `step` pixels.
-pub fn sample_backdrop(px: &[u8], stride: usize, rect: (i32, i32, i32, i32), step: usize) -> Option<Backdrop> {
+pub fn sample_backdrop(
+    px: &[u8],
+    stride: usize,
+    rect: (i32, i32, i32, i32),
+    step: usize,
+) -> Option<Backdrop> {
     if stride < 4 {
         return None;
     }
@@ -188,7 +217,13 @@ pub fn sample_backdrop(px: &[u8], stride: usize, rect: (i32, i32, i32, i32), ste
     let step = step.max(1);
     let at = |x: i32, y: i32| -> Option<[f32; 3]> {
         let o = y as usize * stride + x as usize * 4;
-        px.get(o..o + 3).map(|p| [p[2] as f32 / 255.0, p[1] as f32 / 255.0, p[0] as f32 / 255.0])
+        px.get(o..o + 3).map(|p| {
+            [
+                p[2] as f32 / 255.0,
+                p[1] as f32 / 255.0,
+                p[0] as f32 / 255.0,
+            ]
+        })
     };
     let luma = |c: [f32; 3]| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
     let (mut sum, mut n, mut steps, mut ns) = ([0.0f32; 3], 0u32, 0.0f32, 0u32);
@@ -223,14 +258,20 @@ pub fn sample_backdrop(px: &[u8], stride: usize, rect: (i32, i32, i32, i32), ste
     let mean = sum.map(|v| v / n as f32);
     let median = tally.map(|t| {
         let (half, mut seen) = (n.div_ceil(2), 0u32);
-        t.iter().position(|&k| {
-            seen += k;
-            seen >= half
-        })
-        .unwrap_or(0) as f32
+        t.iter()
+            .position(|&k| {
+                seen += k;
+                seen >= half
+            })
+            .unwrap_or(0) as f32
             / 255.0
     });
-    Some(Backdrop { mean, lum: luma(mean), busy: if ns > 0 { steps / ns as f32 } else { 0.0 }, median })
+    Some(Backdrop {
+        mean,
+        lum: luma(mean),
+        busy: if ns > 0 { steps / ns as f32 } else { 0.0 },
+        median,
+    })
 }
 
 /// The shadow is lighter over a plain backdrop and deeper over a busy one
@@ -251,7 +292,10 @@ mod tests {
             let mut d = 0.0f32;
             while d <= th.bevel + 2.0 {
                 let sample = d + rim_offset(d, th.bevel, th.mag);
-                assert!(sample > last, "height {h}: sample at depth {d} went back ({sample} <= {last})");
+                assert!(
+                    sample > last,
+                    "height {h}: sample at depth {d} went back ({sample} <= {last})"
+                );
                 last = sample;
                 d += 0.05;
             }
@@ -314,7 +358,11 @@ mod tests {
     fn tint_stops_where_text_becomes_readable() {
         let white = [1.0; 3];
         let black = [0.0; 3];
-        let ink_dark = [0x1D as f32 / 255.0, 0x1D as f32 / 255.0, 0x1F as f32 / 255.0];
+        let ink_dark = [
+            0x1D as f32 / 255.0,
+            0x1D as f32 / 255.0,
+            0x1F as f32 / 255.0,
+        ];
         // White text over a bright orange page needs a real tint toward black.
         let orange = [0.98, 0.70, 0.45];
         let t = tint_for_contrast(orange, white, black, 0.34, 0.9, 4.5);
@@ -323,12 +371,18 @@ mod tests {
         // ...and just that much: a little less isn't enough.
         assert!(contrast(mix3(orange, black, t - 0.02), white) < 4.5);
         // Over a dark page the minimum tint already reads.
-        assert_eq!(tint_for_contrast([0.10, 0.10, 0.12], white, black, 0.34, 0.9, 4.5), 0.34);
+        assert_eq!(
+            tint_for_contrast([0.10, 0.10, 0.12], white, black, 0.34, 0.9, 4.5),
+            0.34
+        );
         // Dark ink over a dark page: light glass whitens it enough.
         let t = tint_for_contrast([0.2, 0.2, 0.25], ink_dark, white, 0.42, 0.9, 4.5);
         assert!(contrast(mix3([0.2, 0.2, 0.25], white, t), ink_dark) >= 4.5);
         // An impossible target gives the maximum.
-        assert_eq!(tint_for_contrast([0.5; 3], [0.5; 3], black, 0.3, 0.6, 4.5), 0.6);
+        assert_eq!(
+            tint_for_contrast([0.5; 3], [0.5; 3], black, 0.3, 0.6, 4.5),
+            0.6
+        );
     }
 
     #[test]
@@ -339,7 +393,11 @@ mod tests {
         for y in 0..h {
             for x in 0..w {
                 let o = (y * w + x) * 4;
-                let c: [u8; 4] = if x < 4 { [0, 0, 255, 255] } else { [255, 255, 255, 255] };
+                let c: [u8; 4] = if x < 4 {
+                    [0, 0, 255, 255]
+                } else {
+                    [255, 255, 255, 255]
+                };
                 px[o..o + 4].copy_from_slice(&c);
             }
         }
@@ -364,16 +422,28 @@ mod tests {
         let dark = [0x20u8, 0x21, 0x24];
         let mut px = Vec::new();
         for i in 0..100 {
-            let c = if i % 7 == 0 || i % 13 == 0 { [255u8; 3] } else { dark };
+            let c = if i % 7 == 0 || i % 13 == 0 {
+                [255u8; 3]
+            } else {
+                dark
+            };
             px.extend_from_slice(&[c[2], c[1], c[0], 255]);
         }
         let b = sample_backdrop(&px, 40, (0, 0, 10, 10), 1).unwrap();
         let near = |a: f32, b: u8| (a - b as f32 / 255.0).abs() < 1e-6;
-        assert!(near(b.median[0], dark[0]) && near(b.median[1], dark[1]) && near(b.median[2], dark[2]), "{:?}", b.median);
+        assert!(
+            near(b.median[0], dark[0]) && near(b.median[1], dark[1]) && near(b.median[2], dark[2]),
+            "{:?}",
+            b.median
+        );
         assert!(b.mean[0] > b.median[0] + 0.1);
         // Light glass with dark ink, tinted for the mean, misses 4.5:1 where
         // most of the glass is; tinted for the median, it doesn't.
-        let ink = [0x1D as f32 / 255.0, 0x1D as f32 / 255.0, 0x1F as f32 / 255.0];
+        let ink = [
+            0x1D as f32 / 255.0,
+            0x1D as f32 / 255.0,
+            0x1F as f32 / 255.0,
+        ];
         let white = [0.985; 3];
         let t_mean = tint_for_contrast(b.mean, ink, white, 0.42, 0.88, 4.5);
         let t_median = tint_for_contrast(b.median, ink, white, 0.42, 0.88, TEXT_CONTRAST);

@@ -76,7 +76,13 @@ pub struct Pomodoro {
 
 impl Pomodoro {
     pub fn new(cfg: PomodoroConfig) -> Self {
-        Self { cfg, phase: Phase::Focus, run: RunState::Idle, cycle_done: 0, session_duration: 0.0 }
+        Self {
+            cfg,
+            phase: Phase::Focus,
+            run: RunState::Idle,
+            cycle_done: 0,
+            session_duration: 0.0,
+        }
     }
 
     pub fn phase_duration(&self, phase: Phase) -> f64 {
@@ -123,16 +129,22 @@ impl Pomodoro {
         self.run = match self.run {
             RunState::Idle => {
                 self.session_duration = self.phase_duration(self.phase);
-                RunState::Running { ends_at: now + self.session_duration }
+                RunState::Running {
+                    ends_at: now + self.session_duration,
+                }
             }
-            RunState::Paused { remaining } => RunState::Running { ends_at: now + remaining },
+            RunState::Paused { remaining } => RunState::Running {
+                ends_at: now + remaining,
+            },
             r @ RunState::Running { .. } => r,
         };
     }
 
     pub fn pause(&mut self, now: f64) {
         if let RunState::Running { ends_at } = self.run {
-            self.run = RunState::Paused { remaining: (ends_at - now).max(0.0) };
+            self.run = RunState::Paused {
+                remaining: (ends_at - now).max(0.0),
+            };
         }
     }
 
@@ -162,7 +174,10 @@ impl Pomodoro {
     pub fn set_phase(&mut self, phase: Phase) {
         self.phase = phase;
         self.run = RunState::Idle;
-        if phase != Phase::LongBreak && self.cfg.long_every > 0 && self.cycle_done >= self.cfg.long_every {
+        if phase != Phase::LongBreak
+            && self.cfg.long_every > 0
+            && self.cycle_done >= self.cfg.long_every
+        {
             self.cycle_done = 0;
         }
     }
@@ -190,12 +205,20 @@ impl Pomodoro {
             self.cycle_done = 0;
         }
         self.phase = next;
-        let auto = if next.is_break() { self.cfg.auto_start_breaks } else { self.cfg.auto_start_focus };
+        let auto = if next.is_break() {
+            self.cfg.auto_start_breaks
+        } else {
+            self.cfg.auto_start_focus
+        };
         self.run = RunState::Idle;
         if auto {
             self.start(now);
         }
-        PhaseEnded { ended, next, auto_started: auto }
+        PhaseEnded {
+            ended,
+            next,
+            auto_started: auto,
+        }
     }
 
     /// Jump to the next phase. Skipping focus does not count as a completed session.
@@ -231,7 +254,14 @@ mod tests {
     use super::*;
 
     fn pomo() -> Pomodoro {
-        Pomodoro::new(PomodoroConfig { focus_min: 25, short_break_min: 5, long_break_min: 15, long_every: 2, auto_start_breaks: true, auto_start_focus: false })
+        Pomodoro::new(PomodoroConfig {
+            focus_min: 25,
+            short_break_min: 5,
+            long_break_min: 15,
+            long_every: 2,
+            auto_start_breaks: true,
+            auto_start_focus: false,
+        })
     }
 
     #[test]
@@ -252,7 +282,10 @@ mod tests {
         let mut p = pomo();
         p.start(0.0);
         let e = p.tick(1500.0).unwrap();
-        assert_eq!((e.ended, e.next, e.auto_started), (Phase::Focus, Phase::ShortBreak, true));
+        assert_eq!(
+            (e.ended, e.next, e.auto_started),
+            (Phase::Focus, Phase::ShortBreak, true)
+        );
         let e = p.tick(1500.0 + 300.0).unwrap();
         assert_eq!(e.next, Phase::Focus);
         assert!(!e.auto_started);
@@ -297,7 +330,10 @@ mod tests {
         p.set_phase(Phase::LongBreak);
         assert_eq!(p.cycle_done, 2, "taking the due long break keeps the count");
         p.set_phase(Phase::Focus);
-        assert_eq!(p.cycle_done, 0, "skipping the due long break restarts the cycle");
+        assert_eq!(
+            p.cycle_done, 0,
+            "skipping the due long break restarts the cycle"
+        );
 
         p.cycle_done = 3;
         p.set_phase(Phase::ShortBreak);

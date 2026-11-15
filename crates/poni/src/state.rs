@@ -82,7 +82,13 @@ pub struct LyricsState {
 
 impl Default for LyricsState {
     fn default() -> Self {
-        Self { track_key: String::new(), request_generation: 0, request_duration_s: 0, status: LyricsStatus::Idle, lyrics: None }
+        Self {
+            track_key: String::new(),
+            request_generation: 0,
+            request_duration_s: 0,
+            status: LyricsStatus::Idle,
+            lyrics: None,
+        }
     }
 }
 
@@ -96,9 +102,16 @@ impl LyricsState {
             || poni_core::nowplaying::is_apple_music(&media.app_id)
             || poni_core::nowplaying::is_qq_music(&media.app_id)
             || poni_core::nowplaying::is_netease_music(&media.app_id);
-        let max_drift_s = if native_player { 0.0 } else { poni_core::lrclib::MAX_SYNC_DRIFT_S };
-        let duration_changed = duration_s > 0 && (self.request_duration_s == 0 || duration_s.abs_diff(self.request_duration_s) as f64 > max_drift_s);
-        duration_changed || (!was_playing && media.is_playing() && matches!(self.status, LyricsStatus::Error(_)))
+        let max_drift_s = if native_player {
+            0.0
+        } else {
+            poni_core::lrclib::MAX_SYNC_DRIFT_S
+        };
+        let duration_changed = duration_s > 0
+            && (self.request_duration_s == 0
+                || duration_s.abs_diff(self.request_duration_s) as f64 > max_drift_s);
+        duration_changed
+            || (!was_playing && media.is_playing() && matches!(self.status, LyricsStatus::Error(_)))
     }
 }
 
@@ -123,10 +136,23 @@ pub struct PowerState {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum HudKind {
-    Volume { level: f32, muted: bool },
-    Charging { percent: u8, plugged: bool },
-    Bluetooth { name: String, connected: bool, battery: Option<u8>, audio: bool },
-    LowBattery { percent: u8 },
+    Volume {
+        level: f32,
+        muted: bool,
+    },
+    Charging {
+        percent: u8,
+        plugged: bool,
+    },
+    Bluetooth {
+        name: String,
+        connected: bool,
+        battery: Option<u8>,
+        audio: bool,
+    },
+    LowBattery {
+        percent: u8,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -521,19 +547,27 @@ impl AppState {
         for task in &mut store.tasks.tasks {
             if task.scheduled_day.is_none() {
                 let date = crate::clock::local_at(task.created_unix);
-                task.scheduled_day = Some(poni_core::datetime::days_from_civil(date.year, date.month, date.day));
+                task.scheduled_day = Some(poni_core::datetime::days_from_civil(
+                    date.year, date.month, date.day,
+                ));
                 task_dates_changed = true;
             }
             if task.done && task.completed_day.is_none() {
                 if let Some(unix) = task.done_unix {
                     let date = crate::clock::local_at(unix);
-                    task.completed_day = Some(poni_core::datetime::days_from_civil(date.year, date.month, date.day));
+                    task.completed_day = Some(poni_core::datetime::days_from_civil(
+                        date.year, date.month, date.day,
+                    ));
                     task_dates_changed = true;
                 }
             }
         }
         let pomodoro = Pomodoro::new(settings.pomodoro.clone());
-        let page = PageKind::from_key(if settings.remember_page && !store.last_page.is_empty() { &store.last_page } else { &settings.start_page });
+        let page = PageKind::from_key(if settings.remember_page && !store.last_page.is_empty() {
+            &store.last_page
+        } else {
+            &settings.start_page
+        });
         let mut st = Self {
             settings,
             store,
@@ -613,7 +647,12 @@ impl AppState {
     pub fn show_or_hold(&mut self, n: Notice, hidden: bool) {
         if !hidden {
             self.notice = Some(n);
-        } else if self.oyenza.held.as_ref().is_none_or(|(_, at)| self.now - at > poni_core::oyenza::HELD_MAX_S) {
+        } else if self
+            .oyenza
+            .held
+            .as_ref()
+            .is_none_or(|(_, at)| self.now - at > poni_core::oyenza::HELD_MAX_S)
+        {
             self.oyenza.held = Some((n, self.now));
         }
     }
@@ -627,7 +666,11 @@ impl AppState {
     }
 
     /// 记录每个文件的保存结果；失败一直保留到该文件保存成功或设置恢复原值。
-    pub fn saved(&mut self, file: crate::persistence::SaveFile, result: Result<(), crate::persistence::SaveError>) -> bool {
+    pub fn saved(
+        &mut self,
+        file: crate::persistence::SaveFile,
+        result: Result<(), crate::persistence::SaveError>,
+    ) -> bool {
         use crate::persistence::SaveFile;
         let before = self.save_errors.clone();
         let error = result.err();
@@ -637,12 +680,23 @@ impl AppState {
         }
         if !self.save_errors.any() {
             self.save_errors.quit_blocked = false;
-            if self.notice.as_ref().is_some_and(|notice| notice.action == Some(NoticeAction::OpenSaveErrors)) {
+            if self
+                .notice
+                .as_ref()
+                .is_some_and(|notice| notice.action == Some(NoticeAction::OpenSaveErrors))
+            {
                 self.notice = None;
             }
         }
         if !before.any() && self.save_errors.any() && self.notice.is_none() {
-            self.notify(Icon::Gear, palette::ORANGE, "更改尚未保存", "点击查看原因并重试；当前内存数据已保留", 8.0, Some(NoticeAction::OpenSaveErrors));
+            self.notify(
+                Icon::Gear,
+                palette::ORANGE,
+                "更改尚未保存",
+                "点击查看原因并重试；当前内存数据已保留",
+                8.0,
+                Some(NoticeAction::OpenSaveErrors),
+            );
         }
         before != self.save_errors
     }
@@ -681,8 +735,26 @@ impl AppState {
     }
 
     /// Show a notice pill for `secs` seconds.
-    pub fn notify(&mut self, icon: Icon, color: Color, title: impl Into<String>, subtitle: impl Into<String>, secs: f64, action: Option<NoticeAction>) {
-        self.notice = Some(Notice { icon, color, title: title.into(), title_dim: String::new(), subtitle: subtitle.into(), until: self.now + secs, action, inline: None, reveal: None });
+    pub fn notify(
+        &mut self,
+        icon: Icon,
+        color: Color,
+        title: impl Into<String>,
+        subtitle: impl Into<String>,
+        secs: f64,
+        action: Option<NoticeAction>,
+    ) {
+        self.notice = Some(Notice {
+            icon,
+            color,
+            title: title.into(),
+            title_dim: String::new(),
+            subtitle: subtitle.into(),
+            until: self.now + secs,
+            action,
+            inline: None,
+            reveal: None,
+        });
     }
 
     /// The Update sheet: Settings, with the sheet in place of its rows (the
@@ -703,7 +775,10 @@ impl AppState {
     }
 
     pub fn show_hud(&mut self, kind: HudKind, secs: f64) {
-        self.hud = Some(Hud { kind, until: self.now + secs });
+        self.hud = Some(Hud {
+            kind,
+            until: self.now + secs,
+        });
     }
 
     pub fn day_key(&self) -> String {
@@ -720,7 +795,10 @@ impl AppState {
         if self.settings.theme == poni_core::settings::Theme::Oyen {
             return self.accent;
         }
-        self.media.as_ref().and_then(|m| m.art_color).unwrap_or(self.accent)
+        self.media
+            .as_ref()
+            .and_then(|m| m.art_color)
+            .unwrap_or(self.accent)
     }
 }
 
@@ -743,7 +821,12 @@ mod tests {
             inline: None,
             reveal: None,
         };
-        let held = |st: &AppState| st.oyenza.held.as_ref().map(|(n, at)| (n.title.clone(), *at));
+        let held = |st: &AppState| {
+            st.oyenza
+                .held
+                .as_ref()
+                .map(|(n, at)| (n.title.clone(), *at))
+        };
         // Hidden: it waits for the island instead of expiring unseen.
         st.show_or_hold(notice("goal"), true);
         assert!(st.notice.is_none());

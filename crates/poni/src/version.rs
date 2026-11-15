@@ -25,8 +25,17 @@ mod tests {
 
     #[test]
     fn a_release_opens_its_notes_and_a_test_build_its_commit() {
-        assert_eq!(url("0.2.3", "release", "c7d77c8"), "https://github.com/lucacadalora/oyenza-studio/releases/tag/v0.2.3");
-        assert_eq!(url("0.2.3", "test", "c7d77c8"), "https://github.com/lucacadalora/oyenza-studio/commit/c7d77c8");
-        assert_eq!(url("0.2.3", "local", ""), "https://github.com/lucacadalora/oyenza-studio/releases");
+        assert_eq!(
+            url("0.2.3", "release", "c7d77c8"),
+            "https://github.com/lucacadalora/oyenza-studio/releases/tag/v0.2.3"
+        );
+        assert_eq!(
+            url("0.2.3", "test", "c7d77c8"),
+            "https://github.com/lucacadalora/oyenza-studio/commit/c7d77c8"
+        );
+        assert_eq!(
+            url("0.2.3", "local", ""),
+            "https://github.com/lucacadalora/oyenza-studio/releases"
+        );
     }
 }

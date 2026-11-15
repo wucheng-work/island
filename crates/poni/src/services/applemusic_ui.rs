@@ -21,14 +21,19 @@ use std::time::{Duration, Instant};
 use windows::core::{Interface, PWSTR, VARIANT};
 use windows::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM, TRUE};
 use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
-use windows::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION};
+use windows::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 use windows::Win32::UI::Accessibility::{
-    CUIAutomation, CUIAutomation8, IUIAutomation, IUIAutomation2, IUIAutomationCondition, IUIAutomationElement,
-    IUIAutomationInvokePattern, IUIAutomationLegacyIAccessiblePattern, IUIAutomationRangeValuePattern, TreeScope_Descendants,
-    UIA_AutomationIdPropertyId, UIA_ControlTypePropertyId, UIA_InvokePatternId, UIA_LegacyIAccessiblePatternId,
+    CUIAutomation, CUIAutomation8, IUIAutomation, IUIAutomation2, IUIAutomationCondition,
+    IUIAutomationElement, IUIAutomationInvokePattern, IUIAutomationLegacyIAccessiblePattern,
+    IUIAutomationRangeValuePattern, TreeScope_Descendants, UIA_AutomationIdPropertyId,
+    UIA_ControlTypePropertyId, UIA_InvokePatternId, UIA_LegacyIAccessiblePatternId,
     UIA_RangeValuePatternId, UIA_SliderControlTypeId, UIA_E_TIMEOUT, UIA_PATTERN_ID,
 };
-use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetClassNameW, GetWindowThreadProcessId, IsWindowVisible};
+use windows::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GetClassNameW, GetWindowThreadProcessId, IsWindowVisible,
+};
 
 const EXE: &str = "applemusic.exe";
 /// The class of a WinUI 3 window (Apple Music's main window and Mini Player).
@@ -111,12 +116,17 @@ impl AppleMusicUi {
             if !el.CurrentIsEnabled()?.as_bool() {
                 return Err(UiErr::Unavailable(Control::Slider.name()));
             }
-            let range: IUIAutomationRangeValuePattern = pattern(el, UIA_RangeValuePatternId, Control::Slider)?;
+            let range: IUIAutomationRangeValuePattern =
+                pattern(el, UIA_RangeValuePatternId, Control::Slider)?;
             if range.CurrentIsReadOnly()?.as_bool() {
                 return Err(UiErr::Unavailable(Control::Slider.name()));
             }
-            let value = nowplaying::slider_value(fraction, range.CurrentMinimum()?, range.CurrentMaximum()?)
-                .ok_or(UiErr::Unavailable(Control::Slider.name()))?;
+            let value = nowplaying::slider_value(
+                fraction,
+                range.CurrentMinimum()?,
+                range.CurrentMaximum()?,
+            )
+            .ok_or(UiErr::Unavailable(Control::Slider.name()))?;
             range.SetValue(value)?;
             Ok(())
         })
@@ -131,7 +141,12 @@ impl AppleMusicUi {
             match pattern::<IUIAutomationInvokePattern>(el, UIA_InvokePatternId, Control::Back) {
                 Ok(button) => button.Invoke()?,
                 // Not exposed as a plain button: its default action is the press.
-                Err(_) => pattern::<IUIAutomationLegacyIAccessiblePattern>(el, UIA_LegacyIAccessiblePatternId, Control::Back)?.DoDefaultAction()?,
+                Err(_) => pattern::<IUIAutomationLegacyIAccessiblePattern>(
+                    el,
+                    UIA_LegacyIAccessiblePatternId,
+                    Control::Back,
+                )?
+                .DoDefaultAction()?,
             }
             Ok(())
         })
@@ -141,7 +156,11 @@ impl AppleMusicUi {
     /// going, so the seek at its end needn't wait for the search. A slider
     /// that still answers is kept; after a miss, no new search for a while.
     pub fn prepare_seek(&mut self) {
-        if self.slider.as_ref().is_some_and(|el| unsafe { el.CurrentProcessId() }.is_ok()) {
+        if self
+            .slider
+            .as_ref()
+            .is_some_and(|el| unsafe { el.CurrentProcessId() }.is_ok())
+        {
             return;
         }
         if self.missed_at.is_some_and(|t| t.elapsed() < MISS_PAUSE) {
@@ -153,7 +172,10 @@ impl AppleMusicUi {
             Ok(el) => {
                 self.slider = Some(el);
                 self.missed_at = None;
-                crate::pinfo!("media: found Apple Music's own progress slider in {} ms", t.elapsed().as_millis());
+                crate::pinfo!(
+                    "media: found Apple Music's own progress slider in {} ms",
+                    t.elapsed().as_millis()
+                );
             }
             Err(e) => {
                 self.missed_at = Some(Instant::now());
@@ -165,12 +187,18 @@ impl AppleMusicUi {
     /// Run `act` on the control: the remembered one first; looked up afresh
     /// when that went stale or is greyed out (another Apple Music window may
     /// have a live one).
-    fn with(&mut self, c: Control, act: impl Fn(&IUIAutomationElement) -> Result<(), UiErr>) -> Result<(), UiErr> {
+    fn with(
+        &mut self,
+        c: Control,
+        act: impl Fn(&IUIAutomationElement) -> Result<(), UiErr>,
+    ) -> Result<(), UiErr> {
         if let Some(el) = self.slot(c).clone() {
             match act(&el) {
                 Ok(()) => return Ok(()),
                 // Apple Music isn't answering: looking again would only wait again.
-                Err(UiErr::Os(e)) if e.code().0 as u32 == UIA_E_TIMEOUT => return Err(UiErr::Os(e)),
+                Err(UiErr::Os(e)) if e.code().0 as u32 == UIA_E_TIMEOUT => {
+                    return Err(UiErr::Os(e))
+                }
                 Err(_) => *self.slot(c) = None,
             }
         }
@@ -190,8 +218,10 @@ impl AppleMusicUi {
         if let Some(a) = &self.uia {
             return Ok(a.clone());
         }
-        let a: IUIAutomation = unsafe { CoCreateInstance(&CUIAutomation8, None, CLSCTX_INPROC_SERVER) }
-            .or_else(|_| unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) })?;
+        let a: IUIAutomation =
+            unsafe { CoCreateInstance(&CUIAutomation8, None, CLSCTX_INPROC_SERVER) }.or_else(
+                |_| unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) },
+            )?;
         if let Ok(a2) = a.cast::<IUIAutomation2>() {
             unsafe {
                 let _ = a2.SetConnectionTimeout(CONNECT_MS);
@@ -209,7 +239,10 @@ impl AppleMusicUi {
             return Err(UiErr::NoWindow);
         }
         let uia = self.automation()?;
-        let roots: Vec<IUIAutomationElement> = windows.iter().filter_map(|&w| unsafe { uia.ElementFromHandle(w) }.ok()).collect();
+        let roots: Vec<IUIAutomationElement> = windows
+            .iter()
+            .filter_map(|&w| unsafe { uia.ElementFromHandle(w) }.ok())
+            .collect();
         let mut greyed = None;
         for id in c.ids() {
             let cond = condition(&uia, c, id)?;
@@ -233,7 +266,11 @@ impl AppleMusicUi {
 
 /// The control's `id` pattern; a control without it is unavailable (windows-rs
 /// reports the missing pattern as an error with code S_OK).
-fn pattern<T: Interface>(el: &IUIAutomationElement, id: UIA_PATTERN_ID, c: Control) -> Result<T, UiErr> {
+fn pattern<T: Interface>(
+    el: &IUIAutomationElement,
+    id: UIA_PATTERN_ID,
+    c: Control,
+) -> Result<T, UiErr> {
     match unsafe { el.GetCurrentPatternAs::<T>(id) } {
         Ok(p) => Ok(p),
         Err(e) if e.code().is_ok() => Err(UiErr::Unavailable(c.name())),
@@ -243,12 +280,19 @@ fn pattern<T: Interface>(el: &IUIAutomationElement, id: UIA_PATTERN_ID, c: Contr
 
 /// Automation id `id`, and for the slider also the slider control type (the
 /// Mini Player's "Scrubber" is a common name).
-fn condition(uia: &IUIAutomation, c: Control, id: &str) -> windows::core::Result<IUIAutomationCondition> {
+fn condition(
+    uia: &IUIAutomation,
+    c: Control,
+    id: &str,
+) -> windows::core::Result<IUIAutomationCondition> {
     unsafe {
         let by_id = uia.CreatePropertyCondition(UIA_AutomationIdPropertyId, &VARIANT::from(id))?;
         match c {
             Control::Slider => {
-                let slider = uia.CreatePropertyCondition(UIA_ControlTypePropertyId, &VARIANT::from(UIA_SliderControlTypeId.0))?;
+                let slider = uia.CreatePropertyCondition(
+                    UIA_ControlTypePropertyId,
+                    &VARIANT::from(UIA_SliderControlTypeId.0),
+                )?;
                 uia.CreateAndCondition(&by_id, &slider)
             }
             Control::Back => Ok(by_id),
@@ -281,11 +325,18 @@ fn apple_music_windows() -> Vec<HWND> {
             }
         };
         if apple {
-            found.out.push((class_name(hwnd) == WINDOW_CLASS, IsWindowVisible(hwnd).as_bool(), hwnd));
+            found.out.push((
+                class_name(hwnd) == WINDOW_CLASS,
+                IsWindowVisible(hwnd).as_bool(),
+                hwnd,
+            ));
         }
         TRUE
     }
-    let mut found = Found { pids: Vec::new(), out: Vec::new() };
+    let mut found = Found {
+        pids: Vec::new(),
+        out: Vec::new(),
+    };
     let _ = unsafe { EnumWindows(Some(visit), LPARAM(&mut found as *mut Found as isize)) };
     if found.out.iter().any(|&(winui, _, _)| winui) {
         found.out.retain(|&(winui, _, _)| winui);
@@ -301,14 +352,22 @@ fn class_name(hwnd: HWND) -> String {
 }
 
 fn process_is_apple_music(pid: u32) -> bool {
-    let Ok(h) = (unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }) else { return false };
+    let Ok(h) = (unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }) else {
+        return false;
+    };
     let mut buf = [0u16; 1024];
     let mut len = buf.len() as u32;
-    let ok = unsafe { QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len) }.is_ok();
+    let ok = unsafe {
+        QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len)
+    }
+    .is_ok();
     unsafe {
         let _ = CloseHandle(h);
     }
-    ok && String::from_utf16_lossy(&buf[..(len as usize).min(buf.len())]).rsplit(['\\', '/']).next().is_some_and(|f| f.eq_ignore_ascii_case(EXE))
+    ok && String::from_utf16_lossy(&buf[..(len as usize).min(buf.len())])
+        .rsplit(['\\', '/'])
+        .next()
+        .is_some_and(|f| f.eq_ignore_ascii_case(EXE))
 }
 
 #[cfg(test)]
@@ -333,7 +392,8 @@ mod tests {
     #[test]
     #[ignore = "needs the stand-in Apple Music window (tools/fake-apple-music.cs, run by CI)"]
     fn presses_apple_musics_own_controls() {
-        let log = std::env::var("PONI_FAKE_AM_LOG").expect("PONI_FAKE_AM_LOG names the stand-in's log");
+        let log =
+            std::env::var("PONI_FAKE_AM_LOG").expect("PONI_FAKE_AM_LOG names the stand-in's log");
         wait_for(&log, "ready");
         let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
         let mut ui = AppleMusicUi::default();
@@ -341,8 +401,14 @@ mod tests {
         // A drag on the island's bar starts: the slider is looked up meanwhile.
         let t = Instant::now();
         ui.prepare_seek();
-        eprintln!("look-ahead (finds the slider): {} ms", t.elapsed().as_millis());
-        eprintln!("private memory added by UI Automation: {:.1} MB", (private_bytes() - before) as f64 / 1048576.0);
+        eprintln!(
+            "look-ahead (finds the slider): {} ms",
+            t.elapsed().as_millis()
+        );
+        eprintln!(
+            "private memory added by UI Automation: {:.1} MB",
+            (private_bytes() - before) as f64 / 1048576.0
+        );
         assert!(ui.slider.is_some(), "the look-ahead found no slider");
         let t = Instant::now();
         ui.seek(0.5).expect("seek after the look-ahead");
@@ -352,7 +418,10 @@ mod tests {
         wait_for(&log, "slider 60");
         let t = Instant::now();
         ui.skip_back().expect("back button");
-        eprintln!("first back press (finds the button): {} ms", t.elapsed().as_millis());
+        eprintln!(
+            "first back press (finds the button): {} ms",
+            t.elapsed().as_millis()
+        );
         wait_for(&log, "back");
         // The slider counts seconds; the far end is the song's end.
         ui.seek(1.0).expect("seek to the end");
@@ -364,10 +433,22 @@ mod tests {
     }
 
     fn private_bytes() -> i64 {
-        use windows::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX};
+        use windows::Win32::System::ProcessStatus::{
+            GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
+        };
         use windows::Win32::System::Threading::GetCurrentProcess;
-        let mut c = PROCESS_MEMORY_COUNTERS_EX { cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32, ..Default::default() };
-        let ok = unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &mut c as *mut _ as *mut PROCESS_MEMORY_COUNTERS, c.cb) }.is_ok();
+        let mut c = PROCESS_MEMORY_COUNTERS_EX {
+            cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
+            ..Default::default()
+        };
+        let ok = unsafe {
+            GetProcessMemoryInfo(
+                GetCurrentProcess(),
+                &mut c as *mut _ as *mut PROCESS_MEMORY_COUNTERS,
+                c.cb,
+            )
+        }
+        .is_ok();
         if ok {
             c.PrivateUsage as i64
         } else {
@@ -382,7 +463,10 @@ mod tests {
             if text.lines().any(|l| l.trim() == line) {
                 return;
             }
-            assert!(Instant::now() < until, "{line:?} never reached the stand-in's log:\n{text}");
+            assert!(
+                Instant::now() < until,
+                "{line:?} never reached the stand-in's log:\n{text}"
+            );
             std::thread::sleep(Duration::from_millis(50));
         }
     }

@@ -15,8 +15,12 @@ pub fn choose(owner: HWND, module: SoundModule, current: &str) -> Result<Option<
     unsafe {
         let menu = CreatePopupMenu().map_err(|error| format!("无法打开提示音菜单：{error}"))?;
         let result = (|| -> windows::core::Result<Option<String>> {
-            let default_name = sound_catalog::find(module.default_id()).map_or("默认提示音", |sound| sound.name);
-            let default_label: Vec<u16> = format!("恢复默认：{default_name}").encode_utf16().chain(Some(0)).collect();
+            let default_name = sound_catalog::find(module.default_id())
+                .map_or("默认提示音", |sound| sound.name);
+            let default_label: Vec<u16> = format!("恢复默认：{default_name}")
+                .encode_utf16()
+                .chain(Some(0))
+                .collect();
             let default_id = SOUNDS.len() + 1;
             AppendMenuW(menu, MF_STRING, default_id, PCWSTR(default_label.as_ptr()))?;
             AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null())?;
@@ -30,7 +34,11 @@ pub fn choose(owner: HWND, module: SoundModule, current: &str) -> Result<Option<
             for category in categories {
                 let submenu = CreatePopupMenu()?;
                 let built = (|| -> windows::core::Result<()> {
-                    for (index, sound) in SOUNDS.iter().enumerate().filter(|(_, sound)| sound.category == category) {
+                    for (index, sound) in SOUNDS
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, sound)| sound.category == category)
+                    {
                         let label: Vec<u16> = sound.name.encode_utf16().chain(Some(0)).collect();
                         let mut flags = MF_STRING;
                         if sound.id == current {
@@ -52,15 +60,31 @@ pub fn choose(owner: HWND, module: SoundModule, current: &str) -> Result<Option<
             GetCursorPos(&mut position)?;
             let previous = GetForegroundWindow();
             let _ = SetForegroundWindow(owner);
-            let selected = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY, position.x, position.y, 0, owner, None).0 as usize;
+            let selected = TrackPopupMenu(
+                menu,
+                TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY,
+                position.x,
+                position.y,
+                0,
+                owner,
+                None,
+            )
+            .0 as usize;
             let _ = PostMessageW(owner, WM_NULL, WPARAM(0), LPARAM(0));
-            if !previous.is_invalid() && previous != owner && IsWindow(previous).as_bool() && GetForegroundWindow() == owner {
+            if !previous.is_invalid()
+                && previous != owner
+                && IsWindow(previous).as_bool()
+                && GetForegroundWindow() == owner
+            {
                 let _ = SetForegroundWindow(previous);
             }
             if selected == default_id {
                 return Ok(Some(module.default_id().into()));
             }
-            Ok(selected.checked_sub(1).and_then(|index| SOUNDS.get(index)).map(|sound| sound.id.into()))
+            Ok(selected
+                .checked_sub(1)
+                .and_then(|index| SOUNDS.get(index))
+                .map(|sound| sound.id.into()))
         })();
         // 包括取消、选择和构建失败，父菜单及已挂载子菜单都在这里释放。
         let _ = DestroyMenu(menu);

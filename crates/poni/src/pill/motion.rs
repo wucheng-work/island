@@ -73,7 +73,9 @@ pub fn pivot(body: Rect, target: Geom) -> Point {
 /// follows the width), so the picture shrinks inside the outline instead of
 /// being cut by its rounded top corners. Never below `min`, never grown.
 pub fn ghost_scale(now: Geom, was: Geom, min: f32) -> f32 {
-    (now.w / was.w.max(1.0)).min(now.h / was.h.max(1.0)).clamp(min, 1.0)
+    (now.w / was.w.max(1.0))
+        .min(now.h / was.h.max(1.0))
+        .clamp(min, 1.0)
 }
 
 #[cfg(test)]
@@ -86,8 +88,20 @@ mod tests {
 
     #[test]
     fn tunings_are_what_the_comments_say() {
-        for (t, z) in [(GROW_W, 0.73), (GROW_H, 0.73), (SHRINK_W, 0.90), (SHRINK_H, 0.91), (RADIUS_GROW, 1.0), (RADIUS_SHRINK, 1.0), (TOP, 1.0)] {
-            assert!((zeta(t) - z).abs() < 0.006, "{t:?}: zeta {} (comment says {z})", zeta(t));
+        for (t, z) in [
+            (GROW_W, 0.73),
+            (GROW_H, 0.73),
+            (SHRINK_W, 0.90),
+            (SHRINK_H, 0.91),
+            (RADIUS_GROW, 1.0),
+            (RADIUS_SHRINK, 1.0),
+            (TOP, 1.0),
+        ] {
+            assert!(
+                (zeta(t) - z).abs() < 0.006,
+                "{t:?}: zeta {} (comment says {z})",
+                zeta(t)
+            );
         }
         // The width leads the height growing, the height leads shrinking.
         assert!(GROW_W.0 > GROW_H.0 && SHRINK_H.0 > SHRINK_W.0);
@@ -113,7 +127,10 @@ mod tests {
         let closing = Rect::new(40.0, 8.0, 420.0, 140.0);
         assert_eq!(pivot(closing, pill), Point::new(250.0, 24.0));
         // At rest, the body's middle.
-        assert_eq!(pivot(Rect::new(190.0, 8.0, 120.0, 32.0), pill), Point::new(250.0, 24.0));
+        assert_eq!(
+            pivot(Rect::new(190.0, 8.0, 120.0, 32.0), pill),
+            Point::new(250.0, 24.0)
+        );
     }
 
     #[test]

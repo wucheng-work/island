@@ -64,15 +64,45 @@ type Listener = extern "C" fn(u32, u32, *const Addr, *mut c_void) -> i32;
 
 #[link(name = "CoreAudio", kind = "framework")]
 extern "C" {
-    fn AudioObjectGetPropertyData(id: u32, addr: *const Addr, qual_size: u32, qual: *const c_void, size: *mut u32, data: *mut c_void) -> i32;
-    fn AudioObjectGetPropertyDataSize(id: u32, addr: *const Addr, qual_size: u32, qual: *const c_void, size: *mut u32) -> i32;
+    fn AudioObjectGetPropertyData(
+        id: u32,
+        addr: *const Addr,
+        qual_size: u32,
+        qual: *const c_void,
+        size: *mut u32,
+        data: *mut c_void,
+    ) -> i32;
+    fn AudioObjectGetPropertyDataSize(
+        id: u32,
+        addr: *const Addr,
+        qual_size: u32,
+        qual: *const c_void,
+        size: *mut u32,
+    ) -> i32;
     fn AudioHardwareCreateAggregateDevice(desc: *const c_void, out: *mut u32) -> i32;
     fn AudioHardwareDestroyAggregateDevice(id: u32) -> i32;
     fn AudioObjectHasProperty(id: u32, addr: *const Addr) -> u8;
     fn AudioObjectIsPropertySettable(id: u32, addr: *const Addr, settable: *mut u8) -> i32;
-    fn AudioObjectSetPropertyData(id: u32, addr: *const Addr, qual_size: u32, qual: *const c_void, size: u32, data: *const c_void) -> i32;
-    fn AudioObjectAddPropertyListener(id: u32, addr: *const Addr, listener: Listener, client: *mut c_void) -> i32;
-    fn AudioObjectRemovePropertyListener(id: u32, addr: *const Addr, listener: Listener, client: *mut c_void) -> i32;
+    fn AudioObjectSetPropertyData(
+        id: u32,
+        addr: *const Addr,
+        qual_size: u32,
+        qual: *const c_void,
+        size: u32,
+        data: *const c_void,
+    ) -> i32;
+    fn AudioObjectAddPropertyListener(
+        id: u32,
+        addr: *const Addr,
+        listener: Listener,
+        client: *mut c_void,
+    ) -> i32;
+    fn AudioObjectRemovePropertyListener(
+        id: u32,
+        addr: *const Addr,
+        listener: Listener,
+        client: *mut c_void,
+    ) -> i32;
 }
 
 struct Watch {
@@ -93,7 +123,16 @@ static LIST_CHANGES: AtomicU32 = AtomicU32::new(0);
 fn get<T: Copy>(id: u32, addr: Addr, default: T) -> Option<T> {
     let mut v = default;
     let mut size = std::mem::size_of::<T>() as u32;
-    let r = unsafe { AudioObjectGetPropertyData(id, &addr, 0, std::ptr::null(), &mut size, &mut v as *mut T as *mut c_void) };
+    let r = unsafe {
+        AudioObjectGetPropertyData(
+            id,
+            &addr,
+            0,
+            std::ptr::null(),
+            &mut size,
+            &mut v as *mut T as *mut c_void,
+        )
+    };
     (r == 0).then_some(v)
 }
 
@@ -102,25 +141,65 @@ fn has(id: u32, addr: Addr) -> bool {
 }
 
 fn default_device() -> Option<u32> {
-    get(SYSTEM, Addr { selector: DEFAULT_OUTPUT, scope: SCOPE_GLOBAL, element: 0 }, 0u32).filter(|d| *d != 0)
+    get(
+        SYSTEM,
+        Addr {
+            selector: DEFAULT_OUTPUT,
+            scope: SCOPE_GLOBAL,
+            element: 0,
+        },
+        0u32,
+    )
+    .filter(|d| *d != 0)
 }
 
 /// 优先使用系统主音量；旧设备回退到物理主音量或声道均值。
 fn read(device: u32) -> Option<(f32, bool)> {
-    let virtual_main = Addr { selector: VIRTUAL_VOLUME, scope: SCOPE_OUTPUT, element: 0 };
-    let main = Addr { selector: VOLUME, scope: SCOPE_OUTPUT, element: 0 };
+    let virtual_main = Addr {
+        selector: VIRTUAL_VOLUME,
+        scope: SCOPE_OUTPUT,
+        element: 0,
+    };
+    let main = Addr {
+        selector: VOLUME,
+        scope: SCOPE_OUTPUT,
+        element: 0,
+    };
     let level = if has(device, virtual_main) {
         get(device, virtual_main, 0f32)?
     } else if has(device, main) {
         get(device, main, 0f32)?
     } else {
-        let ch: Vec<f32> = [1, 2].iter().filter_map(|&e| get(device, Addr { selector: VOLUME, scope: SCOPE_OUTPUT, element: e }, 0f32)).collect();
+        let ch: Vec<f32> = [1, 2]
+            .iter()
+            .filter_map(|&e| {
+                get(
+                    device,
+                    Addr {
+                        selector: VOLUME,
+                        scope: SCOPE_OUTPUT,
+                        element: e,
+                    },
+                    0f32,
+                )
+            })
+            .collect();
         if ch.is_empty() {
             return None;
         }
         ch.iter().sum::<f32>() / ch.len() as f32
     };
-    let muted = get(device, Addr { selector: MUTE, scope: SCOPE_OUTPUT, element: 0 }, 0u32).unwrap_or(0) != 0;
+    let muted = get(
+        device,
+        Addr {
+            selector: MUTE,
+            scope: SCOPE_OUTPUT,
+            element: 0,
+        },
+        0u32,
+    )
+    .unwrap_or(0)
+        != 0;
     Some((level.clamp(0.0, 1.0), muted))
 }
 
@@ -136,14 +215,26 @@ fn settable(device: u32, addr: Addr) -> bool {
 
 /// 与 read 使用相同的主音量/声道路径，不能只调动一侧声道。
 fn volume_controls(device: u32) -> Vec<Addr> {
-    let virtual_main = Addr { selector: VIRTUAL_VOLUME, scope: SCOPE_OUTPUT, element: 0 };
-    let main = Addr { selector: VOLUME, scope: SCOPE_OUTPUT, element: 0 };
+    let virtual_main = Addr {
+        selector: VIRTUAL_VOLUME,
+        scope: SCOPE_OUTPUT,
+        element: 0,
+    };
+    let main = Addr {
+        selector: VOLUME,
+        scope: SCOPE_OUTPUT,
+        element: 0,
+    };
     let controls = if has(device, virtual_main) {
         vec![virtual_main]
     } else if has(device, main) {
         vec![main]
     } else {
-        [1, 2].into_iter().map(|element| Addr { element, ..main }).filter(|&addr| has(device, addr)).collect()
+        [1, 2]
+            .into_iter()
+            .map(|element| Addr { element, ..main })
+            .filter(|&addr| has(device, addr))
+            .collect()
     };
     if controls.iter().all(|&addr| settable(device, addr)) {
         controls
@@ -153,9 +244,21 @@ fn volume_controls(device: u32) -> Vec<Addr> {
 }
 
 fn volume_state(device: u32) -> VolumeState {
-    let Some((level, muted)) = read(device) else { return VolumeState::default() };
-    let mute = Addr { selector: MUTE, scope: SCOPE_OUTPUT, element: 0 };
-    VolumeState { level, muted, known: true, adjustable: !volume_controls(device).is_empty(), can_mute: settable(device, mute) }
+    let Some((level, muted)) = read(device) else {
+        return VolumeState::default();
+    };
+    let mute = Addr {
+        selector: MUTE,
+        scope: SCOPE_OUTPUT,
+        element: 0,
+    };
+    VolumeState {
+        level,
+        muted,
+        known: true,
+        adjustable: !volume_controls(device).is_empty(),
+        can_mute: settable(device, mute),
+    }
 }
 
 /// 仅在用户拖动时写入；返回设备实际读数，不把请求值当成已成功。
@@ -168,20 +271,42 @@ pub fn set_volume(level: f32) -> Result<VolumeState, String> {
     if controls.is_empty() {
         return Err("output device does not support volume control".into());
     }
-    let mute = Addr { selector: MUTE, scope: SCOPE_OUTPUT, element: 0 };
+    let mute = Addr {
+        selector: MUTE,
+        scope: SCOPE_OUTPUT,
+        element: 0,
+    };
     let unmute = level > 0.0 && read(device).is_some_and(|(_, muted)| muted);
     if unmute && !settable(device, mute) {
         return Err("output device cannot be unmuted".into());
     }
     for addr in controls {
-        let r = unsafe { AudioObjectSetPropertyData(device, &addr, 0, std::ptr::null(), 4, &level as *const f32 as *const c_void) };
+        let r = unsafe {
+            AudioObjectSetPropertyData(
+                device,
+                &addr,
+                0,
+                std::ptr::null(),
+                4,
+                &level as *const f32 as *const c_void,
+            )
+        };
         if r != 0 {
             return Err(format!("setting output volume failed ({r})"));
         }
     }
     if unmute {
         let value = 0u32;
-        let r = unsafe { AudioObjectSetPropertyData(device, &mute, 0, std::ptr::null(), 4, &value as *const u32 as *const c_void) };
+        let r = unsafe {
+            AudioObjectSetPropertyData(
+                device,
+                &mute,
+                0,
+                std::ptr::null(),
+                4,
+                &value as *const u32 as *const c_void,
+            )
+        };
         if r != 0 {
             return Err(format!("unmuting output failed ({r})"));
         }
@@ -196,12 +321,25 @@ pub fn set_volume(level: f32) -> Result<VolumeState, String> {
 /// 使用设备的静音开关，取消静音后保留原音量和声道平衡。
 pub fn set_mute(muted: bool) -> Result<VolumeState, String> {
     let device = default_device().ok_or("no output device")?;
-    let mute = Addr { selector: MUTE, scope: SCOPE_OUTPUT, element: 0 };
+    let mute = Addr {
+        selector: MUTE,
+        scope: SCOPE_OUTPUT,
+        element: 0,
+    };
     if !settable(device, mute) {
         return Err("output device does not support mute control".into());
     }
     let value = u32::from(muted);
-    let status = unsafe { AudioObjectSetPropertyData(device, &mute, 0, std::ptr::null(), 4, &value as *const u32 as *const c_void) };
+    let status = unsafe {
+        AudioObjectSetPropertyData(
+            device,
+            &mute,
+            0,
+            std::ptr::null(),
+            4,
+            &value as *const u32 as *const c_void,
+        )
+    };
     if status != 0 {
         return Err(format!("setting output mute failed ({status})"));
     }
@@ -213,14 +351,33 @@ pub fn set_mute(muted: bool) -> Result<VolumeState, String> {
 }
 
 fn device_addrs() -> Vec<Addr> {
-    let mut v: Vec<Addr> = ELEMENTS.iter().map(|&e| Addr { selector: VOLUME, scope: SCOPE_OUTPUT, element: e }).collect();
-    v.push(Addr { selector: VIRTUAL_VOLUME, scope: SCOPE_OUTPUT, element: 0 });
-    v.push(Addr { selector: MUTE, scope: SCOPE_OUTPUT, element: 0 });
+    let mut v: Vec<Addr> = ELEMENTS
+        .iter()
+        .map(|&e| Addr {
+            selector: VOLUME,
+            scope: SCOPE_OUTPUT,
+            element: e,
+        })
+        .collect();
+    v.push(Addr {
+        selector: VIRTUAL_VOLUME,
+        scope: SCOPE_OUTPUT,
+        element: 0,
+    });
+    v.push(Addr {
+        selector: MUTE,
+        scope: SCOPE_OUTPUT,
+        element: 0,
+    });
     v
 }
 
 fn running_addr() -> Addr {
-    Addr { selector: RUNNING, scope: SCOPE_GLOBAL, element: 0 }
+    Addr {
+        selector: RUNNING,
+        scope: SCOPE_GLOBAL,
+        element: 0,
+    }
 }
 
 fn running(device: u32) -> bool {
@@ -233,7 +390,10 @@ pub fn sound_running() -> bool {
 }
 
 extern "C" fn on_running(id: u32, _n: u32, _addrs: *const Addr, _client: *mut c_void) -> i32 {
-    let watched = WATCH.lock().ok().is_some_and(|g| g.as_ref().is_some_and(|w| w.device == id));
+    let watched = WATCH
+        .lock()
+        .ok()
+        .is_some_and(|g| g.as_ref().is_some_and(|w| w.device == id));
     if watched {
         super::media::sound(running(id));
     }
@@ -241,22 +401,43 @@ extern "C" fn on_running(id: u32, _n: u32, _addrs: *const Addr, _client: *mut c_
 }
 
 extern "C" fn on_volume(id: u32, _n: u32, _addrs: *const Addr, _client: *mut c_void) -> i32 {
-    let sink = WATCH.lock().ok().and_then(|g| g.as_ref().filter(|w| w.device == id).map(|w| w.sink.clone()));
+    let sink = WATCH.lock().ok().and_then(|g| {
+        g.as_ref()
+            .filter(|w| w.device == id)
+            .map(|w| w.sink.clone())
+    });
     if let Some(sink) = sink {
-        sink.send(AppEvent::Volume { state: volume_state(id), switched: false });
+        sink.send(AppEvent::Volume {
+            state: volume_state(id),
+            switched: false,
+        });
     }
     0
 }
 
 /// Every audio device there is now.
 fn devices() -> Vec<u32> {
-    let addr = Addr { selector: DEVICES, scope: SCOPE_GLOBAL, element: 0 };
+    let addr = Addr {
+        selector: DEVICES,
+        scope: SCOPE_GLOBAL,
+        element: 0,
+    };
     let mut size = 0u32;
-    if unsafe { AudioObjectGetPropertyDataSize(SYSTEM, &addr, 0, std::ptr::null(), &mut size) } != 0 {
+    if unsafe { AudioObjectGetPropertyDataSize(SYSTEM, &addr, 0, std::ptr::null(), &mut size) } != 0
+    {
         return Vec::new();
     }
     let mut ids = vec![0u32; size as usize / 4];
-    let r = unsafe { AudioObjectGetPropertyData(SYSTEM, &addr, 0, std::ptr::null(), &mut size, ids.as_mut_ptr() as *mut c_void) };
+    let r = unsafe {
+        AudioObjectGetPropertyData(
+            SYSTEM,
+            &addr,
+            0,
+            std::ptr::null(),
+            &mut size,
+            ids.as_mut_ptr() as *mut c_void,
+        )
+    };
     if r != 0 {
         return Vec::new();
     }
@@ -266,7 +447,15 @@ fn devices() -> Vec<u32> {
 
 /// A device's string property (its UID or name).
 fn text_of(id: u32, selector: u32) -> Option<String> {
-    let s = get(id, Addr { selector, scope: SCOPE_GLOBAL, element: 0 }, std::ptr::null::<c_void>())?;
+    let s = get(
+        id,
+        Addr {
+            selector,
+            scope: SCOPE_GLOBAL,
+            element: 0,
+        },
+        std::ptr::null::<c_void>(),
+    )?;
     if s.is_null() {
         return None;
     }
@@ -281,15 +470,35 @@ fn text_of(id: u32, selector: u32) -> Option<String> {
 fn bluetooth_outputs() -> Vec<(String, String)> {
     devices()
         .into_iter()
-        .filter(|&d| get(d, Addr { selector: TRANSPORT, scope: SCOPE_GLOBAL, element: 0 }, 0u32).is_some_and(|t| BLUETOOTH.contains(&t)))
+        .filter(|&d| {
+            get(
+                d,
+                Addr {
+                    selector: TRANSPORT,
+                    scope: SCOPE_GLOBAL,
+                    element: 0,
+                },
+                0u32,
+            )
+            .is_some_and(|t| BLUETOOTH.contains(&t))
+        })
         .filter(|&d| {
             let mut size = 0u32;
-            let addr = Addr { selector: STREAMS, scope: SCOPE_OUTPUT, element: 0 };
-            unsafe { AudioObjectGetPropertyDataSize(d, &addr, 0, std::ptr::null(), &mut size) == 0 && size > 0 }
+            let addr = Addr {
+                selector: STREAMS,
+                scope: SCOPE_OUTPUT,
+                element: 0,
+            };
+            unsafe {
+                AudioObjectGetPropertyDataSize(d, &addr, 0, std::ptr::null(), &mut size) == 0
+                    && size > 0
+            }
         })
         .filter_map(|d| {
             let uid = text_of(d, UID)?;
-            let name = text_of(d, NAME).filter(|n| !n.trim().is_empty()).unwrap_or_else(|| FALLBACK_NAME.to_string());
+            let name = text_of(d, NAME)
+                .filter(|n| !n.trim().is_empty())
+                .unwrap_or_else(|| FALLBACK_NAME.to_string());
             Some((uid, name))
         })
         .collect()
@@ -301,19 +510,41 @@ extern "C" fn on_devices(_id: u32, _n: u32, _addrs: *const Addr, _client: *mut c
     LIST_CHANGES.fetch_add(1, Ordering::Relaxed);
     let now = bluetooth_outputs();
     let changes: Vec<(String, bool)> = {
-        let Ok(mut g) = BLUETOOTH_NOW.lock() else { return 0 };
+        let Ok(mut g) = BLUETOOTH_NOW.lock() else {
+            return 0;
+        };
         let before = g.replace(now.clone()).unwrap_or_else(|| now.clone());
-        let came = now.iter().filter(|d| !before.iter().any(|b| b.0 == d.0)).map(|d| (d.1.clone(), true));
-        let went = before.iter().filter(|b| !now.iter().any(|d| d.0 == b.0)).map(|b| (b.1.clone(), false));
+        let came = now
+            .iter()
+            .filter(|d| !before.iter().any(|b| b.0 == d.0))
+            .map(|d| (d.1.clone(), true));
+        let went = before
+            .iter()
+            .filter(|b| !now.iter().any(|d| d.0 == b.0))
+            .map(|b| (b.1.clone(), false));
         came.chain(went).collect()
     };
     if changes.is_empty() {
         return 0;
     }
-    let Some(sink) = WATCH.lock().ok().and_then(|g| g.as_ref().map(|w| w.sink.clone())) else { return 0 };
+    let Some(sink) = WATCH
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|w| w.sink.clone()))
+    else {
+        return 0;
+    };
     for (name, connected) in changes {
-        pinfo!("audio: Bluetooth output {}: {name}", if connected { "connected" } else { "gone" });
-        sink.send(AppEvent::Bluetooth { name, connected, battery: None, audio: true });
+        pinfo!(
+            "audio: Bluetooth output {}: {name}",
+            if connected { "connected" } else { "gone" }
+        );
+        sink.send(AppEvent::Bluetooth {
+            name,
+            connected,
+            battery: None,
+            audio: true,
+        });
     }
     0
 }
@@ -329,13 +560,26 @@ pub fn list_changes() -> u32 {
 pub fn smoke_device_change() -> Result<(), i32> {
     use objc2::runtime::AnyObject;
     use objc2_foundation::{NSDictionary, NSNumber, NSString};
-    let keys = [NSString::from_str("uid"), NSString::from_str("name"), NSString::from_str("private")];
-    let (uid, name, private) = (NSString::from_str("com.oyenza.poni.smoke"), NSString::from_str("Island For Mac smoke test"), NSNumber::numberWithInt(1));
+    let keys = [
+        NSString::from_str("uid"),
+        NSString::from_str("name"),
+        NSString::from_str("private"),
+    ];
+    let (uid, name, private) = (
+        NSString::from_str("com.oyenza.poni.smoke"),
+        NSString::from_str("Island For Mac smoke test"),
+        NSNumber::numberWithInt(1),
+    );
     let values: [&AnyObject; 3] = [uid.as_ref(), name.as_ref(), private.as_ref()];
     let desc = NSDictionary::from_slices(&[&*keys[0], &*keys[1], &*keys[2]], &values);
     let mut id = 0u32;
     // NSDictionary is a CFDictionary (toll-free bridged).
-    let r = unsafe { AudioHardwareCreateAggregateDevice(objc2::rc::Retained::as_ptr(&desc) as *const c_void, &mut id) };
+    let r = unsafe {
+        AudioHardwareCreateAggregateDevice(
+            objc2::rc::Retained::as_ptr(&desc) as *const c_void,
+            &mut id,
+        )
+    };
     if r != 0 {
         return Err(r);
     }
@@ -389,7 +633,10 @@ fn follow_default() {
         }
     }
     super::media::sound(running(new));
-    sink.send(AppEvent::Volume { state: volume_state(new), switched: true });
+    sink.send(AppEvent::Volume {
+        state: volume_state(new),
+        switched: true,
+    });
 }
 
 /// Send `AppEvent::Volume` now and on every change.
@@ -397,8 +644,13 @@ pub fn start(sink: EventSink) {
     if let Ok(mut g) = WATCH.lock() {
         *g = Some(Watch { sink, device: 0 });
     }
-    let addr = Addr { selector: DEFAULT_OUTPUT, scope: SCOPE_GLOBAL, element: 0 };
-    let r = unsafe { AudioObjectAddPropertyListener(SYSTEM, &addr, on_default, std::ptr::null_mut()) };
+    let addr = Addr {
+        selector: DEFAULT_OUTPUT,
+        scope: SCOPE_GLOBAL,
+        element: 0,
+    };
+    let r =
+        unsafe { AudioObjectAddPropertyListener(SYSTEM, &addr, on_default, std::ptr::null_mut()) };
     if r != 0 {
         pwarn!("audio: no default-device notifications ({r})");
     }
@@ -413,8 +665,13 @@ pub fn start(sink: EventSink) {
     if let Ok(mut g) = BLUETOOTH_NOW.lock() {
         *g = Some(now);
     }
-    let addr = Addr { selector: DEVICES, scope: SCOPE_GLOBAL, element: 0 };
-    let r = unsafe { AudioObjectAddPropertyListener(SYSTEM, &addr, on_devices, std::ptr::null_mut()) };
+    let addr = Addr {
+        selector: DEVICES,
+        scope: SCOPE_GLOBAL,
+        element: 0,
+    };
+    let r =
+        unsafe { AudioObjectAddPropertyListener(SYSTEM, &addr, on_devices, std::ptr::null_mut()) };
     if r != 0 {
         pwarn!("audio: no device-list notifications ({r}); no headphone pop-ups");
     }

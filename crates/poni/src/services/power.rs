@@ -2,10 +2,20 @@
 
 use crate::state::PowerState;
 use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, WPARAM};
-use windows::Win32::System::Power::{GetSystemPowerStatus, RegisterPowerSettingNotification, POWERBROADCAST_SETTING, SYSTEM_POWER_STATUS};
-use windows::Win32::System::RemoteDesktop::{WTSRegisterSessionNotification, NOTIFY_FOR_THIS_SESSION};
-use windows::Win32::System::SystemServices::{GUID_ACDC_POWER_SOURCE, GUID_BATTERY_PERCENTAGE_REMAINING, GUID_CONSOLE_DISPLAY_STATE, GUID_POWER_SAVING_STATUS};
-use windows::Win32::UI::WindowsAndMessaging::{DEVICE_NOTIFY_WINDOW_HANDLE, PBT_POWERSETTINGCHANGE};
+use windows::Win32::System::Power::{
+    GetSystemPowerStatus, RegisterPowerSettingNotification, POWERBROADCAST_SETTING,
+    SYSTEM_POWER_STATUS,
+};
+use windows::Win32::System::RemoteDesktop::{
+    WTSRegisterSessionNotification, NOTIFY_FOR_THIS_SESSION,
+};
+use windows::Win32::System::SystemServices::{
+    GUID_ACDC_POWER_SOURCE, GUID_BATTERY_PERCENTAGE_REMAINING, GUID_CONSOLE_DISPLAY_STATE,
+    GUID_POWER_SAVING_STATUS,
+};
+use windows::Win32::UI::WindowsAndMessaging::{
+    DEVICE_NOTIFY_WINDOW_HANDLE, PBT_POWERSETTINGCHANGE,
+};
 
 pub fn query() -> PowerState {
     let mut s = SYSTEM_POWER_STATUS::default();
@@ -16,7 +26,11 @@ pub fn query() -> PowerState {
     let has_battery = s.BatteryFlag != 128 && s.BatteryFlag != 255 && s.BatteryLifePercent <= 100;
     PowerState {
         has_battery,
-        percent: if s.BatteryLifePercent <= 100 { s.BatteryLifePercent } else { 0 },
+        percent: if s.BatteryLifePercent <= 100 {
+            s.BatteryLifePercent
+        } else {
+            0
+        },
         charging: has_battery && (s.BatteryFlag & 8) != 0,
         on_ac: s.ACLineStatus == 1,
         saver: s.SystemStatusFlag == 1,
@@ -28,8 +42,14 @@ pub fn query() -> PowerState {
 /// switched by hand at any charge).
 pub fn register(hwnd: HWND) {
     unsafe {
-        for guid in [&GUID_ACDC_POWER_SOURCE, &GUID_BATTERY_PERCENTAGE_REMAINING, &GUID_POWER_SAVING_STATUS] {
-            if let Err(e) = RegisterPowerSettingNotification(HANDLE(hwnd.0), guid, DEVICE_NOTIFY_WINDOW_HANDLE) {
+        for guid in [
+            &GUID_ACDC_POWER_SOURCE,
+            &GUID_BATTERY_PERCENTAGE_REMAINING,
+            &GUID_POWER_SAVING_STATUS,
+        ] {
+            if let Err(e) =
+                RegisterPowerSettingNotification(HANDLE(hwnd.0), guid, DEVICE_NOTIFY_WINDOW_HANDLE)
+            {
                 crate::pwarn!("RegisterPowerSettingNotification failed: {e}");
             }
         }
@@ -43,7 +63,11 @@ pub fn register_session(hwnd: HWND) {
         if let Err(e) = WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION) {
             crate::pwarn!("WTSRegisterSessionNotification failed: {e}");
         }
-        if let Err(e) = RegisterPowerSettingNotification(HANDLE(hwnd.0), &GUID_CONSOLE_DISPLAY_STATE, DEVICE_NOTIFY_WINDOW_HANDLE) {
+        if let Err(e) = RegisterPowerSettingNotification(
+            HANDLE(hwnd.0),
+            &GUID_CONSOLE_DISPLAY_STATE,
+            DEVICE_NOTIFY_WINDOW_HANDLE,
+        ) {
             crate::pwarn!("display-state notification unavailable: {e}");
         }
     }

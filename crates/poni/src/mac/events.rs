@@ -43,7 +43,9 @@ pub enum AppleMusicStatus {
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub enum LyricsResult {
-    Found { lyrics: Lyrics },
+    Found {
+        lyrics: Lyrics,
+    },
     Instrumental,
     NotFound,
     /// 已安排自动重试；与需要手动恢复的最终错误分开。
@@ -57,7 +59,10 @@ pub enum AppEvent {
     /// 显式点击试听，不改变模块声音选择或声音开关。
     AlertTonePreview(String),
     /// 原生选择器确认使用，保存该模块的提示音 ID。
-    AlertToneSelected { module: poni_core::alert_sounds::SoundModule, id: String },
+    AlertToneSelected {
+        module: poni_core::alert_sounds::SoundModule,
+        id: String,
+    },
     Codex(crate::codex_bridge::BridgeEvent),
     Mail(crate::mail::MailEvent),
     MailAction(crate::mail::MailAction),

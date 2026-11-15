@@ -25,17 +25,9 @@ mod activities;
 #[cfg(windows)]
 mod app;
 #[cfg(windows)]
-mod mail_accounts;
-#[cfg(windows)]
 mod autostart;
 #[cfg(windows)]
 mod clock;
-#[cfg(any(windows, target_os = "macos"))]
-mod commands;
-#[cfg(any(windows, target_os = "macos"))]
-mod focus;
-#[cfg(any(windows, target_os = "macos"))]
-mod persistence;
 #[cfg(any(windows, target_os = "macos"))]
 mod codex;
 #[cfg(any(windows, target_os = "macos"))]
@@ -44,10 +36,14 @@ mod codex_bridge;
 mod codex_client;
 #[cfg(windows)]
 mod codex_pipe;
+#[cfg(any(windows, target_os = "macos"))]
+mod commands;
 #[cfg(windows)]
 mod dragdrop;
 #[cfg(windows)]
 mod events;
+#[cfg(any(windows, target_os = "macos"))]
+mod focus;
 #[cfg(windows)]
 mod gfx;
 #[cfg(windows)]
@@ -59,13 +55,19 @@ mod island;
 #[cfg(any(windows, target_os = "macos"))]
 mod localization;
 #[cfg(any(windows, target_os = "macos"))]
+mod mail;
+#[cfg(windows)]
+mod mail_accounts;
+#[cfg(any(windows, target_os = "macos"))]
 mod oyen;
 #[cfg(any(windows, target_os = "macos"))]
 mod pages;
-#[cfg(any(windows, target_os = "macos"))]
-mod pill;
 #[cfg(windows)]
 mod paths;
+#[cfg(any(windows, target_os = "macos"))]
+mod persistence;
+#[cfg(any(windows, target_os = "macos"))]
+mod pill;
 #[cfg(any(windows, target_os = "macos"))]
 mod png;
 #[cfg(windows)]
@@ -77,27 +79,27 @@ mod settings_host;
 #[cfg(target_os = "macos")]
 #[path = "mac/settings_host.rs"]
 mod settings_host;
+#[cfg(any(windows, target_os = "macos"))]
+mod settings_model;
+#[cfg(any(windows, target_os = "macos"))]
+mod settings_window;
+#[cfg(windows)]
+mod shell;
 #[cfg(target_os = "macos")]
 #[path = "mac/sound_picker.rs"]
 mod sound_picker;
 #[cfg(any(windows, target_os = "macos"))]
-mod settings_window;
-#[cfg(any(windows, target_os = "macos"))]
-mod settings_model;
-#[cfg(windows)]
-mod shell;
-#[cfg(any(windows, target_os = "macos"))]
 mod state;
+#[cfg(any(windows, target_os = "macos"))]
+mod text;
 #[cfg(windows)]
 mod tray;
 #[cfg(any(windows, target_os = "macos"))]
 mod ui;
-#[cfg(any(windows, target_os = "macos"))]
-mod text;
-#[cfg(any(windows, target_os = "macos"))]
-mod version;
 #[cfg(windows)]
 mod updates;
+#[cfg(any(windows, target_os = "macos"))]
+mod version;
 #[cfg(windows)]
 mod window;
 #[cfg(windows)]
@@ -124,11 +126,11 @@ mod gfx;
 #[path = "mac/glass.rs"]
 mod glass;
 #[cfg(target_os = "macos")]
-#[path = "mac/menubar.rs"]
-mod menubar;
-#[cfg(target_os = "macos")]
 #[path = "mac/mail_accounts.rs"]
 mod mail_accounts;
+#[cfg(target_os = "macos")]
+#[path = "mac/menubar.rs"]
+mod menubar;
 #[cfg(target_os = "macos")]
 #[path = "mac/notch.rs"]
 mod notch;
@@ -157,6 +159,3 @@ fn main() {
 fn main() {
     eprintln!("Poni runs on Windows and macOS. Build it with `cargo wbuild` (Windows, cross) or on a Mac.");
 }
-
-#[cfg(any(windows, target_os = "macos"))]
-mod mail;

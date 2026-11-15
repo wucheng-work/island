@@ -51,7 +51,13 @@ pub struct AppleMusic {
 
 impl AppleMusic {
     pub fn new() -> Self {
-        let mut a = Self { user_token: None, dev: read_dev_token(), storefront: None, off: false, client: None };
+        let mut a = Self {
+            user_token: None,
+            dev: read_dev_token(),
+            storefront: None,
+            off: false,
+            client: None,
+        };
         a.reload_token();
         a
     }
@@ -84,14 +90,24 @@ impl AppleMusic {
 
     /// 返回缓存记录与已解析的歌词，避免将 TTML 转为 LRC 后为显示再次解析。
     /// `live` 在切换歌曲后返回 false；没有同步歌词时返回 `Ok(None)`。
-    pub fn find(&mut self, q: &TrackQuery, live: &dyn Fn() -> bool) -> Result<Option<(LrclibRecord, poni_core::lrc::Lyrics)>, Miss> {
+    pub fn find(
+        &mut self,
+        q: &TrackQuery,
+        live: &dyn Fn() -> bool,
+    ) -> Result<Option<(LrclibRecord, poni_core::lrc::Lyrics)>, Miss> {
         let storefront = self.storefront(live)?;
         let resp = self.api(&applemusic::search_url(&storefront, q), live)?;
         if resp.status != 200 {
-            return Err(Miss::Unreachable(format!("search answered HTTP {}", resp.status)));
+            return Err(Miss::Unreachable(format!(
+                "search answered HTTP {}",
+                resp.status
+            )));
         }
-        let songs = applemusic::parse_search(&resp.body).map_err(|e| Miss::Unreachable(format!("unreadable search reply: {e}")))?;
-        let Some(song) = applemusic::best_song(&songs, q).cloned() else { return Ok(None) };
+        let songs = applemusic::parse_search(&resp.body)
+            .map_err(|e| Miss::Unreachable(format!("unreadable search reply: {e}")))?;
+        let Some(song) = applemusic::best_song(&songs, q).cloned() else {
+            return Ok(None);
+        };
         let resp = self.api(&applemusic::lyrics_url(&storefront, &song.id), live)?;
         match resp.status {
             200 => {}
@@ -100,7 +116,9 @@ impl AppleMusic {
             404 => return Ok(None),
             s => return Err(Miss::Unreachable(format!("lyrics answered HTTP {s}"))),
         }
-        let Some(ttml) = applemusic::parse_lyrics(&resp.body) else { return Ok(None) };
+        let Some(ttml) = applemusic::parse_lyrics(&resp.body) else {
+            return Ok(None);
+        };
         let lyrics = parse_ttml(&ttml);
         if !lyrics.synced || lyrics.text_lines() < MIN_LINES {
             return Ok(None);
@@ -117,7 +135,8 @@ impl AppleMusic {
         let resp = self.api(&applemusic::storefront_url(), live)?;
         match resp.status {
             200 => {
-                let sf = applemusic::parse_storefront(&resp.body).unwrap_or_else(|| applemusic::DEFAULT_STOREFRONT.to_string());
+                let sf = applemusic::parse_storefront(&resp.body)
+                    .unwrap_or_else(|| applemusic::DEFAULT_STOREFRONT.to_string());
                 self.storefront = Some(sf.clone());
                 Ok(sf)
             }
@@ -140,8 +159,15 @@ impl AppleMusic {
         self.send(url, true, live)
     }
 
-    fn send(&mut self, url: &str, fresh_dev_token: bool, live: &dyn Fn() -> bool) -> Result<Response, Miss> {
-        let Some(user) = self.user_token.clone() else { return Err(Miss::Rejected) };
+    fn send(
+        &mut self,
+        url: &str,
+        fresh_dev_token: bool,
+        live: &dyn Fn() -> bool,
+    ) -> Result<Response, Miss> {
+        let Some(user) = self.user_token.clone() else {
+            return Err(Miss::Rejected);
+        };
         let dev = self.dev_token(fresh_dev_token, live)?;
         if !live() {
             return Err(Miss::Abandoned);
@@ -154,7 +180,9 @@ impl AppleMusic {
             ("Origin", applemusic::ORIGIN),
             ("Referer", "https://music.apple.com/"),
         ];
-        self.client()?.get_with_headers(url, &headers, API_TIMEOUT).map_err(fetch_miss)
+        self.client()?
+            .get_with_headers(url, &headers, API_TIMEOUT)
+            .map_err(fetch_miss)
     }
 
     /// The cached developer token, or a fresh one from the web player.
@@ -176,7 +204,9 @@ impl AppleMusic {
         if self.client.is_none() {
             self.client = Some(Client::new(USER_AGENT).map_err(fetch_miss)?);
         }
-        self.client.as_ref().ok_or_else(|| Miss::Unreachable("no HTTP client".into()))
+        self.client
+            .as_ref()
+            .ok_or_else(|| Miss::Unreachable("no HTTP client".into()))
     }
 }
 
@@ -185,9 +215,14 @@ fn fetch_dev_token(client: &Client, live: &dyn Fn() -> bool) -> Result<DevToken,
     if !live() {
         return Err(Miss::Abandoned);
     }
-    let page = client.get(applemusic::WEB_PLAYER_URL, BUNDLE_TIMEOUT).map_err(fetch_miss)?;
+    let page = client
+        .get(applemusic::WEB_PLAYER_URL, BUNDLE_TIMEOUT)
+        .map_err(fetch_miss)?;
     if page.status != 200 {
-        return Err(Miss::Unreachable(format!("web player answered HTTP {}", page.status)));
+        return Err(Miss::Unreachable(format!(
+            "web player answered HTTP {}",
+            page.status
+        )));
     }
     for url in applemusic::find_bundle_urls(&page.body) {
         if !live() {
@@ -196,12 +231,17 @@ fn fetch_dev_token(client: &Client, live: &dyn Fn() -> bool) -> Result<DevToken,
         let js = client.get(&url, BUNDLE_TIMEOUT).map_err(fetch_miss)?;
         if js.status == 200 {
             if let Some(token) = applemusic::find_developer_token(&js.body) {
-                crate::pinfo!("apple music: new developer token (expires at {})", token.expires_at);
+                crate::pinfo!(
+                    "apple music: new developer token (expires at {})",
+                    token.expires_at
+                );
                 return Ok(token);
             }
         }
     }
-    Err(Miss::Unreachable("no developer token in the web player".into()))
+    Err(Miss::Unreachable(
+        "no developer token in the web player".into(),
+    ))
 }
 
 fn fetch_miss(e: FetchError) -> Miss {

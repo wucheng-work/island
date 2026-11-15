@@ -7,7 +7,9 @@ use std::io;
 use std::path::Path;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{LocalFree, HLOCAL};
-use windows::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB};
+use windows::Win32::Security::Cryptography::{
+    CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
+};
 
 pub fn save(path: &Path, secret: &str) -> io::Result<()> {
     let sealed = protect(secret.as_bytes())?;
@@ -43,19 +45,43 @@ pub fn delete(path: &Path) -> io::Result<()> {
 }
 
 fn protect(data: &[u8]) -> io::Result<Vec<u8>> {
-    let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
+    let input = CRYPT_INTEGER_BLOB {
+        cbData: data.len() as u32,
+        pbData: data.as_ptr() as *mut u8,
+    };
     let mut out = CRYPT_INTEGER_BLOB::default();
     unsafe {
-        CryptProtectData(&input, PCWSTR::null(), None, None, None, CRYPTPROTECT_UI_FORBIDDEN, &mut out).map_err(io::Error::other)?;
+        CryptProtectData(
+            &input,
+            PCWSTR::null(),
+            None,
+            None,
+            None,
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut out,
+        )
+        .map_err(io::Error::other)?;
         Ok(take_blob(out))
     }
 }
 
 fn unprotect(data: &[u8]) -> io::Result<Vec<u8>> {
-    let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
+    let input = CRYPT_INTEGER_BLOB {
+        cbData: data.len() as u32,
+        pbData: data.as_ptr() as *mut u8,
+    };
     let mut out = CRYPT_INTEGER_BLOB::default();
     unsafe {
-        CryptUnprotectData(&input, None, None, None, None, CRYPTPROTECT_UI_FORBIDDEN, &mut out).map_err(io::Error::other)?;
+        CryptUnprotectData(
+            &input,
+            None,
+            None,
+            None,
+            None,
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut out,
+        )
+        .map_err(io::Error::other)?;
         Ok(take_blob(out))
     }
 }

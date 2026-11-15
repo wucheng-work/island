@@ -133,7 +133,13 @@ impl Island {
         self.aim();
         if new_content {
             self.content.snap(0.0);
-            self.fade_in_at = Some(now + if growing { FADE_DELAY_GROW } else { FADE_DELAY_SHRINK });
+            self.fade_in_at = Some(
+                now + if growing {
+                    FADE_DELAY_GROW
+                } else {
+                    FADE_DELAY_SHRINK
+                },
+            );
         }
     }
 
@@ -146,17 +152,33 @@ impl Island {
             // Floating: each axis by its own direction, so an axis that
             // shrinks while the other grows still lands on its size.
             let (tw, th) = (
-                if g.w >= self.w.value { motion::GROW_W } else { motion::SHRINK_W },
-                if g.h >= self.h.value { motion::GROW_H } else { motion::SHRINK_H },
+                if g.w >= self.w.value {
+                    motion::GROW_W
+                } else {
+                    motion::SHRINK_W
+                },
+                if g.h >= self.h.value {
+                    motion::GROW_H
+                } else {
+                    motion::SHRINK_H
+                },
             );
-            let tr = if g.r >= self.r.value { motion::RADIUS_GROW } else { motion::RADIUS_SHRINK };
+            let tr = if g.r >= self.r.value {
+                motion::RADIUS_GROW
+            } else {
+                motion::RADIUS_SHRINK
+            };
             self.w.retune(tw.0, tw.1);
             self.h.retune(th.0, th.1);
             self.r.retune(tr.0, tr.1);
             self.floor_w = floor(&self.w, g.w, self.floor_w);
             self.floor_h = floor(&self.h, g.h, self.floor_h);
         } else {
-            let (tw, th) = if growing { (GROW_W, GROW_H) } else { (SHRINK_W, SHRINK_H) };
+            let (tw, th) = if growing {
+                (GROW_W, GROW_H)
+            } else {
+                (SHRINK_W, SHRINK_H)
+            };
             self.w.retune(tw.0, tw.1);
             self.h.retune(th.0, th.1);
             self.r.retune(RADIUS.0, RADIUS.1);
@@ -220,7 +242,10 @@ impl Island {
             land(&mut self.h, self.floor_h);
             // A capsule's corners are its ends: once the height has landed,
             // so have they (they're drawn at half the height anyway).
-            if self.h.is_settled() && self.r.target >= self.h.target / 2.0 && self.r.value >= self.h.value / 2.0 {
+            if self.h.is_settled()
+                && self.r.target >= self.h.target / 2.0
+                && self.r.value >= self.h.value / 2.0
+            {
                 self.r.snap(self.r.target);
             }
         }
@@ -246,8 +271,17 @@ impl Island {
     pub fn current(&self) -> Geom {
         let (w, h) = (self.w.value.max(20.0), self.h.value.max(8.0));
         // Floating, a corner is never drawn rounder than half the height.
-        let r = if self.gap.is_some() { self.r.value.min(h / 2.0) } else { self.r.value };
-        Geom { w, h, r: r.max(0.0), dy: self.top.value - self.gap.unwrap_or(0.0) }
+        let r = if self.gap.is_some() {
+            self.r.value.min(h / 2.0)
+        } else {
+            self.r.value
+        };
+        Geom {
+            w,
+            h,
+            r: r.max(0.0),
+            dy: self.top.value - self.gap.unwrap_or(0.0),
+        }
     }
 
     pub fn content_alpha(&self) -> f32 {
@@ -266,7 +300,12 @@ impl Island {
     pub fn canvas_rect_at(&self, cx: f32) -> Rect {
         let g = self.current();
         let side = self.side_room();
-        Rect::new(cx - g.w / 2.0 - side, 0.0, g.w + 2.0 * side, self.top.value + g.h + self.bottom_room())
+        Rect::new(
+            cx - g.w / 2.0 - side,
+            0.0,
+            g.w + 2.0 * side,
+            self.top.value + g.h + self.bottom_room(),
+        )
     }
 
     /// Room the window keeps on each side of the body: the shoulders and
@@ -356,21 +395,41 @@ mod tests {
 
     #[test]
     fn classic_tunings_unchanged() {
-        assert_eq!((GROW_W, GROW_H, SHRINK_W, SHRINK_H, RADIUS), ((420.0, 30.0), (300.0, 26.0), (330.0, 33.0), (420.0, 38.0), (420.0, 41.0)));
-        assert_eq!((CONTENT, FADE_DELAY_GROW, FADE_DELAY_SHRINK), ((700.0, 52.9), 0.03, 0.05));
+        assert_eq!(
+            (GROW_W, GROW_H, SHRINK_W, SHRINK_H, RADIUS),
+            (
+                (420.0, 30.0),
+                (300.0, 26.0),
+                (330.0, 33.0),
+                (420.0, 38.0),
+                (420.0, 41.0)
+            )
+        );
+        assert_eq!(
+            (CONTENT, FADE_DELAY_GROW, FADE_DELAY_SHRINK),
+            ((700.0, 52.9), 0.03, 0.05)
+        );
         let mut i = Island::new(PILL);
         i.set_floating(None);
         i.set_target(CARD, 0.0, true);
-        assert_eq!((tuning(&i.w), tuning(&i.h), tuning(&i.r)), (GROW_W, GROW_H, RADIUS));
+        assert_eq!(
+            (tuning(&i.w), tuning(&i.h), tuning(&i.r)),
+            (GROW_W, GROW_H, RADIUS)
+        );
         assert_eq!(i.fade_in_at, Some(FADE_DELAY_GROW));
         run(&mut i, 60.0, 2.0, |i| assert_eq!(i.top(), 0.0));
         assert_eq!(i.current(), CARD);
         i.set_target(PILL, 0.0, true);
-        assert_eq!((tuning(&i.w), tuning(&i.h), tuning(&i.r)), (SHRINK_W, SHRINK_H, RADIUS));
+        assert_eq!(
+            (tuning(&i.w), tuning(&i.h), tuning(&i.r)),
+            (SHRINK_W, SHRINK_H, RADIUS)
+        );
         assert_eq!(i.fade_in_at, Some(FADE_DELAY_SHRINK));
         // Hanging: no landing floor, the corner radius as given, never floating.
         assert_eq!((i.floor_w, i.floor_h), (None, None));
-        run(&mut i, 60.0, 2.0, |i| assert!(!i.floating() && i.top() == 0.0));
+        run(&mut i, 60.0, 2.0, |i| {
+            assert!(!i.floating() && i.top() == 0.0)
+        });
         assert_eq!(i.current(), PILL);
     }
 
@@ -378,7 +437,11 @@ mod tests {
     fn classic_morph_matches_the_old_island() {
         // The spring code path Classic ran before the Pill theme, step for step.
         let mut i = Island::new(PILL);
-        let (mut w, mut h, mut r) = (Spring::new(120.0, 420.0, 30.0), Spring::new(32.0, 300.0, 26.0), Spring::new(16.0, 420.0, 41.0));
+        let (mut w, mut h, mut r) = (
+            Spring::new(120.0, 420.0, 30.0),
+            Spring::new(32.0, 300.0, 26.0),
+            Spring::new(16.0, 420.0, 41.0),
+        );
         i.set_target(CARD, 0.0, false);
         (w.target, h.target, r.target) = (CARD.w, CARD.h, CARD.r);
         for k in 0..40 {
@@ -394,7 +457,11 @@ mod tests {
             h.step(1.0 / 60.0);
             r.step(1.0 / 60.0);
             let g = i.current();
-            assert_eq!((g.w, g.h, g.r, g.dy), (w.value.max(20.0), h.value.max(8.0), r.value.max(0.0), 0.0), "frame {k}");
+            assert_eq!(
+                (g.w, g.h, g.r, g.dy),
+                (w.value.max(20.0), h.value.max(8.0), r.value.max(0.0), 0.0),
+                "frame {k}"
+            );
         }
     }
 
@@ -403,14 +470,26 @@ mod tests {
         for hz in [60.0, 144.0] {
             let mut i = floating(PILL);
             i.set_target(CARD, 0.0, true);
-            assert_eq!((tuning(&i.w), tuning(&i.h), tuning(&i.r)), (motion::GROW_W, motion::GROW_H, motion::RADIUS_GROW));
+            assert_eq!(
+                (tuning(&i.w), tuning(&i.h), tuning(&i.r)),
+                (motion::GROW_W, motion::GROW_H, motion::RADIUS_GROW)
+            );
             let t = run(&mut i, hz, 2.0, |_| {});
-            assert!(i.settled() && t < 0.9, "grow at {hz} Hz settled after {t:.2} s");
+            assert!(
+                i.settled() && t < 0.9,
+                "grow at {hz} Hz settled after {t:.2} s"
+            );
             assert_eq!(i.current(), CARD);
             i.set_target(PILL, 0.0, true);
-            assert_eq!((tuning(&i.w), tuning(&i.h), tuning(&i.r)), (motion::SHRINK_W, motion::SHRINK_H, motion::RADIUS_SHRINK));
+            assert_eq!(
+                (tuning(&i.w), tuning(&i.h), tuning(&i.r)),
+                (motion::SHRINK_W, motion::SHRINK_H, motion::RADIUS_SHRINK)
+            );
             let t = run(&mut i, hz, 2.0, |_| {});
-            assert!(i.settled() && t < 0.6, "shrink at {hz} Hz settled after {t:.2} s");
+            assert!(
+                i.settled() && t < 0.6,
+                "shrink at {hz} Hz settled after {t:.2} s"
+            );
             assert_eq!(i.current(), PILL);
             assert_eq!(i.body_rect_at(300.0), Rect::new(240.0, 8.0, 120.0, 32.0));
         }
@@ -429,10 +508,19 @@ mod tests {
             w_peak = w_peak.max(g.w);
             h_peak = h_peak.max(g.h);
         });
-        assert!(widest > PILL.w / PILL.h + 0.25, "aspect peaked at {widest:.2}");
+        assert!(
+            widest > PILL.w / PILL.h + 0.25,
+            "aspect peaked at {widest:.2}"
+        );
         // A little overshoot, inside the window's 5 % room.
-        assert!(w_peak > CARD.w && w_peak < CARD.w * 1.035, "width peaked at {w_peak}");
-        assert!(h_peak > CARD.h && h_peak < CARD.h * 1.035, "height peaked at {h_peak}");
+        assert!(
+            w_peak > CARD.w && w_peak < CARD.w * 1.035,
+            "width peaked at {w_peak}"
+        );
+        assert!(
+            h_peak > CARD.h && h_peak < CARD.h * 1.035,
+            "height peaked at {h_peak}"
+        );
     }
 
     #[test]
@@ -444,9 +532,17 @@ mod tests {
         let lifted = motion::hover_lift(PILL);
         let cases: [(Geom, &[(f32, Geom)], (f32, f32)); 4] = [
             (CARD, &[(0.0, PILL)], (120.0, 32.0)),
-            (Geom::new(340.0, 48.0, 24.0), &[(0.0, Geom::new(520.0, 32.0, 16.0))], (340.0, 32.0)),
+            (
+                Geom::new(340.0, 48.0, 24.0),
+                &[(0.0, Geom::new(520.0, 32.0, 16.0))],
+                (340.0, 32.0),
+            ),
             (CARD, &[(0.0, PILL), (0.12, lifted)], (126.0, 32.0)),
-            (CARD, &[(0.0, PILL), (0.2, Geom::new(150.0, 36.0, 18.0))], (120.0, 32.0)),
+            (
+                CARD,
+                &[(0.0, PILL), (0.2, Geom::new(150.0, 36.0, 18.0))],
+                (120.0, 32.0),
+            ),
         ];
         for (from, steps, least) in cases {
             let mut i = floating(from);
@@ -460,7 +556,10 @@ mod tests {
                 i.step(1.0 / 60.0, t as f64);
                 t += 1.0 / 60.0;
                 let g = i.current();
-                assert!(g.w >= least.0 && g.h >= least.1, "{from:?} -> {want:?}: {g:?} at {t:.3} s");
+                assert!(
+                    g.w >= least.0 && g.h >= least.1,
+                    "{from:?} -> {want:?}: {g:?} at {t:.3} s"
+                );
                 assert!(g.r <= g.h / 2.0 + 1e-4, "rounder than a capsule: {g:?}");
             }
             assert!(i.settled(), "{from:?} -> {want:?} did not settle");
@@ -511,7 +610,9 @@ mod tests {
         assert!(highest >= 6.0 - 1e-3, "rose to {highest}");
         assert_eq!(i.body_rect_at(300.0), Rect::new(237.0, 6.0, 126.0, 38.0));
         i.set_target(PILL, 0.0, false);
-        run(&mut i, 60.0, 2.0, |i| assert!(i.top() <= 8.0 + 1e-3 && i.top() >= 6.0 - 1e-3));
+        run(&mut i, 60.0, 2.0, |i| {
+            assert!(i.top() <= 8.0 + 1e-3 && i.top() >= 6.0 - 1e-3)
+        });
         assert_eq!((i.top(), i.current()), (8.0, PILL));
     }
 
@@ -543,13 +644,20 @@ mod tests {
             let mut between = 0;
             let mut last = 0.0;
             let t = run(&mut i, hz, 2.0, |i| {
-                assert!(i.top() >= last && i.top() <= 8.0, "top {} after {last}", i.top());
+                assert!(
+                    i.top() >= last && i.top() <= 8.0,
+                    "top {} after {last}",
+                    i.top()
+                );
                 last = i.top();
                 if i.top() > 0.5 && i.top() < 7.5 {
                     between += 1;
                 }
             });
-            assert!(between >= (0.1 * hz) as i32, "top jumped: {between} frames in between at {hz} Hz");
+            assert!(
+                between >= (0.1 * hz) as i32,
+                "top jumped: {between} frames in between at {hz} Hz"
+            );
             assert!(t < 0.6, "gap settled after {t:.2} s");
             assert_eq!(i.top(), 8.0);
             // Another theme: it rises back, drawn floating until it docks.
@@ -562,7 +670,10 @@ mod tests {
                 last = i.top();
             });
             assert!(i.settled() && i.top() == 0.0 && !i.floating());
-            assert_eq!((i.side_room(), i.bottom_room()), (SHOULDER + HIT_MARGIN, HIT_MARGIN));
+            assert_eq!(
+                (i.side_room(), i.bottom_room()),
+                (SHOULDER + HIT_MARGIN, HIT_MARGIN)
+            );
         }
     }
 
@@ -576,9 +687,15 @@ mod tests {
         let v = i.w.velocity;
         i.set_floating(Some(8.0));
         // Same motion, floating tunings: nothing jumps.
-        assert_eq!((tuning(&i.w), tuning(&i.h)), (motion::GROW_W, motion::GROW_H));
+        assert_eq!(
+            (tuning(&i.w), tuning(&i.h)),
+            (motion::GROW_W, motion::GROW_H)
+        );
         assert_eq!(i.w.velocity, v);
         i.set_floating(None);
-        assert_eq!((tuning(&i.w), tuning(&i.h), tuning(&i.r)), (GROW_W, GROW_H, RADIUS));
+        assert_eq!(
+            (tuning(&i.w), tuning(&i.h), tuning(&i.r)),
+            (GROW_W, GROW_H, RADIUS)
+        );
     }
 }

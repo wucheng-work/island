@@ -43,11 +43,14 @@ pub(super) fn interface_ipv4s() -> Vec<(String, Ipv4Addr)> {
     let mut p = head;
     while !p.is_null() {
         let a = unsafe { &*p };
-        let up = a.ifa_flags & (IFF_UP | IFF_RUNNING) == (IFF_UP | IFF_RUNNING) && a.ifa_flags & IFF_LOOPBACK == 0;
+        let up = a.ifa_flags & (IFF_UP | IFF_RUNNING) == (IFF_UP | IFF_RUNNING)
+            && a.ifa_flags & IFF_LOOPBACK == 0;
         if up && !a.ifa_addr.is_null() && !a.ifa_name.is_null() {
             let sa = unsafe { &*a.ifa_addr };
             if sa.sin_family == AF_INET {
-                let name = unsafe { CStr::from_ptr(a.ifa_name) }.to_string_lossy().into_owned();
+                let name = unsafe { CStr::from_ptr(a.ifa_name) }
+                    .to_string_lossy()
+                    .into_owned();
                 out.push((name, Ipv4Addr::from(u32::from_be(sa.sin_addr))));
             }
         }

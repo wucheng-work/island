@@ -95,15 +95,29 @@ mod tests {
     use super::*;
 
     fn q(title: &str, artist: &str, album: &str, d: u32) -> TrackQuery {
-        TrackQuery { title: title.into(), artist: artist.into(), album: album.into(), duration_s: d }
+        TrackQuery {
+            title: title.into(),
+            artist: artist.into(),
+            album: album.into(),
+            duration_s: d,
+        }
     }
 
     #[test]
     fn stubs_have_no_full_synced_lyrics() {
-        let rec = |synced: &str| LrclibRecord { synced_lyrics: Some(synced.into()), ..Default::default() };
+        let rec = |synced: &str| LrclibRecord {
+            synced_lyrics: Some(synced.into()),
+            ..Default::default()
+        };
         assert!(rec("[00:00.00]Paper Boats").full_synced_lyrics().is_none());
-        assert!(rec("[00:01.00]one\n[00:02.00]two\n[00:03.00]three\n[00:04.00]four").full_synced_lyrics().is_some());
-        assert!(rec("[00:01.00]one\n[00:02.00]\n[00:03.00]\n[00:04.00]two").full_synced_lyrics().is_none());
+        assert!(
+            rec("[00:01.00]one\n[00:02.00]two\n[00:03.00]three\n[00:04.00]four")
+                .full_synced_lyrics()
+                .is_some()
+        );
+        assert!(rec("[00:01.00]one\n[00:02.00]\n[00:03.00]\n[00:04.00]two")
+            .full_synced_lyrics()
+            .is_none());
     }
 
     #[test]
@@ -120,7 +134,8 @@ mod tests {
 
     #[test]
     fn record_tolerates_missing_fields() {
-        let record: LrclibRecord = serde_json::from_str(r#"{"id":7,"trackName":"T","artistName":"A"}"#).unwrap();
+        let record: LrclibRecord =
+            serde_json::from_str(r#"{"id":7,"trackName":"T","artistName":"A"}"#).unwrap();
         assert_eq!(record.id, 7);
         assert!(record.full_synced_lyrics().is_none());
     }

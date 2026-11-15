@@ -18,9 +18,16 @@ use crate::events::{AppEvent, EventSink};
 use crate::state::NotifyAccess;
 use poni_core::notifications::Seen;
 use windows::core::Result;
-use windows::Foundation::{AsyncOperationCompletedHandler, AsyncStatus, EventRegistrationToken, TypedEventHandler};
-use windows::UI::Notifications::Management::{UserNotificationListener, UserNotificationListenerAccessStatus};
-use windows::UI::Notifications::{KnownNotificationBindings, NotificationKinds, UserNotification, UserNotificationChangedEventArgs, UserNotificationChangedKind};
+use windows::Foundation::{
+    AsyncOperationCompletedHandler, AsyncStatus, EventRegistrationToken, TypedEventHandler,
+};
+use windows::UI::Notifications::Management::{
+    UserNotificationListener, UserNotificationListenerAccessStatus,
+};
+use windows::UI::Notifications::{
+    KnownNotificationBindings, NotificationKinds, UserNotification,
+    UserNotificationChangedEventArgs, UserNotificationChangedKind,
+};
 
 /// What the listener tells the UI thread.
 #[derive(Debug)]
@@ -48,8 +55,12 @@ impl Listener {
     /// None, with the reason sent, when this copy can't listen at all.
     pub fn start(sink: EventSink, ask: bool) -> Option<Self> {
         if !crate::autostart::packaged() {
-            crate::pinfo!("notifications: no package identity, so Windows won't let this copy listen");
-            sink.send(AppEvent::Notify(NotifyEvent::Access(NotifyAccess::NoPackage)));
+            crate::pinfo!(
+                "notifications: no package identity, so Windows won't let this copy listen"
+            );
+            sink.send(AppEvent::Notify(NotifyEvent::Access(
+                NotifyAccess::NoPackage,
+            )));
             return None;
         }
         let listener = match UserNotificationListener::Current() {
@@ -60,7 +71,11 @@ impl Listener {
                 return None;
             }
         };
-        let mut me = Self { listener, token: None, sink };
+        let mut me = Self {
+            listener,
+            token: None,
+            sink,
+        };
         match me.access() {
             NotifyAccess::Ask if ask => me.ask(),
             a => me.tell(a),
@@ -90,7 +105,8 @@ impl Listener {
                 return;
             }
         };
-        self.sink.send(AppEvent::Notify(NotifyEvent::Access(NotifyAccess::Asking)));
+        self.sink
+            .send(AppEvent::Notify(NotifyEvent::Access(NotifyAccess::Asking)));
         let sink = self.sink.clone();
         let done = op.SetCompleted(&AsyncOperationCompletedHandler::new(move |op, status| {
             let access = match (status, op.map(|o| o.GetResults())) {
@@ -116,7 +132,8 @@ impl Listener {
 
     /// Pass what Windows allows to the UI thread, which hands it to `follow`.
     fn tell(&self, access: NotifyAccess) {
-        self.sink.send(AppEvent::Notify(NotifyEvent::Access(access)));
+        self.sink
+            .send(AppEvent::Notify(NotifyEvent::Access(access)));
     }
 
     /// Do what Windows allows (the app calls it for each `NotifyEvent::Access`):
@@ -137,18 +154,26 @@ impl Listener {
             return;
         }
         let sink = self.sink.clone();
-        let handler = TypedEventHandler::<UserNotificationListener, UserNotificationChangedEventArgs>::new(move |sender, args| {
-            let (Some(listener), Some(args)) = (sender.as_ref(), args.as_ref()) else { return Ok(()) };
-            if args.ChangeKind()? != UserNotificationChangedKind::Added {
-                return Ok(());
-            }
-            // One that can't be read (gone already, no words) is skipped.
-            match listener.GetNotification(args.UserNotificationId()?).and_then(|n| read(&n)) {
-                Ok(seen) => sink.send(AppEvent::Notify(NotifyEvent::Seen(seen))),
-                Err(e) => crate::pinfo!("notifications: one skipped: {e}"),
-            }
-            Ok(())
-        });
+        let handler =
+            TypedEventHandler::<UserNotificationListener, UserNotificationChangedEventArgs>::new(
+                move |sender, args| {
+                    let (Some(listener), Some(args)) = (sender.as_ref(), args.as_ref()) else {
+                        return Ok(());
+                    };
+                    if args.ChangeKind()? != UserNotificationChangedKind::Added {
+                        return Ok(());
+                    }
+                    // One that can't be read (gone already, no words) is skipped.
+                    match listener
+                        .GetNotification(args.UserNotificationId()?)
+                        .and_then(|n| read(&n))
+                    {
+                        Ok(seen) => sink.send(AppEvent::Notify(NotifyEvent::Seen(seen))),
+                        Err(e) => crate::pinfo!("notifications: one skipped: {e}"),
+                    }
+                    Ok(())
+                },
+            );
         match self.listener.NotificationChanged(&handler) {
             Ok(token) => {
                 crate::pinfo!("notifications: listening");
@@ -161,24 +186,29 @@ impl Listener {
             }
         }
         let (listener, sink) = (self.listener.clone(), self.sink.clone());
-        let spawned = std::thread::Builder::new().name("poni-notify-apps".into()).spawn(move || {
-            // `.get()` waits, so it runs here, never on the UI thread.
-            let apps = listener.GetNotificationsAsync(NotificationKinds::Toast).and_then(|op| op.get()).and_then(|list| {
-                let mut apps: Vec<(String, String)> = Vec::new();
-                for i in 0..list.Size()? {
-                    if let Ok((id, name)) = list.GetAt(i).and_then(|n| app_of(&n)) {
-                        if !apps.iter().any(|a| a.0 == id) {
-                            apps.push((id, name));
+        let spawned = std::thread::Builder::new()
+            .name("poni-notify-apps".into())
+            .spawn(move || {
+                // `.get()` waits, so it runs here, never on the UI thread.
+                let apps = listener
+                    .GetNotificationsAsync(NotificationKinds::Toast)
+                    .and_then(|op| op.get())
+                    .and_then(|list| {
+                        let mut apps: Vec<(String, String)> = Vec::new();
+                        for i in 0..list.Size()? {
+                            if let Ok((id, name)) = list.GetAt(i).and_then(|n| app_of(&n)) {
+                                if !apps.iter().any(|a| a.0 == id) {
+                                    apps.push((id, name));
+                                }
+                            }
                         }
-                    }
+                        Ok(apps)
+                    });
+                match apps {
+                    Ok(apps) => sink.send(AppEvent::Notify(NotifyEvent::Apps(apps))),
+                    Err(e) => crate::pinfo!("notifications: Windows' list unreadable: {e}"),
                 }
-                Ok(apps)
             });
-            match apps {
-                Ok(apps) => sink.send(AppEvent::Notify(NotifyEvent::Apps(apps))),
-                Err(e) => crate::pinfo!("notifications: Windows' list unreadable: {e}"),
-            }
-        });
         if let Err(e) = spawned {
             crate::pwarn!("notifications: no thread to list the apps on: {e}");
         }
@@ -216,14 +246,21 @@ fn access_of(s: UserNotificationListenerAccessStatus, asked: bool) -> NotifyAcce
 fn app_of(n: &UserNotification) -> Result<(String, String)> {
     let info = n.AppInfo()?;
     let id = info.AppUserModelId()?.to_string();
-    let name = info.DisplayInfo().and_then(|d| d.DisplayName()).map(|h| h.to_string()).unwrap_or_default();
+    let name = info
+        .DisplayInfo()
+        .and_then(|d| d.DisplayName())
+        .map(|h| h.to_string())
+        .unwrap_or_default();
     Ok((id, name))
 }
 
 /// A notification's app and its lines of text (a toast's text elements).
 fn read(n: &UserNotification) -> Result<Seen> {
     let (app_id, app) = app_of(n)?;
-    let binding = n.Notification()?.Visual()?.GetBinding(&KnownNotificationBindings::ToastGeneric()?)?;
+    let binding = n
+        .Notification()?
+        .Visual()?
+        .GetBinding(&KnownNotificationBindings::ToastGeneric()?)?;
     let texts = binding.GetTextElements()?;
     let mut lines = Vec::new();
     for i in 0..texts.Size()? {
@@ -240,6 +277,11 @@ pub fn describe() -> std::result::Result<String, String> {
     if !crate::autostart::packaged() {
         return Ok("installer build: no package identity, so it offers no Notifications".into());
     }
-    let status = UserNotificationListener::Current().and_then(|l| l.GetAccessStatus()).map_err(|e| format!("packaged: listener unavailable: {e}"))?;
-    Ok(format!("packaged: Windows says {:?}", access_of(status, false)))
+    let status = UserNotificationListener::Current()
+        .and_then(|l| l.GetAccessStatus())
+        .map_err(|e| format!("packaged: listener unavailable: {e}"))?;
+    Ok(format!(
+        "packaged: Windows says {:?}",
+        access_of(status, false)
+    ))
 }

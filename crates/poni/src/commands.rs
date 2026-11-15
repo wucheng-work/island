@@ -120,11 +120,20 @@ pub enum Command {
     #[cfg(any(windows, target_os = "macos"))]
     CodexBack,
     #[cfg(any(windows, target_os = "macos"))]
-    CodexSelect { id: String, compact: bool },
+    CodexSelect {
+        id: String,
+        compact: bool,
+    },
     #[cfg(any(windows, target_os = "macos"))]
-    CodexHistory { thread_id: String, older: bool },
+    CodexHistory {
+        thread_id: String,
+        older: bool,
+    },
     #[cfg(any(windows, target_os = "macos"))]
-    CodexSend { thread_id: String, text: String },
+    CodexSend {
+        thread_id: String,
+        text: String,
+    },
     #[cfg(any(windows, target_os = "macos"))]
     CodexConfirm(String),
     #[cfg(any(windows, target_os = "macos"))]
@@ -177,7 +186,10 @@ pub enum Command {
         search_id: u64,
     },
     /// 选择城市后保存到本机，并取消此前尚未完成的定位或天气请求。
-    SetWeatherCity { city: String, coordinates: (f64, f64) },
+    SetWeatherCity {
+        city: String,
+        coordinates: (f64, f64),
+    },
     /// 仅用户点击“定位”时申请系统权限并获取一次位置。
     LocateWeather,
     /// 用户手动重试已保存城市的天气，不请求系统定位。

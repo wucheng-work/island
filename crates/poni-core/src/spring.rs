@@ -13,7 +13,13 @@ pub struct Spring {
 
 impl Spring {
     pub fn new(value: f32, stiffness: f32, damping: f32) -> Self {
-        Self { value, velocity: 0.0, target: value, stiffness, damping }
+        Self {
+            value,
+            velocity: 0.0,
+            target: value,
+            stiffness,
+            damping,
+        }
     }
 
     /// A slightly under-damped spring (small overshoot), good for the island outline.
