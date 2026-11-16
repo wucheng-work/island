@@ -29,7 +29,12 @@ impl LocalDateTime {
     /// The same wall-clock day shifted by `delta` days.
     pub fn add_days(&self, delta: i64) -> LocalDateTime {
         let (y, m, d) = civil_from_days(days_from_civil(self.year, self.month, self.day) + delta);
-        LocalDateTime { year: y, month: m, day: d, ..*self }
+        LocalDateTime {
+            year: y,
+            month: m,
+            day: d,
+            ..*self
+        }
     }
 }
 
@@ -59,7 +64,11 @@ pub fn civil_from_days(z: i64) -> (i32, u8, u8) {
 
 /// 0 = Sunday.
 pub fn weekday_from_days(z: i64) -> u8 {
-    (if z >= -4 { (z + 4) % 7 } else { (z + 5) % 7 + 6 }) as u8
+    (if z >= -4 {
+        (z + 4) % 7
+    } else {
+        (z + 5) % 7 + 6
+    }) as u8
 }
 
 pub fn days_in_month(year: i32, month: u8) -> u8 {
@@ -77,7 +86,9 @@ pub fn days_in_month(year: i32, month: u8) -> u8 {
 }
 
 pub const WEEKDAY_SHORT: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-pub const MONTH_SHORT: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+pub const MONTH_SHORT: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
 /// "Sat 24 Oct"
 pub fn fmt_date_short(t: &LocalDateTime) -> String {
@@ -98,7 +109,12 @@ pub fn fmt_clock(t: &LocalDateTime, use_24h: bool) -> String {
             0 => 12,
             h => h,
         };
-        format!("{}:{:02} {}", h, t.minute, if t.hour < 12 { "AM" } else { "PM" })
+        format!(
+            "{}:{:02} {}",
+            h,
+            t.minute,
+            if t.hour < 12 { "AM" } else { "PM" }
+        )
     }
 }
 
@@ -148,7 +164,12 @@ mod tests {
     #[test]
     fn known_weekday() {
         // 24 Oct 2026 is a Saturday.
-        let t = LocalDateTime { year: 2026, month: 10, day: 24, ..Default::default() };
+        let t = LocalDateTime {
+            year: 2026,
+            month: 10,
+            day: 24,
+            ..Default::default()
+        };
         assert_eq!(t.weekday(), 6);
         assert_eq!(fmt_date_short(&t), "Sat 24 Oct");
         // 1 Jan 1970 was a Thursday.
@@ -157,7 +178,12 @@ mod tests {
 
     #[test]
     fn add_days_crosses_months_and_leap_years() {
-        let t = LocalDateTime { year: 2028, month: 2, day: 28, ..Default::default() };
+        let t = LocalDateTime {
+            year: 2028,
+            month: 2,
+            day: 28,
+            ..Default::default()
+        };
         assert_eq!(t.add_days(1).day_key(), "2028-02-29");
         assert_eq!(t.add_days(2).day_key(), "2028-03-01");
         assert_eq!(t.add_days(-59).day_key(), "2027-12-31");
@@ -165,7 +191,14 @@ mod tests {
 
     #[test]
     fn formats() {
-        let t = LocalDateTime { year: 2026, month: 10, day: 24, hour: 19, minute: 5, second: 0 };
+        let t = LocalDateTime {
+            year: 2026,
+            month: 10,
+            day: 24,
+            hour: 19,
+            minute: 5,
+            second: 0,
+        };
         assert_eq!(fmt_clock(&t, true), "19:05");
         assert_eq!(fmt_clock(&t, false), "7:05 PM");
         assert_eq!(fmt_duration(187.9), "3:07");

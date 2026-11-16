@@ -14,7 +14,10 @@ fn home_override() -> Option<PathBuf> {
 }
 
 fn library() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(".")).join("Library")
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("Library")
 }
 
 pub fn data_dir() -> PathBuf {
@@ -22,7 +25,9 @@ pub fn data_dir() -> PathBuf {
 }
 
 pub fn cache_dir() -> PathBuf {
-    home_override().map(|h| h.join("cache")).unwrap_or_else(|| library().join("Caches").join("Poni"))
+    home_override()
+        .map(|h| h.join("cache"))
+        .unwrap_or_else(|| library().join("Caches").join("Poni"))
 }
 
 pub fn settings_path() -> PathBuf {
@@ -34,7 +39,9 @@ pub fn store_path() -> PathBuf {
 }
 
 pub fn log_path() -> PathBuf {
-    home_override().map(|h| h.join("poni.log")).unwrap_or_else(|| library().join("Logs").join("Poni").join("poni.log"))
+    home_override()
+        .map(|h| h.join("poni.log"))
+        .unwrap_or_else(|| library().join("Logs").join("Poni").join("poni.log"))
 }
 
 /// Held while Poni runs, so a second copy quits at start.

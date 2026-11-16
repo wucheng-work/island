@@ -45,7 +45,9 @@ impl Adapter {
     pub fn find() -> Option<Adapter> {
         let exe = std::env::current_exe().ok()?;
         let contents = exe.parent()?.parent()?;
-        let bundled = contents.join("Frameworks").join(format!("{NAME}.framework"));
+        let bundled = contents
+            .join("Frameworks")
+            .join(format!("{NAME}.framework"));
         let script = contents.join("Resources").join(SCRIPT);
         if !bundled.join(NAME).is_file() || !script.is_file() || !Path::new(PERL).is_file() {
             return None;
@@ -54,7 +56,10 @@ impl Adapter {
         let framework = dir.join(format!("{NAME}.framework"));
         let copy = dir.join(SCRIPT);
         match copy_framework(&bundled, &framework).and_then(|_| write_if_changed(&script, &copy)) {
-            Ok(()) => Some(Adapter { script: copy, framework }),
+            Ok(()) => Some(Adapter {
+                script: copy,
+                framework,
+            }),
             Err(e) => {
                 pwarn!("media: could not ready macOS's now playing reader ({e})");
                 None
@@ -64,36 +69,61 @@ impl Adapter {
 
     fn command(&self) -> Command {
         let mut c = Command::new(PERL);
-        c.arg(&self.script).arg(&self.framework).stdin(Stdio::null());
+        c.arg(&self.script)
+            .arg(&self.framework)
+            .stdin(Stdio::null());
         c
     }
 
     /// Start `stream`: each line it prints goes to `line` (on a thread of
     /// its own), then `ended` once it stops, with what it said on its error
     /// output. The caller stops it by killing the child.
-    pub fn stream(&self, line: impl Fn(String) + Send + 'static, ended: impl FnOnce(String) + Send + 'static) -> io::Result<Child> {
+    pub fn stream(
+        &self,
+        line: impl Fn(String) + Send + 'static,
+        ended: impl FnOnce(String) + Send + 'static,
+    ) -> io::Result<Child> {
         // Microseconds with an epoch timestamp, and a tenth of a second to
         // gather a player's burst of changes (a new track's title, artist and
         // art) into one line.
-        let mut child = self.command().args(["stream", "--micros", "--debounce=100"]).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
-        let out = child.stdout.take().ok_or_else(|| io::Error::other("no output"))?;
-        let err = child.stderr.take().ok_or_else(|| io::Error::other("no error output"))?;
-        let errors = std::thread::Builder::new().name("poni-nowplaying-err".into()).spawn(move || {
-            let mut last = String::new();
-            for (i, l) in BufReader::new(err).lines().map_while(Result::ok).enumerate() {
-                if i < ERR_LINES {
-                    pinfo!("media: now playing reader: {l}");
+        let mut child = self
+            .command()
+            .args(["stream", "--micros", "--debounce=100"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        let out = child
+            .stdout
+            .take()
+            .ok_or_else(|| io::Error::other("no output"))?;
+        let err = child
+            .stderr
+            .take()
+            .ok_or_else(|| io::Error::other("no error output"))?;
+        let errors = std::thread::Builder::new()
+            .name("poni-nowplaying-err".into())
+            .spawn(move || {
+                let mut last = String::new();
+                for (i, l) in BufReader::new(err)
+                    .lines()
+                    .map_while(Result::ok)
+                    .enumerate()
+                {
+                    if i < ERR_LINES {
+                        pinfo!("media: now playing reader: {l}");
+                    }
+                    last = l;
                 }
-                last = l;
-            }
-            last
-        })?;
-        std::thread::Builder::new().name("poni-nowplaying".into()).spawn(move || {
-            for l in BufReader::new(out).lines().map_while(Result::ok) {
-                line(l);
-            }
-            ended(errors.join().unwrap_or_default());
-        })?;
+                last
+            })?;
+        std::thread::Builder::new()
+            .name("poni-nowplaying".into())
+            .spawn(move || {
+                for l in BufReader::new(out).lines().map_while(Result::ok) {
+                    line(l);
+                }
+                ended(errors.join().unwrap_or_default());
+            })?;
         Ok(child)
     }
 
@@ -108,7 +138,13 @@ impl Adapter {
     }
 
     fn run(&self, args: &[&str]) -> Result<(), String> {
-        let mut child = self.command().args(args).stdout(Stdio::null()).stderr(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
+        let mut child = self
+            .command()
+            .args(args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| e.to_string())?;
         let started = Instant::now();
         loop {
             match child.try_wait() {
@@ -171,7 +207,9 @@ fn same_tree(a: &Path, b: &Path) -> bool {
     };
     let (ka, kb) = (ma.file_type(), mb.file_type());
     if ka.is_symlink() || kb.is_symlink() {
-        return ka.is_symlink() && kb.is_symlink() && std::fs::read_link(a).ok() == std::fs::read_link(b).ok();
+        return ka.is_symlink()
+            && kb.is_symlink()
+            && std::fs::read_link(a).ok() == std::fs::read_link(b).ok();
     }
     if ka.is_dir() != kb.is_dir() {
         return false;
@@ -180,7 +218,11 @@ fn same_tree(a: &Path, b: &Path) -> bool {
         return ma.len() == mb.len() && std::fs::read(a).ok() == std::fs::read(b).ok();
     }
     let names = |p: &Path| -> Option<Vec<std::ffi::OsString>> {
-        let mut v = std::fs::read_dir(p).ok()?.map(|e| e.map(|e| e.file_name())).collect::<io::Result<Vec<_>>>().ok()?;
+        let mut v = std::fs::read_dir(p)
+            .ok()?
+            .map(|e| e.map(|e| e.file_name()))
+            .collect::<io::Result<Vec<_>>>()
+            .ok()?;
         v.sort();
         Some(v)
     };

@@ -34,7 +34,10 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{define_class, msg_send, sel, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::NSRunningApplication;
-use objc2_foundation::{NSDistributedNotificationCenter, NSNotification, NSNotificationSuspensionBehavior, NSNumber, NSObject, NSObjectProtocol, NSString};
+use objc2_foundation::{
+    NSDistributedNotificationCenter, NSNotification, NSNotificationSuspensionBehavior, NSNumber,
+    NSObject, NSObjectProtocol, NSString,
+};
 use poni_core::mediaremote;
 use poni_core::nowplaying::netease_song_id;
 use poni_core::timeline::Timeline;
@@ -100,7 +103,11 @@ impl Player {
     }
 
     fn running(self) -> bool {
-        NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(self.bundle_id())).count() > 0
+        NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(
+            self.bundle_id(),
+        ))
+        .count()
+            > 0
     }
 }
 
@@ -173,19 +180,38 @@ impl MediaService {
         if let Ok(mut g) = TX.lock() {
             *g = Some(tx.clone());
         }
-        let observer: Retained<NowPlayingObserver> = unsafe { msg_send![NowPlayingObserver::alloc(mtm), init] };
+        let observer: Retained<NowPlayingObserver> =
+            unsafe { msg_send![NowPlayingObserver::alloc(mtm), init] };
         let center = NSDistributedNotificationCenter::defaultCenter();
-        for (name, sel) in [("com.apple.Music.playerInfo", sel!(musicChanged:)), ("com.spotify.client.PlaybackStateChanged", sel!(spotifyChanged:))] {
+        for (name, sel) in [
+            ("com.apple.Music.playerInfo", sel!(musicChanged:)),
+            (
+                "com.spotify.client.PlaybackStateChanged",
+                sel!(spotifyChanged:),
+            ),
+        ] {
             let obs: &AnyObject = observer.as_ref();
             unsafe {
-                center.addObserver_selector_name_object_suspensionBehavior(obs, sel, Some(&NSString::from_str(name)), None, NSNotificationSuspensionBehavior::DeliverImmediately)
+                center.addObserver_selector_name_object_suspensionBehavior(
+                    obs,
+                    sel,
+                    Some(&NSString::from_str(name)),
+                    None,
+                    NSNotificationSuspensionBehavior::DeliverImmediately,
+                )
             };
         }
         let own = tx.clone();
-        if let Err(e) = std::thread::Builder::new().name("poni-media".into()).spawn(move || Worker::new(sink, own).run(rx)) {
+        if let Err(e) = std::thread::Builder::new()
+            .name("poni-media".into())
+            .spawn(move || Worker::new(sink, own).run(rx))
+        {
             pwarn!("media: could not start its thread ({e})");
         }
-        MediaService { tx, _observer: observer }
+        MediaService {
+            tx,
+            _observer: observer,
+        }
     }
 
     pub fn command(&self, c: MediaCmd) {
@@ -249,19 +275,36 @@ define_class!(
 fn forward(player: Player, n: &NSNotification) {
     let Some(info) = n.userInfo() else { return };
     let text = |k: &str| {
-        info.objectForKey(NSString::from_str(k).as_ref() as &AnyObject).and_then(|v| v.downcast::<NSString>().ok()).map(|s| s.to_string()).unwrap_or_default()
+        info.objectForKey(NSString::from_str(k).as_ref() as &AnyObject)
+            .and_then(|v| v.downcast::<NSString>().ok())
+            .map(|s| s.to_string())
+            .unwrap_or_default()
     };
-    let num = |k: &str| info.objectForKey(NSString::from_str(k).as_ref() as &AnyObject).and_then(|v| v.downcast::<NSNumber>().ok()).map(|n| n.doubleValue());
+    let num = |k: &str| {
+        info.objectForKey(NSString::from_str(k).as_ref() as &AnyObject)
+            .and_then(|v| v.downcast::<NSNumber>().ok())
+            .map(|n| n.doubleValue())
+    };
     let state = State::parse(&text("Player State"));
     let title = text("Name");
     let track = (!title.is_empty()).then(|| {
         // Music says "Total Time", Spotify "Duration"; both in milliseconds.
         let ms = num("Total Time").or_else(|| num("Duration")).unwrap_or(0.0);
-        Track { title, artist: text("Artist"), album: text("Album"), duration_s: (ms / 1000.0).max(0.0) }
+        Track {
+            title,
+            artist: text("Artist"),
+            album: text("Album"),
+            duration_s: (ms / 1000.0).max(0.0),
+        }
     });
     // Spotify says where it is ("Playback Position", seconds); Music doesn't.
     let position_s = num("Playback Position");
-    let msg = Msg::Notified(Notified { player, state, track, position_s });
+    let msg = Msg::Notified(Notified {
+        player,
+        state,
+        track,
+        position_s,
+    });
     if let Some(tx) = TX.lock().ok().and_then(|g| g.clone()) {
         let _ = tx.send(msg);
     }
@@ -280,7 +323,12 @@ struct PlayerNow {
 
 impl Default for PlayerNow {
     fn default() -> Self {
-        PlayerNow { state: State::Stopped, track: None, timeline: Timeline::new(0.0, 0.0, 0.0, false), changed: Instant::now() }
+        PlayerNow {
+            state: State::Stopped,
+            track: None,
+            timeline: Timeline::new(0.0, 0.0, 0.0, false),
+            changed: Instant::now(),
+        }
     }
 }
 
@@ -357,7 +405,9 @@ impl Worker {
     fn run(mut self, rx: Receiver<Msg>) {
         self.adapter = Adapter::find();
         if self.adapter.is_none() {
-            pinfo!("media: this build has no reader for macOS's now playing; Music and Spotify only");
+            pinfo!(
+                "media: this build has no reader for macOS's now playing; Music and Spotify only"
+            );
         }
         // Whatever already plays when Poni starts: the service names it (a
         // paused track too); Music and Spotify are asked themselves where
@@ -393,10 +443,20 @@ impl Worker {
     /// had its moment, the stream's rest, the shown player's resync.
     fn next_wake(&self) -> Duration {
         let resync = match self.current {
-            Some(Source::Player(p)) if !self.service_works && self.players[p.index()].state == State::Playing => Some(self.read_at + RESYNC),
+            Some(Source::Player(p))
+                if !self.service_works && self.players[p.index()].state == State::Playing =>
+            {
+                Some(self.read_at + RESYNC)
+            }
             _ => None,
         };
-        [self.read_players_at, self.rest_at(), resync].into_iter().flatten().min().map_or(Duration::from_secs(3600), |t| t.saturating_duration_since(Instant::now()))
+        [self.read_players_at, self.rest_at(), resync]
+            .into_iter()
+            .flatten()
+            .min()
+            .map_or(Duration::from_secs(3600), |t| {
+                t.saturating_duration_since(Instant::now())
+            })
     }
 
     fn on_wake(&mut self) {
@@ -404,7 +464,10 @@ impl Worker {
         if self.read_players_at.is_some_and(|t| now >= t) {
             self.read_players_at = None;
             if !self.service_works {
-                if self.stream.is_some() && !self.service_silent && self.players.iter().any(|p| p.state == State::Playing) {
+                if self.stream.is_some()
+                    && !self.service_silent
+                    && self.players.iter().any(|p| p.state == State::Playing)
+                {
                     self.service_silent = true;
                     pinfo!("media: macOS's now playing names nothing while Music or Spotify plays; asking them directly");
                 }
@@ -426,7 +489,10 @@ impl Worker {
     fn on_notified(&mut self, n: Notified) {
         let now = crate::clock::mono();
         let i = n.player.index();
-        let new_track = n.track.as_ref().is_some_and(|t| self.players[i].track.as_ref() != Some(t));
+        let new_track = n
+            .track
+            .as_ref()
+            .is_some_and(|t| self.players[i].track.as_ref() != Some(t));
         let p = &mut self.players[i];
         if let Some(t) = n.track {
             p.track = Some(t);
@@ -449,9 +515,14 @@ impl Worker {
             self.listen();
         }
         // Music's notification has no position: ask for the exact one.
-        if n.player == Player::Music && n.state != State::Stopped && n.position_s.is_none() && !self.service_works {
+        if n.player == Player::Music
+            && n.state != State::Stopped
+            && n.position_s.is_none()
+            && !self.service_works
+        {
             if self.may_hear_service() {
-                self.read_players_at.get_or_insert_with(|| Instant::now() + FIRST_WORD);
+                self.read_players_at
+                    .get_or_insert_with(|| Instant::now() + FIRST_WORD);
             } else {
                 self.read(Player::Music);
             }
@@ -493,7 +564,10 @@ impl Worker {
             MediaCmd::Seek(s) => format!("set player position to {}", s.max(0.0)),
             MediaCmd::Prepare => return,
         };
-        if let Err(e) = self.script(p, &format!("tell application id \"{}\" to {verb}", p.bundle_id())) {
+        if let Err(e) = self.script(
+            p,
+            &format!("tell application id \"{}\" to {verb}", p.bundle_id()),
+        ) {
             pwarn!("media: {} didn't take {c:?} ({e})", p.name());
             return;
         }
@@ -519,17 +593,29 @@ impl Worker {
                 } else if !previous.content_id.is_empty() && !current.content_id.is_empty() {
                     previous.content_id == current.content_id
                 } else {
-                    previous.title == current.title && previous.artist == current.artist && previous.album == current.album
+                    previous.title == current.title
+                        && previous.artist == current.artist
+                        && previous.album == current.album
                 };
-                if previous.app_id == current.app_id && same_item
-                    && previous.elapsed_s == current.elapsed_s && previous.at_unix_s == current.at_unix_s
+                if previous.app_id == current.app_id
+                    && same_item
+                    && previous.elapsed_s == current.elapsed_s
+                    && previous.at_unix_s == current.at_unix_s
                 {
                     // 封面和元数据更新没有新的位置采样，不能将旧进度重新锚定到当前时刻。
-                    if previous.playing == current.playing && previous.rate == current.rate && previous.duration_s == current.duration_s {
+                    if previous.playing == current.playing
+                        && previous.rate == current.rate
+                        && previous.duration_s == current.duration_s
+                    {
                         return timeline;
                     }
                     let now = crate::clock::mono();
-                    let mut next = Timeline::new(timeline.position_at(now), current.duration_s, now, current.playing);
+                    let mut next = Timeline::new(
+                        timeline.position_at(now),
+                        current.duration_s,
+                        now,
+                        current.playing,
+                    );
                     next.rate = current.rate;
                     return next;
                 }
@@ -539,8 +625,14 @@ impl Worker {
         if let (false, Some(p)) = (self.service_works, playing) {
             self.service_works = true;
             self.read_players_at = None;
-            let who = if p.app_id.is_empty() { "a player" } else { p.app_id.as_str() };
-            pinfo!("media: macOS's now playing answers ({who}); it speaks for Music and Spotify too");
+            let who = if p.app_id.is_empty() {
+                "a player"
+            } else {
+                p.app_id.as_str()
+            };
+            pinfo!(
+                "media: macOS's now playing answers ({who}); it speaks for Music and Spotify too"
+            );
         }
     }
 
@@ -550,7 +642,9 @@ impl Worker {
         if self.stream.as_ref().map(|s| s.0) != Some(id) {
             return;
         }
-        let Some((_, mut child, started)) = self.stream.take() else { return };
+        let Some((_, mut child, started)) = self.stream.take() else {
+            return;
+        };
         let status = child.wait().map(|s| s.to_string()).unwrap_or_default();
         let ran = started.elapsed();
         self.said.clear();
@@ -558,8 +652,15 @@ impl Worker {
         if ran < FAILED_START {
             self.fails += 1;
         }
-        let why = if why.is_empty() { String::new() } else { format!(": {why}") };
-        pwarn!("media: macOS's now playing reader stopped after {:.0} s ({status}{why})", ran.as_secs_f64());
+        let why = if why.is_empty() {
+            String::new()
+        } else {
+            format!(": {why}")
+        };
+        pwarn!(
+            "media: macOS's now playing reader stopped after {:.0} s ({status}{why})",
+            ran.as_secs_f64()
+        );
         if self.fails >= MAX_FAILS {
             pwarn!("media: not asking macOS's now playing again this run; Music and Spotify only");
             self.service_works = false;
@@ -599,7 +700,9 @@ impl Worker {
                 self.stream = Some((id, child, Instant::now()));
             }
             Err(e) => {
-                pwarn!("media: macOS's now playing reader didn't start ({e}); Music and Spotify only");
+                pwarn!(
+                    "media: macOS's now playing reader didn't start ({e}); Music and Spotify only"
+                );
                 self.adapter = None;
             }
         }
@@ -631,7 +734,11 @@ impl Worker {
     /// the adapter, it hasn't kept failing or stayed silent while Music or
     /// Spotify played, and its stream runs or sound is about to start it.
     fn may_hear_service(&self) -> bool {
-        !self.service_works && !self.service_silent && self.adapter.is_some() && self.fails < MAX_FAILS && (self.stream.is_some() || self.sound)
+        !self.service_works
+            && !self.service_silent
+            && self.adapter.is_some()
+            && self.fails < MAX_FAILS
+            && (self.stream.is_some() || self.sound)
     }
 
     fn read_players(&mut self) {
@@ -655,7 +762,9 @@ impl Worker {
              end tell",
             id = p.bundle_id()
         );
-        let Ok(out) = self.script(p, &script) else { return };
+        let Ok(out) = self.script(p, &script) else {
+            return;
+        };
         let now = crate::clock::mono();
         let f: Vec<&str> = out.trim_end_matches('\n').split(SEP).collect();
         let pl = &mut self.players[p.index()];
@@ -671,8 +780,18 @@ impl Worker {
         if p == Player::Spotify {
             duration /= 1000.0;
         }
-        pl.track = Some(Track { title: f[1].to_string(), artist: f[2].to_string(), album: f[3].to_string(), duration_s: duration.max(0.0) });
-        pl.timeline = Timeline::new(number(f[5]).max(0.0), duration.max(0.0), now, pl.state == State::Playing);
+        pl.track = Some(Track {
+            title: f[1].to_string(),
+            artist: f[2].to_string(),
+            album: f[3].to_string(),
+            duration_s: duration.max(0.0),
+        });
+        pl.timeline = Timeline::new(
+            number(f[5]).max(0.0),
+            duration.max(0.0),
+            now,
+            pl.state == State::Playing,
+        );
     }
 
     /// Run an AppleScript for `p` (only while it runs, never starting it).
@@ -701,12 +820,17 @@ impl Worker {
         if self.service_works {
             return self.said.playing().map(|_| Source::Service);
         }
-        let playing = Player::ALL.into_iter().filter(|p| self.players[p.index()].state == State::Playing && self.players[p.index()].track.is_some());
+        let playing = Player::ALL.into_iter().filter(|p| {
+            self.players[p.index()].state == State::Playing
+                && self.players[p.index()].track.is_some()
+        });
         if let Some(p) = playing.max_by_key(|p| self.players[p.index()].changed) {
             return Some(Source::Player(p));
         }
         match self.current {
-            Some(Source::Player(p)) if self.players[p.index()].track.is_some() => Some(Source::Player(p)),
+            Some(Source::Player(p)) if self.players[p.index()].track.is_some() => {
+                Some(Source::Player(p))
+            }
             _ => None,
         }
     }
@@ -723,7 +847,11 @@ impl Worker {
             Source::Player(pl) => {
                 let now = &self.players[pl.index()];
                 let t = now.track.as_ref()?;
-                Some((MediaSession::make_track_key(&t.title, &t.artist, &t.album), pl.bundle_id().to_string(), now.timeline))
+                Some((
+                    MediaSession::make_track_key(&t.title, &t.artist, &t.album),
+                    pl.bundle_id().to_string(),
+                    now.timeline,
+                ))
             }
         }
     }
@@ -738,7 +866,14 @@ impl Worker {
             }
             Source::Player(pl) => {
                 let t = self.players[pl.index()].track.clone()?;
-                (pl.bundle_id().to_string(), pl.name().to_string(), String::new(), t.title, t.artist, t.album)
+                (
+                    pl.bundle_id().to_string(),
+                    pl.name().to_string(),
+                    String::new(),
+                    t.title,
+                    t.artist,
+                    t.album,
+                )
             }
         };
         Some(MediaSession {
@@ -762,7 +897,9 @@ impl Worker {
     /// Tell the app what changed since the last report.
     fn publish(&mut self) {
         self.current = self.pick();
-        let Some((src, (key, app_id, timeline))) = self.current.and_then(|s| Some((s, self.track(s)?))) else {
+        let Some((src, (key, app_id, timeline))) =
+            self.current.and_then(|s| Some((s, self.track(s)?)))
+        else {
             if self.sent_key.take().is_some() {
                 self.sent_app_id = None;
                 self.sent_timeline = None;
@@ -770,8 +907,12 @@ impl Worker {
             }
             return;
         };
-        if self.sent_key.as_deref() != Some(key.as_str()) || self.sent_app_id.as_deref() != Some(app_id.as_str()) {
-            let Some(session) = self.session(src, key.clone(), timeline) else { return };
+        if self.sent_key.as_deref() != Some(key.as_str())
+            || self.sent_app_id.as_deref() != Some(app_id.as_str())
+        {
+            let Some(session) = self.session(src, key.clone(), timeline) else {
+                return;
+            };
             self.sink.send(AppEvent::Media(Some(session)));
             self.sent_key = Some(key.clone());
             self.sent_app_id = Some(app_id);
@@ -781,7 +922,8 @@ impl Worker {
                 // While the service may still name it, the art waits for it
                 // too: it comes with the service's track, or at the read.
                 Source::Player(_) if self.may_hear_service() && !self.art_due => {
-                    self.read_players_at.get_or_insert_with(|| Instant::now() + FIRST_WORD);
+                    self.read_players_at
+                        .get_or_insert_with(|| Instant::now() + FIRST_WORD);
                     None
                 }
                 Source::Player(p) => {
@@ -789,11 +931,17 @@ impl Worker {
                     self.art(p)
                 }
             };
-            self.sink.send(AppEvent::MediaArt { track_key: key, art });
+            self.sink.send(AppEvent::MediaArt {
+                track_key: key,
+                art,
+            });
             return;
         }
         if self.sent_timeline != Some(timeline) {
-            self.sink.send(AppEvent::MediaTimeline { track_key: key.clone(), timeline });
+            self.sink.send(AppEvent::MediaTimeline {
+                track_key: key.clone(),
+                timeline,
+            });
             self.sent_timeline = Some(timeline);
         }
         // The service's artwork often comes a moment after its track; a
@@ -807,7 +955,10 @@ impl Worker {
             _ => None,
         };
         if let Some(art) = art {
-            self.sink.send(AppEvent::MediaArt { track_key: key, art });
+            self.sink.send(AppEvent::MediaArt {
+                track_key: key,
+                art,
+            });
         }
     }
 
@@ -827,7 +978,14 @@ impl Worker {
                 hex_data(&out)?
             }
             Player::Spotify => {
-                let url = self.script(p, &format!("tell application id \"{id}\" to get artwork url of current track")).ok()?;
+                let url = self
+                    .script(
+                        p,
+                        &format!(
+                            "tell application id \"{id}\" to get artwork url of current track"
+                        ),
+                    )
+                    .ok()?;
                 super::http::get_bytes(url.trim(), USER_AGENT, Duration::from_secs(6)).ok()?
             }
         };
@@ -853,9 +1011,16 @@ fn service_track_key(p: &mediaremote::Playing) -> String {
 /// The service's track on the app's clock: where the player said it was,
 /// when it said so.
 fn service_timeline(p: &mediaremote::Playing) -> Timeline {
-    let unix = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
+    let unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64());
     let ago = p.at_unix_s.map_or(0.0, |at| (unix - at).max(0.0));
-    let mut t = Timeline::new(p.elapsed_s, p.duration_s, crate::clock::mono() - ago, p.playing);
+    let mut t = Timeline::new(
+        p.elapsed_s,
+        p.duration_s,
+        crate::clock::mono() - ago,
+        p.playing,
+    );
     t.rate = p.rate;
     t
 }
@@ -863,9 +1028,20 @@ fn service_timeline(p: &mediaremote::Playing) -> Timeline {
 /// What macOS calls the app with `bundle_id` (or the process `pid`):
 /// "Google Chrome", "Safari", "Spotify".
 fn app_name(bundle_id: &str, pid: Option<i64>) -> String {
-    let by_id = (!bundle_id.is_empty()).then(|| NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(bundle_id)).firstObject()).flatten();
-    let app = by_id.or_else(|| pid.and_then(|p| NSRunningApplication::runningApplicationWithProcessIdentifier(p as i32)));
-    app.and_then(|a| a.localizedName()).map(|n| n.to_string()).unwrap_or_default()
+    let by_id = (!bundle_id.is_empty())
+        .then(|| {
+            NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(
+                bundle_id,
+            ))
+            .firstObject()
+        })
+        .flatten();
+    let app = by_id.or_else(|| {
+        pid.and_then(|p| NSRunningApplication::runningApplicationWithProcessIdentifier(p as i32))
+    });
+    app.and_then(|a| a.localizedName())
+        .map(|n| n.to_string())
+        .unwrap_or_default()
 }
 
 /// A number AppleScript printed, with either decimal mark.
@@ -879,7 +1055,9 @@ fn hex_data(out: &str) -> Option<Vec<u8>> {
     let rest = &out[start..];
     let end = rest.find('»')?;
     let hex = rest[..end].get(4..)?;
-    (0..hex.len() / 2).map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).ok()).collect()
+    (0..hex.len() / 2)
+        .map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).ok())
+        .collect()
 }
 
 /// Run one AppleScript in its own `osascript` process, stopping it after

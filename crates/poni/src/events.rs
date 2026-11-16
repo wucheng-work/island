@@ -5,8 +5,8 @@
 
 use crate::gfx::Image;
 use crate::state::{MediaSession, PowerState, VolumeState, WeatherCity, WeatherSnapshot};
-use poni_core::lrc::Lyrics;
 use poni_core::agenda;
+use poni_core::lrc::Lyrics;
 use poni_core::oyenza::{Activity, Arrival, Bill, Saved};
 use poni_core::timeline::Timeline;
 use std::sync::mpsc::Sender;
@@ -69,7 +69,9 @@ pub enum AppleMusicStatus {
 
 #[derive(Clone, Debug)]
 pub enum LyricsResult {
-    Found { lyrics: Lyrics },
+    Found {
+        lyrics: Lyrics,
+    },
     /// The song is marked instrumental (no words to show).
     Instrumental,
     NotFound,
@@ -82,21 +84,34 @@ pub enum LyricsResult {
 #[derive(Clone, Debug)]
 pub enum OyenzaEvent {
     /// The sign-in saved on this PC was found at start (no notice).
-    Restored { account: String },
+    Restored {
+        account: String,
+    },
     /// A sign-in code to show, the oyenza.app address that takes it, and how long it lasts.
-    Connecting { code: String, url: String, expires_in_s: u64 },
-    Connected { account: String },
+    Connecting {
+        code: String,
+        url: String,
+        expires_in_s: u64,
+    },
+    Connected {
+        account: String,
+    },
     /// Signing in stopped without a key: `expired`, `denied`, `offline` or `other`.
     ConnectFailed(String),
     ConnectCancelled,
     /// Money that just arrived or went out by itself (oldest first).
-    Money { arrived: Vec<Arrival> },
+    Money {
+        arrived: Vec<Arrival>,
+    },
     /// The last 7 days of transactions, for the Oyenza page (while it's open).
     Activity(Activity),
     /// Asked again while the page is open: nothing changed.
     ActivityChecked,
     /// Bills due in the next 30 days, and the server's today (YYYY-MM-DD).
-    Bills { today: String, bills: Vec<Bill> },
+    Bills {
+        today: String,
+        bills: Vec<Bill>,
+    },
     /// The day for the Today page, from the apps switched on in oyenza.app (asked
     /// while the page is on screen).
     Day(agenda::Answer),
@@ -107,11 +122,16 @@ pub enum OyenzaEvent {
     DayFailed,
     NoteSaved(Vec<Saved>),
     /// The note wasn't saved; the island puts `text` back and says why (`code`).
-    NoteFailed { text: String, code: String },
+    NoteFailed {
+        text: String,
+        code: String,
+    },
     Undone,
     UndoFailed(String),
     /// Signed out: from the tray, or by the server (disconnected in oyenza.app).
-    Disconnected { by_server: bool },
+    Disconnected {
+        by_server: bool,
+    },
 }
 
 pub enum AppEvent {
@@ -122,24 +142,55 @@ pub enum AppEvent {
     /// The current media session changed (None = nothing playing / no session).
     Media(Option<MediaSession>),
     /// Only the timeline/playback state of the current track changed.
-    MediaTimeline { track_key: String, timeline: Timeline },
+    MediaTimeline {
+        track_key: String,
+        timeline: Timeline,
+    },
     /// Album art finished decoding for a track.
-    MediaArt { track_key: String, art: Option<Image> },
+    MediaArt {
+        track_key: String,
+        art: Option<Image>,
+    },
     /// Lyrics belong to both the track and the player that requested them.
-    Lyrics { track_key: String, app_id: String, generation: u64, result: LyricsResult },
+    Lyrics {
+        track_key: String,
+        app_id: String,
+        generation: u64,
+        result: LyricsResult,
+    },
     /// The outcome of checking or using the user's Apple Music token.
     AppleMusic(AppleMusicStatus),
     /// Master volume changed (0..=1).
-    Volume { state: VolumeState, switched: bool },
+    Volume {
+        state: VolumeState,
+        switched: bool,
+    },
     VolumeControlFailed,
     LyricsColor(u32),
-    WeatherLocation { request_id: u64, result: Result<(f64, f64, String), String> },
-    WeatherForecast { request_id: u64, result: Result<WeatherSnapshot, String> },
-    WeatherCityResults { search_id: u64, result: Result<Vec<WeatherCity>, String> },
+    WeatherLocation {
+        request_id: u64,
+        result: Result<(f64, f64, String), String>,
+    },
+    WeatherForecast {
+        request_id: u64,
+        result: Result<WeatherSnapshot, String>,
+    },
+    WeatherCityResults {
+        search_id: u64,
+        result: Result<Vec<WeatherCity>, String>,
+    },
     Power(PowerState),
-    Bluetooth { name: String, connected: bool, battery: Option<u8>, audio: bool },
+    Bluetooth {
+        name: String,
+        connected: bool,
+        battery: Option<u8>,
+        audio: bool,
+    },
     BluetoothDevicesStarted(u64),
-    BluetoothDevices { generation: u64, result: Result<poni_core::bluetooth::BluetoothSnapshot, String> },
+    BluetoothDevices {
+        generation: u64,
+        result: Result<poni_core::bluetooth::BluetoothSnapshot, String>,
+    },
     /// A full-screen app took over (or left) the island's monitor. `true` is
     /// sent again when another window comes to the foreground while the
     /// monitor stays full-screen, so the island can be raised back on top.
@@ -161,7 +212,10 @@ pub enum AppEvent {
     },
     /// Files are being dragged over the island (true) or left (false).
     DragHover(bool),
-    ShelfThumb { path: String, image: Option<Image> },
+    ShelfThumb {
+        path: String,
+        image: Option<Image>,
+    },
     /// The System page's latest reading and the minute behind it
     /// (`services::sysmon`, each second while the page is open).
     System(Box<poni_core::sysmon::Monitor>),

@@ -689,11 +689,12 @@ fn local_path(destination: &str) -> Option<String> {
         .unwrap_or(destination);
     // Windows的file:///C:/...带URI根斜杠，去掉后才能按盘符绝对路径识别。
     #[cfg(windows)]
-    let destination = if destination.as_bytes().get(2) == Some(&b':') && destination.starts_with('/') {
-        &destination[1..]
-    } else {
-        destination
-    };
+    let destination =
+        if destination.as_bytes().get(2) == Some(&b':') && destination.starts_with('/') {
+            &destination[1..]
+        } else {
+            destination
+        };
     if !Path::new(destination).is_absolute() || destination.contains('\0') {
         return None;
     }

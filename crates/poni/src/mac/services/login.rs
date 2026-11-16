@@ -2,9 +2,9 @@
 //! ServiceManagement (`SMAppService.mainAppService`, macOS 13+). It shows in
 //! System Settings > General > Login Items, where it can also be turned off.
 
+use objc2::msg_send;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject};
-use objc2::msg_send;
 use objc2_foundation::NSError;
 
 #[link(name = "ServiceManagement", kind = "framework")]
@@ -62,7 +62,9 @@ pub fn set_enabled(on: bool) -> Result<(), String> {
     if ok {
         return Ok(());
     }
-    let why = unsafe { err.as_ref() }.map(|e| e.localizedDescription().to_string()).unwrap_or_else(|| "未知错误".into());
+    let why = unsafe { err.as_ref() }
+        .map(|e| e.localizedDescription().to_string())
+        .unwrap_or_else(|| "未知错误".into());
     Err(why)
 }
 

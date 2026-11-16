@@ -87,7 +87,13 @@ struct SegTween {
 
 impl SegTween {
     const fn new() -> Self {
-        Self { last_draw: f64::NEG_INFINITY, target: (0.0, 0.0), from: (0.0, 0.0), shown: (0.0, 0.0), start: f64::NEG_INFINITY }
+        Self {
+            last_draw: f64::NEG_INFINITY,
+            target: (0.0, 0.0),
+            from: (0.0, 0.0),
+            shown: (0.0, 0.0),
+            start: f64::NEG_INFINITY,
+        }
     }
 }
 
@@ -116,7 +122,11 @@ fn ring_state(now: f64, target: f32, color: Color) -> (f32, Color, bool) {
     let t = ((now - a.start) / RING_TWEEN_S).clamp(0.0, 1.0) as f32;
     let (p, c, moving) = if t < 1.0 {
         let e = ease_out_cubic(t);
-        (lerp(a.from, target, e), Color::lerp(a.from_color, color, e), true)
+        (
+            lerp(a.from, target, e),
+            Color::lerp(a.from_color, color, e),
+            true,
+        )
     } else {
         (target, color, false)
     };
@@ -141,7 +151,10 @@ fn seg_state(now: f64, target: (f32, f32)) -> ((f32, f32), bool) {
     let t = ((now - s.start) / SEG_GLIDE_S).clamp(0.0, 1.0) as f32;
     let (shown, moving) = if t < 1.0 {
         let e = ease_out_cubic(t);
-        ((lerp(s.from.0, target.0, e), lerp(s.from.1, target.1, e)), true)
+        (
+            (lerp(s.from.0, target.0, e), lerp(s.from.1, target.1, e)),
+            true,
+        )
     } else {
         (target, false)
     };
@@ -176,24 +189,51 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     if tweening {
         ui.request_anim();
     }
-    let arc_color = if paused { ring_color.mul_alpha(0.55) } else { ring_color };
+    let arc_color = if paused {
+        ring_color.mul_alpha(0.55)
+    } else {
+        ring_color
+    };
     ui.c.ring(rc, RING_R, RING_W, progress, RING_TRACK, arc_color);
 
     let remaining = st.pomodoro.remaining(now);
     let countdown = fmt_countdown(remaining);
     // Over 99 minutes the countdown gets a third digit; step down so it fits
     // the ring. Both sizes keep the digits' baseline about 2 DIP below the centre.
-    let (size, digits_cy) = if countdown.len() > 5 { (24.0, rc.y - 8.0) } else { (ts::DISPLAY, rc.y - 10.0) };
-    let digits = TextStyle::new(size).weight(Weight::Semibold).tabular().center().color(if paused { palette::TEXT_DIM } else { palette::TEXT });
-    ui.c.text(&countdown, Rect::new(rc.x - 50.0, digits_cy - 20.0, 100.0, 40.0), &digits);
+    let (size, digits_cy) = if countdown.len() > 5 {
+        (24.0, rc.y - 8.0)
+    } else {
+        (ts::DISPLAY, rc.y - 10.0)
+    };
+    let digits = TextStyle::new(size)
+        .weight(Weight::Semibold)
+        .tabular()
+        .center()
+        .color(if paused {
+            palette::TEXT_DIM
+        } else {
+            palette::TEXT
+        });
+    ui.c.text(
+        &countdown,
+        Rect::new(rc.x - 50.0, digits_cy - 20.0, 100.0, 40.0),
+        &digits,
+    );
     let (label, label_color) = if paused {
         ("Paused".to_string(), ring_color)
     } else if running {
-        (format!("until {}", end_clock(st, remaining)), palette::TEXT_DIM)
+        (
+            format!("until {}", end_clock(st, remaining)),
+            palette::TEXT_DIM,
+        )
     } else {
         (phase.label().to_string(), palette::TEXT_DIM)
     };
-    ui.c.text(&label, Rect::new(rc.x - 48.0, rc.y + 6.0, 96.0, 16.0), &TextStyle::footnote().color(label_color).center());
+    ui.c.text(
+        &label,
+        Rect::new(rc.x - 48.0, rc.y + 6.0, 96.0, 16.0),
+        &TextStyle::footnote().color(label_color).center(),
+    );
 
     // ---- Controls column, centred on the ring.
     let x0 = rc.x + RING_R + RING_W / 2.0 + COLUMN_GAP;
@@ -207,7 +247,10 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
         // Switching is only possible while idle, so a running session shows
         // what it is instead of a row of dead chips.
         let minutes = (st.pomodoro.current_duration() / 60.0).round() as u32;
-        let status = format!("{} · {minutes} 分钟", crate::localization::translate(phase.label()));
+        let status = format!(
+            "{} · {minutes} 分钟",
+            crate::localization::translate(phase.label())
+        );
         let style = TextStyle::body().weight(Weight::Semibold).color(color);
         ui.c.text(&status, Rect::new(x0, chips_y, col_w, CHIP_H), &style);
     } else {
@@ -222,7 +265,10 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
         ("Start", Icon::Play)
     };
     // The primary keeps one width for all three labels; squeeze everything on narrow islands.
-    let mut toggle_w = ["Start", "Pause", "Resume"].iter().map(|l| ui.pill_width(l, true, false)).fold(TOGGLE_MIN_W, f32::max);
+    let mut toggle_w = ["Start", "Pause", "Resume"]
+        .iter()
+        .map(|l| ui.pill_width(l, true, false))
+        .fold(TOGGLE_MIN_W, f32::max);
     let mut reset_w = ui.pill_width("Reset", true, false);
     let mut skip_w = ui.pill_width("Skip", true, false);
     let need = toggle_w + reset_w + skip_w + 2.0 * PILL_GAP;
@@ -233,13 +279,31 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
         skip_w = (skip_w * k).floor();
     }
     let toggle_r = Rect::new(x0, buttons_y, toggle_w, BUTTON_H);
-    if ui.pill(wid("focus.toggle"), toggle_r, toggle_label, Some(toggle_icon), PillStyle::Primary(color)).clicked {
+    if ui
+        .pill(
+            wid("focus.toggle"),
+            toggle_r,
+            toggle_label,
+            Some(toggle_icon),
+            PillStyle::Primary(color),
+        )
+        .clicked
+    {
         st.pomodoro.toggle(now);
         st.tick(SoundSource::Focus);
     }
     let reset_r = Rect::new(toggle_r.right() + PILL_GAP, buttons_y, reset_w, BUTTON_H);
     if active {
-        if ui.pill(wid("focus.reset"), reset_r, "Reset", Some(Icon::Reset), PillStyle::Neutral).clicked {
+        if ui
+            .pill(
+                wid("focus.reset"),
+                reset_r,
+                "Reset",
+                Some(Icon::Reset),
+                PillStyle::Neutral,
+            )
+            .clicked
+        {
             st.pomodoro.reset();
             st.tick(SoundSource::Focus);
         }
@@ -247,7 +311,16 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
         disabled_pill(ui, reset_r, "Reset", Icon::Reset);
     }
     let skip_r = Rect::new(reset_r.right() + PILL_GAP, buttons_y, skip_w, BUTTON_H);
-    if ui.pill(wid("focus.skip"), skip_r, "Skip", Some(Icon::Next), PillStyle::Neutral).clicked {
+    if ui
+        .pill(
+            wid("focus.skip"),
+            skip_r,
+            "Skip",
+            Some(Icon::Next),
+            PillStyle::Neutral,
+        )
+        .clicked
+    {
         // A skipped phase is not a completed session, so no stats or notice.
         let _ = st.pomodoro.skip(now);
         st.tick(SoundSource::Focus);
@@ -269,12 +342,18 @@ fn end_clock(st: &AppState, remaining: f64) -> String {
         cached_min
     } else {
         let l = &st.local;
-        let secs = l.hour as f64 * 3600.0 + l.minute as f64 * 60.0 + l.second as f64 + remaining.max(0.0);
+        let secs =
+            l.hour as f64 * 3600.0 + l.minute as f64 * 60.0 + l.second as f64 + remaining.max(0.0);
         let m = ((secs / 60.0).floor() as i64).rem_euclid(24 * 60);
         END_MINUTE.with(|c| c.set((key, m)));
         m
     };
-    let t = LocalDateTime { hour: (m / 60) as u8, minute: (m % 60) as u8, second: 0, ..st.local };
+    let t = LocalDateTime {
+        hour: (m / 60) as u8,
+        minute: (m % 60) as u8,
+        second: 0,
+        ..st.local
+    };
     fmt_clock(&t, st.settings.use_24h)
 }
 
@@ -309,34 +388,56 @@ fn draw_segments(ui: &mut Ui, st: &mut AppState, x0: f32, y: f32) {
     let track = Rect::new(x0, y, x + SEG_INSET - x0, CHIP_H);
     ui.c.fill_rrect(track, CHIP_H / 2.0, palette::SURFACE);
 
-    let sel = segs.iter().position(|(ph, _, _)| *ph == st.pomodoro.phase).unwrap_or(0);
+    let sel = segs
+        .iter()
+        .position(|(ph, _, _)| *ph == st.pomodoro.phase)
+        .unwrap_or(0);
     let ((sx, sw), gliding) = seg_state(st.now, (cells[sel].0.x, cells[sel].0.w));
     if gliding {
         ui.request_anim();
     }
     let selected_color = phase_color(st.pomodoro.phase);
-    ui.c.fill_rrect(Rect::new(sx, y + SEG_INSET, sw, inner_h), inner_h / 2.0, selected_color.mul_alpha(0.18));
+    ui.c.fill_rrect(
+        Rect::new(sx, y + SEG_INSET, sw, inner_h),
+        inner_h / 2.0,
+        selected_color.mul_alpha(0.18),
+    );
 
     let mut picked = None;
     for (i, ((ph, name, _), (r, nw, num))) in segs.iter().zip(cells.iter()).enumerate() {
         let (name_c, num_c) = if i == sel {
             (selected_color, selected_color.mul_alpha(0.8))
         } else {
-            let resp = ui.button(wid_n("focus.chip", i as u64), Rect::new(r.x, y, r.w, CHIP_H));
+            let resp = ui.button(
+                wid_n("focus.chip", i as u64),
+                Rect::new(r.x, y, r.w, CHIP_H),
+            );
             if resp.clicked {
                 picked = Some(*ph);
             }
             if resp.pressed || resp.hovered {
-                ui.c.fill_rrect(*r, inner_h / 2.0, Color::white(if resp.pressed { 0.10 } else { 0.06 }));
+                ui.c.fill_rrect(
+                    *r,
+                    inner_h / 2.0,
+                    Color::white(if resp.pressed { 0.10 } else { 0.06 }),
+                );
                 (palette::TEXT, palette::TEXT_DIM)
             } else {
                 (palette::TEXT_DIM, palette::TEXT_DIM)
             }
         };
         let tx = r.x + SEG_PAD;
-        ui.c.text(name, Rect::new(tx, y, nw + 2.0, CHIP_H), &name_st.color(name_c));
+        ui.c.text(
+            name,
+            Rect::new(tx, y, nw + 2.0, CHIP_H),
+            &name_st.color(name_c),
+        );
         let nx = tx + nw + SEG_NUM_GAP;
-        ui.c.text(num, Rect::new(nx, y + num_dy, (r.right() - nx).max(0.0), CHIP_H), &num_st.color(num_c));
+        ui.c.text(
+            num,
+            Rect::new(nx, y + num_dy, (r.right() - nx).max(0.0), CHIP_H),
+            &num_st.color(num_c),
+        );
     }
     if let Some(ph) = picked {
         // set_phase also closes a finished cycle (like ending a long break does).
@@ -366,23 +467,37 @@ fn draw_stats(ui: &mut Ui, st: &AppState, r: Rect) {
         }
         x += 6.0;
     }
-    let n = st.store.focus_sessions.get(&st.day_key()).copied().unwrap_or(0);
+    let n = st
+        .store
+        .focus_sessions
+        .get(&st.day_key())
+        .copied()
+        .unwrap_or(0);
     let text = match n {
         0 => "No focus sessions yet today".to_string(),
         1 => "1 focus session today".to_string(),
         n => format!("{n} focus sessions today"),
     };
-    ui.c.text(&text, Rect::new(x, r.y, (r.right() - x).max(0.0), r.h), &TextStyle::footnote().color(palette::TEXT_DIM));
+    ui.c.text(
+        &text,
+        Rect::new(x, r.y, (r.right() - x).max(0.0), r.h),
+        &TextStyle::footnote().color(palette::TEXT_DIM),
+    );
 }
 
 /// A Regular capsule drawn inert (same layout as [`Ui::pill`], no hit registered).
 fn disabled_pill(ui: &mut Ui, r: Rect, label: &str, icon: Icon) {
     ui.c.fill_rrect(r, r.h / 2.0, palette::SURFACE.mul_alpha(0.6));
-    let st = TextStyle::body().weight(Weight::Semibold).color(palette::DISABLED);
+    let st = TextStyle::body()
+        .weight(Weight::Semibold)
+        .color(palette::DISABLED);
     let tw = ui.c.measure(label, &st, r.w).0;
     let (isz, gap) = (14.0, 6.0);
     let x = r.x + (r.w - isz - gap - tw) / 2.0;
-    ui.c.icon(icon, Rect::new(x, r.center().y - isz / 2.0, isz, isz), palette::DISABLED);
+    ui.c.icon(
+        icon,
+        Rect::new(x, r.center().y - isz / 2.0, isz, isz),
+        palette::DISABLED,
+    );
     ui.c.text(label, Rect::new(x + isz + gap, r.y, tw + 2.0, r.h), &st);
 }
-

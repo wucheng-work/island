@@ -26,28 +26,41 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use windows::core::{w, GUID, HSTRING, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{
-    CloseHandle, LocalFree, ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS, ERROR_CANCELLED, ERROR_SUCCESS, HANDLE, HLOCAL, WIN32_ERROR,
+    CloseHandle, LocalFree, ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS, ERROR_CANCELLED,
+    ERROR_SUCCESS, HANDLE, HLOCAL, WIN32_ERROR,
 };
 use windows::Win32::NetworkManagement::NetManagement::{
-    NetApiBufferFree, NetLocalGroupAddMembers, NetLocalGroupGetMembers, LOCALGROUP_MEMBERS_INFO_0, MAX_PREFERRED_LENGTH,
+    NetApiBufferFree, NetLocalGroupAddMembers, NetLocalGroupGetMembers, LOCALGROUP_MEMBERS_INFO_0,
+    MAX_PREFERRED_LENGTH,
 };
 use windows::Win32::Security::Authorization::{ConvertSidToStringSidW, ConvertStringSidToSidW};
 use windows::Win32::Security::{
-    CreateWellKnownSid, EqualSid, GetTokenInformation, LookupAccountSidW, TokenUser, WinBuiltinPerfLoggingUsersSid, PSID, SECURITY_MAX_SID_SIZE,
-    SID_NAME_USE, TOKEN_QUERY, TOKEN_USER,
+    CreateWellKnownSid, EqualSid, GetTokenInformation, LookupAccountSidW, TokenUser,
+    WinBuiltinPerfLoggingUsersSid, PSID, SECURITY_MAX_SID_SIZE, SID_NAME_USE, TOKEN_QUERY,
+    TOKEN_USER,
 };
-use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE};
+use windows::Win32::System::Com::{
+    CoInitializeEx, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+};
 use windows::Win32::System::Diagnostics::Etw::{
-    CloseTrace, ControlTraceW, EnableTraceEx2, OpenTraceW, ProcessTrace, CONTROLTRACE_HANDLE, ENABLE_TRACE_PARAMETERS,
-    ENABLE_TRACE_PARAMETERS_VERSION_2, EVENT_CONTROL_CODE_ENABLE_PROVIDER, EVENT_ENABLE_PROPERTY_IGNORE_KEYWORD_0, EVENT_FILTER_DESCRIPTOR,
-    EVENT_FILTER_TYPE_EVENT_ID, EVENT_HEADER_FLAG_32_BIT_HEADER, EVENT_RECORD, EVENT_TRACE_CONTROL_STOP, EVENT_TRACE_LOGFILEW,
-    EVENT_TRACE_NO_PER_PROCESSOR_BUFFERING, EVENT_TRACE_PROPERTIES, EVENT_TRACE_REAL_TIME_MODE, PROCESS_TRACE_MODE_EVENT_RECORD, PROCESS_TRACE_MODE_RAW_TIMESTAMP,
-    PROCESS_TRACE_MODE_REAL_TIME, StartTraceW, TRACE_LEVEL_INFORMATION, WNODE_FLAG_TRACED_GUID,
+    CloseTrace, ControlTraceW, EnableTraceEx2, OpenTraceW, ProcessTrace, StartTraceW,
+    CONTROLTRACE_HANDLE, ENABLE_TRACE_PARAMETERS, ENABLE_TRACE_PARAMETERS_VERSION_2,
+    EVENT_CONTROL_CODE_ENABLE_PROVIDER, EVENT_ENABLE_PROPERTY_IGNORE_KEYWORD_0,
+    EVENT_FILTER_DESCRIPTOR, EVENT_FILTER_TYPE_EVENT_ID, EVENT_HEADER_FLAG_32_BIT_HEADER,
+    EVENT_RECORD, EVENT_TRACE_CONTROL_STOP, EVENT_TRACE_LOGFILEW,
+    EVENT_TRACE_NO_PER_PROCESSOR_BUFFERING, EVENT_TRACE_PROPERTIES, EVENT_TRACE_REAL_TIME_MODE,
+    PROCESS_TRACE_MODE_EVENT_RECORD, PROCESS_TRACE_MODE_RAW_TIMESTAMP,
+    PROCESS_TRACE_MODE_REAL_TIME, TRACE_LEVEL_INFORMATION, WNODE_FLAG_TRACED_GUID,
 };
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 use windows::Win32::System::RemoteDesktop::ProcessIdToSessionId;
-use windows::Win32::System::Threading::{GetCurrentProcess, GetCurrentProcessId, GetExitCodeProcess, OpenProcessToken, WaitForSingleObject, INFINITE};
-use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
+use windows::Win32::System::Threading::{
+    GetCurrentProcess, GetCurrentProcessId, GetExitCodeProcess, OpenProcessToken,
+    WaitForSingleObject, INFINITE,
+};
+use windows::Win32::UI::Shell::{
+    ShellExecuteExW, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
+};
 use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
 /// The one-time OK's command line: `poni.exe --allow-fps <account SID>`.
@@ -137,7 +150,9 @@ fn session_name(what: &str) -> Vec<u16> {
     let mut session = 0u32;
     // SAFETY: plain out parameter.
     let _ = unsafe { ProcessIdToSessionId(GetCurrentProcessId(), &mut session) };
-    let mut v: Vec<u16> = format!("Oyen Poni {what} {session}").encode_utf16().collect();
+    let mut v: Vec<u16> = format!("Oyen Poni {what} {session}")
+        .encode_utf16()
+        .collect();
     v.truncate(NAME_LEN - 1);
     v.push(0);
     v
@@ -164,19 +179,33 @@ fn start_session(name: &[u16]) -> Result<(CONTROLTRACE_HANDLE, GUID), WIN32_ERRO
 
 fn stop_session(handle: CONTROLTRACE_HANDLE, name: &[u16]) {
     let mut props = Props::new();
-    let name = if handle.Value == 0 { PCWSTR(name.as_ptr()) } else { PCWSTR::null() };
+    let name = if handle.Value == 0 {
+        PCWSTR(name.as_ptr())
+    } else {
+        PCWSTR::null()
+    };
     // SAFETY: `props` has room for the name the call writes back.
     let _ = unsafe { ControlTraceW(handle, name, &mut props.p, EVENT_TRACE_CONTROL_STOP) };
 }
 
 /// Turns one provider on for the session `session`, for these event ids only.
-fn enable(handle: CONTROLTRACE_HANDLE, session: GUID, provider: &GUID, keywords: u64, ids: &[u16]) -> WIN32_ERROR {
+fn enable(
+    handle: CONTROLTRACE_HANDLE,
+    session: GUID,
+    provider: &GUID,
+    keywords: u64,
+    ids: &[u16],
+) -> WIN32_ERROR {
     // EVENT_FILTER_EVENT_ID: FilterIn, Reserved, Count, then the ids.
     let mut filter: Vec<u16> = Vec::with_capacity(2 + ids.len());
     filter.push(1);
     filter.push(ids.len() as u16);
     filter.extend_from_slice(ids);
-    let mut desc = EVENT_FILTER_DESCRIPTOR { Ptr: filter.as_ptr() as u64, Size: (filter.len() * 2) as u32, Type: EVENT_FILTER_TYPE_EVENT_ID };
+    let mut desc = EVENT_FILTER_DESCRIPTOR {
+        Ptr: filter.as_ptr() as u64,
+        Size: (filter.len() * 2) as u32,
+        Type: EVENT_FILTER_TYPE_EVENT_ID,
+    };
     let params = ENABLE_TRACE_PARAMETERS {
         Version: ENABLE_TRACE_PARAMETERS_VERSION_2,
         EnableProperty: EVENT_ENABLE_PROPERTY_IGNORE_KEYWORD_0,
@@ -227,12 +256,24 @@ impl Frames {
         let mut freq = 0i64;
         // SAFETY: plain out parameter.
         let _ = unsafe { QueryPerformanceFrequency(&mut freq) };
-        let shared = Arc::new(Shared { target: AtomicU32::new(pid), counter: Mutex::new(FrameCounter::new(freq)), total: AtomicU64::new(0) });
+        let shared = Arc::new(Shared {
+            target: AtomicU32::new(pid),
+            counter: Mutex::new(FrameCounter::new(freq)),
+            total: AtomicU64::new(0),
+        });
         // From here on, dropping `frames` stops the session.
-        let frames = Frames { shared: shared.clone(), handle, name: name.clone() };
+        let frames = Frames {
+            shared: shared.clone(),
+            handle,
+            name: name.clone(),
+        };
         // The runtimes come first: a game's own Present calls are what counts.
         for (provider, keywords, ids) in [
-            (&DXGI, RUNTIME_KEYWORDS, &[DXGI_PRESENT, DXGI_PRESENT_MPO][..]),
+            (
+                &DXGI,
+                RUNTIME_KEYWORDS,
+                &[DXGI_PRESENT, DXGI_PRESENT_MPO][..],
+            ),
             (&D3D9, RUNTIME_KEYWORDS, &[D3D9_PRESENT][..]),
             (&DXGKRNL, KERNEL_KEYWORDS, &KERNEL_EVENTS[..]),
         ] {
@@ -245,7 +286,10 @@ impl Frames {
                 crate::pwarn!("frames: provider {provider:?} not enabled ({})", e.0);
             }
         }
-        std::thread::Builder::new().name("poni-frames".into()).spawn(move || consume(name, shared)).map_err(|e| StartError::Failed(e.to_string()))?;
+        std::thread::Builder::new()
+            .name("poni-frames".into())
+            .spawn(move || consume(name, shared))
+            .map_err(|e| StartError::Failed(e.to_string()))?;
         Ok(frames)
     }
 
@@ -279,13 +323,22 @@ impl Drop for Frames {
 /// The consumer thread: delivers the session's events to [`on_event`]
 /// until the session stops.
 fn consume(mut name: Vec<u16>, shared: Arc<Shared>) {
-    let mut log = EVENT_TRACE_LOGFILEW { LoggerName: PWSTR(name.as_mut_ptr()), Context: Arc::as_ptr(&shared) as *mut c_void, ..Default::default() };
-    log.Anonymous1.ProcessTraceMode = PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD | PROCESS_TRACE_MODE_RAW_TIMESTAMP;
+    let mut log = EVENT_TRACE_LOGFILEW {
+        LoggerName: PWSTR(name.as_mut_ptr()),
+        Context: Arc::as_ptr(&shared) as *mut c_void,
+        ..Default::default()
+    };
+    log.Anonymous1.ProcessTraceMode = PROCESS_TRACE_MODE_REAL_TIME
+        | PROCESS_TRACE_MODE_EVENT_RECORD
+        | PROCESS_TRACE_MODE_RAW_TIMESTAMP;
     log.Anonymous2.EventRecordCallback = Some(on_event);
     // SAFETY: `log`, the name and `shared` (held by this thread) outlive the trace.
     let trace = unsafe { OpenTraceW(&mut log) };
     if trace.Value == u64::MAX {
-        crate::pwarn!("frames: couldn't open the trace ({})", windows::core::Error::from_win32());
+        crate::pwarn!(
+            "frames: couldn't open the trace ({})",
+            windows::core::Error::from_win32()
+        );
         return;
     }
     let e = unsafe { ProcessTrace(&[trace], None, None) };
@@ -301,8 +354,12 @@ fn consume(mut name: Vec<u16>, shared: Arc<Shared>) {
 unsafe extern "system" fn on_event(rec: *mut EVENT_RECORD) {
     // SAFETY: ETW passes a valid record for the duration of the call, with
     // the context `consume` gave it (alive until ProcessTrace returns).
-    let Some(rec) = (unsafe { rec.as_ref() }) else { return };
-    let Some(shared) = (unsafe { (rec.UserContext as *const Shared).as_ref() }) else { return };
+    let Some(rec) = (unsafe { rec.as_ref() }) else {
+        return;
+    };
+    let Some(shared) = (unsafe { (rec.UserContext as *const Shared).as_ref() }) else {
+        return;
+    };
     let h = &rec.EventHeader;
     if h.ProcessId != shared.target.load(Ordering::Relaxed) {
         return;
@@ -372,7 +429,9 @@ pub fn check() -> FpsAccess {
 
 /// [`check`] off the UI thread; the answer arrives as `AppEvent::FpsAccess`.
 pub fn check_async(sink: EventSink) {
-    let _ = std::thread::Builder::new().name("poni-fps-check".into()).spawn(move || sink.send(AppEvent::FpsAccess(check())));
+    let _ = std::thread::Builder::new()
+        .name("poni-fps-check".into())
+        .spawn(move || sink.send(AppEvent::FpsAccess(check())));
 }
 
 /// The one-time OK: Windows' admin prompt for `poni.exe --allow-fps <SID>`,
@@ -381,22 +440,24 @@ pub fn check_async(sink: EventSink) {
 /// in front for the prompt (Windows shows a background app's prompt only as
 /// a flashing taskbar button).
 pub fn request_access(sink: EventSink, owner: SendHwnd) {
-    let _ = std::thread::Builder::new().name("poni-fps-allow".into()).spawn(move || {
-        let answer = match ask_windows(owner) {
-            Ok(0) => {
-                // An admin running Poni elevated may read frames at once.
-                match check() {
-                    FpsAccess::Ready => FpsAccess::Ready,
-                    _ => FpsAccess::SignOut,
+    let _ = std::thread::Builder::new()
+        .name("poni-fps-allow".into())
+        .spawn(move || {
+            let answer = match ask_windows(owner) {
+                Ok(0) => {
+                    // An admin running Poni elevated may read frames at once.
+                    match check() {
+                        FpsAccess::Ready => FpsAccess::Ready,
+                        _ => FpsAccess::SignOut,
+                    }
                 }
-            }
-            Ok(code) => FpsAccess::Failed(format!("Windows error {code}")),
-            Err(Declined) => FpsAccess::NeedsOk,
-            Err(Failed(why)) => FpsAccess::Failed(why),
-        };
-        crate::pinfo!("frames: the one-time OK ended: {answer:?}");
-        sink.send(AppEvent::FpsAccess(answer));
-    });
+                Ok(code) => FpsAccess::Failed(format!("Windows error {code}")),
+                Err(Declined) => FpsAccess::NeedsOk,
+                Err(Failed(why)) => FpsAccess::Failed(why),
+            };
+            crate::pinfo!("frames: the one-time OK ended: {answer:?}");
+            sink.send(AppEvent::FpsAccess(answer));
+        });
 }
 
 enum AskError {
@@ -427,7 +488,11 @@ fn ask_windows(owner: SendHwnd) -> Result<u32, AskError> {
     };
     // SAFETY: the strings outlive the call.
     if let Err(e) = unsafe { ShellExecuteExW(&mut info) } {
-        return Err(if e.code() == ERROR_CANCELLED.to_hresult() { Declined } else { Failed(e.message()) });
+        return Err(if e.code() == ERROR_CANCELLED.to_hresult() {
+            Declined
+        } else {
+            Failed(e.message())
+        });
     }
     if info.hProcess.is_invalid() {
         return Err(Failed("no process".into()));
@@ -467,7 +532,16 @@ fn token_user() -> Option<Vec<u64>> {
         let _ = GetTokenInformation(token, TokenUser, None, 0, &mut len);
     }
     let mut buf = vec![0u64; (len as usize).div_ceil(8).max(1)];
-    let ok = unsafe { GetTokenInformation(token, TokenUser, Some(buf.as_mut_ptr().cast()), len, &mut len) }.is_ok();
+    let ok = unsafe {
+        GetTokenInformation(
+            token,
+            TokenUser,
+            Some(buf.as_mut_ptr().cast()),
+            len,
+            &mut len,
+        )
+    }
+    .is_ok();
     unsafe {
         let _ = CloseHandle(token);
     }
@@ -479,7 +553,15 @@ fn perf_log_users() -> Option<(Vec<u8>, Vec<u16>)> {
     let mut sid = vec![0u8; SECURITY_MAX_SID_SIZE as usize];
     let mut len = sid.len() as u32;
     // SAFETY: `sid` has room for any SID.
-    unsafe { CreateWellKnownSid(WinBuiltinPerfLoggingUsersSid, PSID::default(), PSID(sid.as_mut_ptr().cast()), &mut len) }.ok()?;
+    unsafe {
+        CreateWellKnownSid(
+            WinBuiltinPerfLoggingUsersSid,
+            PSID::default(),
+            PSID(sid.as_mut_ptr().cast()),
+            &mut len,
+        )
+    }
+    .ok()?;
     let mut name = vec![0u16; 256];
     let mut domain = vec![0u16; 256];
     let (mut name_len, mut domain_len) = (name.len() as u32, domain.len() as u32);
@@ -503,18 +585,35 @@ fn perf_log_users() -> Option<(Vec<u8>, Vec<u16>)> {
 
 /// The account is in Performance Log Users (whatever its sign-in token says).
 fn account_in_group() -> bool {
-    let (Some(token), Some((_, group))) = (token_user(), perf_log_users()) else { return false };
+    let (Some(token), Some((_, group))) = (token_user(), perf_log_users()) else {
+        return false;
+    };
     // SAFETY: TOKEN_USER starts the buffer.
     let user = unsafe { (*token.as_ptr().cast::<TOKEN_USER>()).User.Sid };
     let mut buf: *mut u8 = std::ptr::null_mut();
     let (mut read, mut total) = (0u32, 0u32);
-    let err = unsafe { NetLocalGroupGetMembers(PCWSTR::null(), PCWSTR(group.as_ptr()), 0, &mut buf, MAX_PREFERRED_LENGTH, &mut read, &mut total, None) };
+    let err = unsafe {
+        NetLocalGroupGetMembers(
+            PCWSTR::null(),
+            PCWSTR(group.as_ptr()),
+            0,
+            &mut buf,
+            MAX_PREFERRED_LENGTH,
+            &mut read,
+            &mut total,
+            None,
+        )
+    };
     if err != 0 || buf.is_null() {
         return false;
     }
     // SAFETY: level 0 fills `read` LOCALGROUP_MEMBERS_INFO_0 entries.
-    let members = unsafe { std::slice::from_raw_parts(buf.cast::<LOCALGROUP_MEMBERS_INFO_0>(), read as usize) };
-    let found = members.iter().any(|m| unsafe { EqualSid(m.lgrmi0_sid, user) }.is_ok());
+    let members = unsafe {
+        std::slice::from_raw_parts(buf.cast::<LOCALGROUP_MEMBERS_INFO_0>(), read as usize)
+    };
+    let found = members
+        .iter()
+        .any(|m| unsafe { EqualSid(m.lgrmi0_sid, user) }.is_ok());
     unsafe {
         NetApiBufferFree(Some(buf.cast()));
     }
@@ -525,14 +624,24 @@ fn account_in_group() -> bool {
 /// Performance Log Users. Exit code 0 when it's in the group (already
 /// being there counts), else Windows' error.
 pub fn allow_main(sid: &str) -> i32 {
-    let Some((_, group)) = perf_log_users() else { return 1 };
+    let Some((_, group)) = perf_log_users() else {
+        return 1;
+    };
     let mut user = PSID::default();
     if unsafe { ConvertStringSidToSidW(&HSTRING::from(sid), &mut user) }.is_err() {
         return 87; // ERROR_INVALID_PARAMETER
     }
     let member = LOCALGROUP_MEMBERS_INFO_0 { lgrmi0_sid: user };
     // SAFETY: one level-0 entry; the SID stays alive until LocalFree.
-    let err = unsafe { NetLocalGroupAddMembers(PCWSTR::null(), PCWSTR(group.as_ptr()), 0, (&member as *const LOCALGROUP_MEMBERS_INFO_0).cast(), 1) };
+    let err = unsafe {
+        NetLocalGroupAddMembers(
+            PCWSTR::null(),
+            PCWSTR(group.as_ptr()),
+            0,
+            (&member as *const LOCALGROUP_MEMBERS_INFO_0).cast(),
+            1,
+        )
+    };
     unsafe {
         let _ = LocalFree(HLOCAL(user.0));
     }

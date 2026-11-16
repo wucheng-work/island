@@ -110,7 +110,9 @@ pub fn load_json<T: DeserializeOwned + Default>(path: &Path) -> (T, LoadOutcome)
             },
             Err(e) => format!("not valid UTF-8: {e}"),
         },
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return (T::default(), LoadOutcome::Missing),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            return (T::default(), LoadOutcome::Missing)
+        }
         Err(e) if e.kind() == io::ErrorKind::InvalidData => e.to_string(),
         Err(e) => {
             let msg = format!(
@@ -149,7 +151,11 @@ fn recover<T: DeserializeOwned + Default>(path: &Path, problem: &str) -> (T, Loa
         },
         Err(e) => {
             // Without a preserved copy, a later save would destroy the only one.
-            let what = if restored.is_some() { "using the backup" } else { "using defaults" };
+            let what = if restored.is_some() {
+                "using the backup"
+            } else {
+                "using defaults"
+            };
             let msg = format!(
                 "{} was damaged ({problem}) and could not be moved aside ({e}); {what}, left the file untouched and will not save over it",
                 path.display()
@@ -165,12 +171,18 @@ fn read_parsed<T: DeserializeOwned>(path: &Path) -> Option<T> {
 }
 
 fn unix_now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// `dir/<stem><suffix>` next to `path`.
 fn sibling(path: &Path, suffix: &str) -> PathBuf {
-    let mut name: OsString = path.file_stem().map(|s| s.to_os_string()).unwrap_or_else(|| "data".into());
+    let mut name: OsString = path
+        .file_stem()
+        .map(|s| s.to_os_string())
+        .unwrap_or_else(|| "data".into());
     name.push(suffix);
     path.with_file_name(name)
 }
@@ -178,7 +190,10 @@ fn sibling(path: &Path, suffix: &str) -> PathBuf {
 /// `dir/<file name>.tmp`: unique per target, and has the `.tmp` extension
 /// that cache pruning cleans up.
 fn tmp_path(path: &Path) -> PathBuf {
-    let mut name: OsString = path.file_name().map(|s| s.to_os_string()).unwrap_or_else(|| "data".into());
+    let mut name: OsString = path
+        .file_name()
+        .map(|s| s.to_os_string())
+        .unwrap_or_else(|| "data".into());
     name.push(".tmp");
     path.with_file_name(name)
 }
@@ -208,9 +223,17 @@ fn set_aside(path: &Path, unix: u64) -> io::Result<PathBuf> {
 
 fn reserve_aside_name(path: &Path, unix: u64) -> io::Result<PathBuf> {
     for n in 0..10_000u32 {
-        let suffix = if n == 0 { format!(".corrupt-{unix}.json") } else { format!(".corrupt-{unix}-{n}.json") };
+        let suffix = if n == 0 {
+            format!(".corrupt-{unix}.json")
+        } else {
+            format!(".corrupt-{unix}-{n}.json")
+        };
         let candidate = sibling(path, &suffix);
-        match OpenOptions::new().write(true).create_new(true).open(&candidate) {
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
             Ok(file) => {
                 drop(file);
                 return Ok(candidate);
@@ -221,7 +244,10 @@ fn reserve_aside_name(path: &Path, unix: u64) -> io::Result<PathBuf> {
             Err(e) => return Err(e),
         }
     }
-    Err(io::Error::new(io::ErrorKind::AlreadyExists, "no free name to move the damaged file to"))
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "no free name to move the damaged file to",
+    ))
 }
 
 /// Write JSON durably and atomically: write `<name>.tmp`, flush it to disk,
@@ -321,15 +347,23 @@ mod tests {
             .unwrap()
             .flatten()
             .map(|e| e.path())
-            .filter(|p| p.file_name().unwrap().to_string_lossy().contains(".corrupt-"))
+            .filter(|p| {
+                p.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .contains(".corrupt-")
+            })
             .collect();
         v.sort();
         v
     }
 
     fn names(d: &Path) -> Vec<String> {
-        let mut v: Vec<String> =
-            fs::read_dir(d).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        let mut v: Vec<String> = fs::read_dir(d)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
         v.sort();
         v
     }
@@ -363,7 +397,8 @@ mod tests {
         let (s, outcome): (Store, _) = load_json(&p);
         assert_eq!(outcome, LoadOutcome::Loaded);
         save_json_atomic(&p, &s).unwrap();
-        let back: serde_json::Value = serde_json::from_str(&fs::read_to_string(&p).unwrap()).unwrap();
+        let back: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&p).unwrap()).unwrap();
         assert_eq!(back["water"]["days"]["2026-10-20"][0]["ml"], 300);
         // A store that never had water keeps no "water" key.
         save_json_atomic(&p, &Store::default()).unwrap();
@@ -479,7 +514,10 @@ mod tests {
         fs::write(&p, "third").unwrap();
         let b = set_aside(&p, 123).unwrap();
         assert_eq!(b, d.join("store.corrupt-123-2.json"));
-        assert_eq!(fs::read_to_string(d.join("store.corrupt-123.json")).unwrap(), "earliest");
+        assert_eq!(
+            fs::read_to_string(d.join("store.corrupt-123.json")).unwrap(),
+            "earliest"
+        );
         assert_eq!(fs::read_to_string(&a).unwrap(), "second");
         assert_eq!(fs::read_to_string(&b).unwrap(), "third");
         assert!(!p.exists());
@@ -489,7 +527,10 @@ mod tests {
         let _: (Store, _) = load_json(&p);
         fs::write(&p, "fifth {").unwrap();
         let _: (Store, _) = load_json(&p);
-        let contents: Vec<String> = corrupt_files(&d).iter().map(|f| fs::read_to_string(f).unwrap()).collect();
+        let contents: Vec<String> = corrupt_files(&d)
+            .iter()
+            .map(|f| fs::read_to_string(f).unwrap())
+            .collect();
         assert_eq!(contents.len(), 5);
         assert!(contents.contains(&"fourth {".to_string()));
         assert!(contents.contains(&"fifth {".to_string()));
@@ -518,7 +559,10 @@ mod tests {
         let d = tmpdir("mkbak");
         let p = d.join("store.json");
         save_json_atomic(&p, &sample(1)).unwrap();
-        assert!(!backup_path(&p).exists(), "nothing to back up on the first save");
+        assert!(
+            !backup_path(&p).exists(),
+            "nothing to back up on the first save"
+        );
         save_json_atomic(&p, &sample(2)).unwrap();
         assert_eq!(backup_path(&p), d.join("store.bak.json"));
         let (bak, outcome): (Store, _) = load_json(&backup_path(&p));
@@ -527,7 +571,10 @@ mod tests {
         let (cur, _): (Store, _) = load_json(&p);
         assert_eq!(cur, sample(2));
         // No temp files are left behind.
-        assert_eq!(names(&d), vec!["store.bak.json".to_string(), "store.json".to_string()]);
+        assert_eq!(
+            names(&d),
+            vec!["store.bak.json".to_string(), "store.json".to_string()]
+        );
         let _ = fs::remove_dir_all(&d);
     }
 
@@ -573,7 +620,10 @@ mod tests {
         let p = Path::new("dir").join("settings.json");
         assert_eq!(backup_path(&p), Path::new("dir").join("settings.bak.json"));
         assert_eq!(tmp_path(&p), Path::new("dir").join("settings.json.tmp"));
-        assert_eq!(sibling(&p, ".corrupt-5.json"), Path::new("dir").join("settings.corrupt-5.json"));
+        assert_eq!(
+            sibling(&p, ".corrupt-5.json"),
+            Path::new("dir").join("settings.corrupt-5.json")
+        );
     }
 
     #[test]

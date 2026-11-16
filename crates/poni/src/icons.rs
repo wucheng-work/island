@@ -236,13 +236,57 @@ mod tests {
     use super::*;
 
     const ALL: &[Icon] = &[
-        Icon::Play, Icon::Pause, Icon::Next, Icon::Prev, Icon::Music, Icon::Lyrics, Icon::Timer, Icon::Coffee,
-        Icon::Tray, Icon::ListChecks, Icon::Check, Icon::CheckCircle, Icon::Warning, Icon::Circle, Icon::Plus, Icon::Minus,
-        Icon::Close, Icon::Calendar, Icon::Clock, Icon::Battery, Icon::Bolt, Icon::Bluetooth, Icon::Headphones,
-        Icon::Volume, Icon::VolumeLow, Icon::VolumeMute, Icon::Pin, Icon::PinFill, Icon::Folder, Icon::File,
-        Icon::Trash, Icon::Undo, Icon::Reset, Icon::Sliders, Icon::Open, Icon::Eye, Icon::MoneyIn, Icon::MoneyOut,
-        Icon::Transfer, Icon::Card, Icon::Wallet, Icon::Unlink, Icon::Gear, Icon::Gauge, Icon::App, Icon::Windows,
-        Icon::Download, Icon::AppWindow, Icon::Bell, Icon::Message, Icon::Mail,
+        Icon::Play,
+        Icon::Pause,
+        Icon::Next,
+        Icon::Prev,
+        Icon::Music,
+        Icon::Lyrics,
+        Icon::Timer,
+        Icon::Coffee,
+        Icon::Tray,
+        Icon::ListChecks,
+        Icon::Check,
+        Icon::CheckCircle,
+        Icon::Warning,
+        Icon::Circle,
+        Icon::Plus,
+        Icon::Minus,
+        Icon::Close,
+        Icon::Calendar,
+        Icon::Clock,
+        Icon::Battery,
+        Icon::Bolt,
+        Icon::Bluetooth,
+        Icon::Headphones,
+        Icon::Volume,
+        Icon::VolumeLow,
+        Icon::VolumeMute,
+        Icon::Pin,
+        Icon::PinFill,
+        Icon::Folder,
+        Icon::File,
+        Icon::Trash,
+        Icon::Undo,
+        Icon::Reset,
+        Icon::Sliders,
+        Icon::Open,
+        Icon::Eye,
+        Icon::MoneyIn,
+        Icon::MoneyOut,
+        Icon::Transfer,
+        Icon::Card,
+        Icon::Wallet,
+        Icon::Unlink,
+        Icon::Gear,
+        Icon::Gauge,
+        Icon::App,
+        Icon::Windows,
+        Icon::Download,
+        Icon::AppWindow,
+        Icon::Bell,
+        Icon::Message,
+        Icon::Mail,
     ];
 
     #[test]
@@ -260,10 +304,12 @@ mod tests {
             for p in parts(i) {
                 for (at, _) in p.d.match_indices(|c| c == 'Z' || c == 'z') {
                     let next = p.d[at + 1..].trim_start().chars().next();
-                    assert!(matches!(next, None | Some('M' | 'm')), "{i:?}: the figure after byte {at} has no M");
+                    assert!(
+                        matches!(next, None | Some('M' | 'm')),
+                        "{i:?}: the figure after byte {at} has no M"
+                    );
                 }
             }
         }
     }
-
 }

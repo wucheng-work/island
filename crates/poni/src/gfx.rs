@@ -23,8 +23,8 @@
 //! monitor DPI so Direct2D does the scaling. Frames are only produced while
 //! something animates, so idle CPU stays at zero.
 
-use crate::icons::{self, Icon};
 use crate::glass::{GlassParams, GlassPass};
+use crate::icons::{self, Icon};
 use poni_core::geom::{Color, Point, Rect};
 use poni_core::look::{self, Look};
 use poni_core::svgpath::Seg;
@@ -40,13 +40,20 @@ use windows::Win32::Graphics::Direct2D::Common::*;
 use windows::Win32::Graphics::Direct2D::*;
 use windows::Win32::Graphics::Direct3D::*;
 use windows::Win32::Graphics::Direct3D11::*;
-use windows::Win32::Graphics::DirectComposition::{IDCompositionDevice, IDCompositionTarget, IDCompositionVisual};
+use windows::Win32::Graphics::DirectComposition::{
+    IDCompositionDevice, IDCompositionTarget, IDCompositionVisual,
+};
 use windows::Win32::Graphics::DirectWrite::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
 use windows::Win32::Graphics::Dxgi::*;
 use windows::Win32::Graphics::Gdi::*;
-use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32};
-use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, UpdateLayeredWindowIndirect, SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA, UPDATELAYEREDWINDOWINFO};
+use windows::Win32::System::LibraryLoader::{
+    GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32,
+};
+use windows::Win32::UI::WindowsAndMessaging::{
+    ShowWindow, UpdateLayeredWindowIndirect, SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA,
+    UPDATELAYEREDWINDOWINFO,
+};
 
 // ---------------------------------------------------------------- images
 
@@ -71,7 +78,12 @@ static NEXT_IMAGE_ID: AtomicU64 = AtomicU64::new(1);
 impl ImageData {
     pub fn new(width: u32, height: u32, pixels: Vec<u8>) -> Image {
         debug_assert_eq!(pixels.len(), (width * height * 4) as usize);
-        Arc::new(ImageData { id: NEXT_IMAGE_ID.fetch_add(1, Ordering::Relaxed), width, height, pixels })
+        Arc::new(ImageData {
+            id: NEXT_IMAGE_ID.fetch_add(1, Ordering::Relaxed),
+            width,
+            height,
+            pixels,
+        })
     }
 
     /// A saturated, reasonably bright colour from the image (for accents),
@@ -136,11 +148,21 @@ fn wide(s: &str) -> Vec<u16> {
 }
 
 fn d2d_color(c: Color) -> D2D1_COLOR_F {
-    D2D1_COLOR_F { r: c.r, g: c.g, b: c.b, a: c.a.clamp(0.0, 1.0) }
+    D2D1_COLOR_F {
+        r: c.r,
+        g: c.g,
+        b: c.b,
+        a: c.a.clamp(0.0, 1.0),
+    }
 }
 
 fn rectf(r: Rect) -> D2D_RECT_F {
-    D2D_RECT_F { left: r.x, top: r.y, right: r.x + r.w, bottom: r.y + r.h }
+    D2D_RECT_F {
+        left: r.x,
+        top: r.y,
+        right: r.x + r.w,
+        bottom: r.y + r.h,
+    }
 }
 
 fn pt(x: f32, y: f32) -> D2D_POINT_2F {
@@ -188,7 +210,16 @@ impl SoftTarget {
             rt.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
             rt.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
             let mem_dc = CreateCompatibleDC(None);
-            let mut t = SoftTarget { rt, mem_dc, dib: HBITMAP::default(), old_bmp: HGDIOBJ::default(), bits: std::ptr::null_mut(), cap_w: 0, cap_h: 0, shown: None };
+            let mut t = SoftTarget {
+                rt,
+                mem_dc,
+                dib: HBITMAP::default(),
+                old_bmp: HGDIOBJ::default(),
+                bits: std::ptr::null_mut(),
+                cap_w: 0,
+                cap_h: 0,
+                shown: None,
+            };
             t.ensure_capacity(512, 128)?;
             Ok(t)
         }
@@ -233,7 +264,12 @@ impl SoftTarget {
     }
 
     unsafe fn begin(&mut self, w: i32, h: i32, dpi: f32) -> Result<()> {
-        let rc = RECT { left: 0, top: 0, right: w, bottom: h };
+        let rc = RECT {
+            left: 0,
+            top: 0,
+            right: w,
+            bottom: h,
+        };
         self.rt.BindDC(self.mem_dc, &rc)?;
         self.rt.SetDpi(dpi, dpi);
         self.rt.BeginDraw();
@@ -242,13 +278,31 @@ impl SoftTarget {
 
     /// Push the DIB to the window at (`x`, `y`), size `w`×`h`. With `dirty`,
     /// only that rectangle is copied (unless the window moved or resized).
-    unsafe fn push(&mut self, hwnd: HWND, x: i32, y: i32, w: i32, h: i32, dirty: Option<RECT>) -> Result<()> {
+    unsafe fn push(
+        &mut self,
+        hwnd: HWND,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        dirty: Option<RECT>,
+    ) -> Result<()> {
         let same = self.shown == Some((x, y, w, h));
-        let dirty = dirty.filter(|_| same).map(|d| RECT { left: d.left.clamp(0, w), top: d.top.clamp(0, h), right: d.right.clamp(0, w), bottom: d.bottom.clamp(0, h) });
+        let dirty = dirty.filter(|_| same).map(|d| RECT {
+            left: d.left.clamp(0, w),
+            top: d.top.clamp(0, h),
+            right: d.right.clamp(0, w),
+            bottom: d.bottom.clamp(0, h),
+        });
         if dirty.is_some_and(|d| d.right <= d.left || d.bottom <= d.top) {
             return Ok(());
         }
-        let blend = BLENDFUNCTION { BlendOp: AC_SRC_OVER as u8, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: AC_SRC_ALPHA as u8 };
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
         let (dst, size, src) = (POINT { x, y }, SIZE { cx: w, cy: h }, POINT { x: 0, y: 0 });
         let info = UPDATELAYEREDWINDOWINFO {
             cbSize: std::mem::size_of::<UPDATELAYEREDWINDOWINFO>() as u32,
@@ -260,7 +314,9 @@ impl SoftTarget {
             crKey: COLORREF(0),
             pblend: &blend,
             dwFlags: ULW_ALPHA,
-            prcDirty: dirty.as_ref().map_or(std::ptr::null(), |d| d as *const RECT),
+            prcDirty: dirty
+                .as_ref()
+                .map_or(std::ptr::null(), |d| d as *const RECT),
         };
         if UpdateLayeredWindowIndirect(hwnd, &info).as_bool() {
             self.shown = Some((x, y, w, h));
@@ -278,9 +334,18 @@ impl SoftTarget {
     unsafe fn push_clear(&mut self, hwnd: HWND, x: i32, y: i32, w: i32, h: i32) -> Result<()> {
         self.ensure_capacity(w, h)?;
         for row in 0..h {
-            std::ptr::write_bytes(self.bits.add((row * self.cap_w * 4) as usize), 0, (w * 4) as usize);
+            std::ptr::write_bytes(
+                self.bits.add((row * self.cap_w * 4) as usize),
+                0,
+                (w * 4) as usize,
+            );
         }
-        let blend = BLENDFUNCTION { BlendOp: AC_SRC_OVER as u8, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: AC_SRC_ALPHA as u8 };
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
         let (dst, size, src) = (POINT { x, y }, SIZE { cx: w, cy: h }, POINT { x: 0, y: 0 });
         let info = UPDATELAYEREDWINDOWINFO {
             cbSize: std::mem::size_of::<UPDATELAYEREDWINDOWINFO>() as u32,
@@ -304,7 +369,10 @@ impl SoftTarget {
     /// Copy of the pixels in `r` (premultiplied BGRA, top-down).
     fn pixels(&self, r: RECT) -> Vec<u8> {
         let (x0, y0) = (r.left.clamp(0, self.cap_w), r.top.clamp(0, self.cap_h));
-        let (x1, y1) = (r.right.clamp(x0, self.cap_w), r.bottom.clamp(y0, self.cap_h));
+        let (x1, y1) = (
+            r.right.clamp(x0, self.cap_w),
+            r.bottom.clamp(y0, self.cap_h),
+        );
         let mut out = Vec::with_capacity(((x1 - x0) * (y1 - y0) * 4) as usize);
         unsafe {
             for y in y0..y1 {
@@ -357,11 +425,24 @@ unsafe fn create_d3d_device() -> Result<(ID3D11Device, ID3D11DeviceContext, bool
         D3D_FEATURE_LEVEL_9_1,
     ];
     let mut last = None;
-    for (driver, warp) in [(D3D_DRIVER_TYPE_HARDWARE, false), (D3D_DRIVER_TYPE_WARP, true)] {
+    for (driver, warp) in [
+        (D3D_DRIVER_TYPE_HARDWARE, false),
+        (D3D_DRIVER_TYPE_WARP, true),
+    ] {
         // Runtimes that don't know 11.1 reject the whole list: retry without it.
         for lv in [&levels[..], &levels[1..]] {
             let (mut dev, mut ctx) = (None, None);
-            match D3D11CreateDevice(None, driver, HMODULE::default(), D3D11_CREATE_DEVICE_BGRA_SUPPORT, Some(lv), D3D11_SDK_VERSION, Some(&mut dev), None, Some(&mut ctx)) {
+            match D3D11CreateDevice(
+                None,
+                driver,
+                HMODULE::default(),
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                Some(lv),
+                D3D11_SDK_VERSION,
+                Some(&mut dev),
+                None,
+                Some(&mut ctx),
+            ) {
                 Ok(()) => {
                     if let (Some(d), Some(c)) = (dev, ctx) {
                         return Ok((d, c, warp));
@@ -395,12 +476,19 @@ impl GpuTarget {
     unsafe fn new(d2d: &ID2D1Factory1, hwnd: HWND, w: i32, h: i32) -> Result<Self> {
         let (d3d, ctx, warp) = create_d3d_device()?;
         let dxgi: IDXGIDevice = d3d.cast()?;
-        let dc = d2d.CreateDevice(&dxgi)?.CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE)?;
+        let dc = d2d
+            .CreateDevice(&dxgi)?
+            .CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE)?;
         let dxgi_adapter = dxgi.GetAdapter()?;
         let (soft_adapter, adapter) = match dxgi_adapter.GetDesc() {
             Ok(d) => {
-                let name = String::from_utf16_lossy(&d.Description).trim_end_matches('\0').to_string();
-                (warp || (d.VendorId == MICROSOFT_VENDOR && d.DeviceId == BASIC_RENDER_DEVICE), name)
+                let name = String::from_utf16_lossy(&d.Description)
+                    .trim_end_matches('\0')
+                    .to_string();
+                (
+                    warp || (d.VendorId == MICROSOFT_VENDOR && d.DeviceId == BASIC_RENDER_DEVICE),
+                    name,
+                )
             }
             Err(_) => (warp, String::new()),
         };
@@ -410,7 +498,10 @@ impl GpuTarget {
             Height: h as u32,
             Format: DXGI_FORMAT_B8G8R8A8_UNORM,
             Stereo: BOOL(0),
-            SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
             BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
             // Three: drawing the next frame never waits for DWM to let go of one.
             BufferCount: 3,
@@ -426,14 +517,35 @@ impl GpuTarget {
         visual.SetContent(&swap)?;
         target.SetRoot(&visual)?;
         dcomp.Commit()?;
-        Ok(Self { _target: target, _visual: visual, _dcomp: dcomp, target_bmp: None, dc, swap, staging: None, ctx, d3d, w, h, warp, soft_adapter, adapter })
+        Ok(Self {
+            _target: target,
+            _visual: visual,
+            _dcomp: dcomp,
+            target_bmp: None,
+            dc,
+            swap,
+            staging: None,
+            ctx,
+            d3d,
+            w,
+            h,
+            warp,
+            soft_adapter,
+            adapter,
+        })
     }
 
     unsafe fn resize(&mut self, w: i32, h: i32) -> Result<()> {
         self.dc.SetTarget(None::<&ID2D1Image>);
         self.target_bmp = None;
         self.staging = None;
-        self.swap.ResizeBuffers(3, w as u32, h as u32, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SWAP_CHAIN_FLAG(0))?;
+        self.swap.ResizeBuffers(
+            3,
+            w as u32,
+            h as u32,
+            DXGI_FORMAT_B8G8R8A8_UNORM,
+            DXGI_SWAP_CHAIN_FLAG(0),
+        )?;
         self.w = w;
         self.h = h;
         Ok(())
@@ -449,7 +561,9 @@ impl GpuTarget {
             bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
             colorContext: ManuallyDrop::new(None),
         };
-        let bmp = self.dc.CreateBitmapFromDxgiSurface(&surface, Some(&props))?;
+        let bmp = self
+            .dc
+            .CreateBitmapFromDxgiSurface(&surface, Some(&props))?;
         self.dc.SetTarget(&bmp);
         self.dc.SetDpi(dpi, dpi);
         self.dc.BeginDraw();
@@ -465,14 +579,21 @@ impl GpuTarget {
     /// Read `r` back from the frame just drawn (self-test only).
     unsafe fn read(&mut self, r: RECT) -> Result<Vec<u8>> {
         let back: ID3D11Texture2D = self.swap.GetBuffer(0)?;
-        if !self.staging.as_ref().is_some_and(|s| s.1 == self.w && s.2 == self.h) {
+        if !self
+            .staging
+            .as_ref()
+            .is_some_and(|s| s.1 == self.w && s.2 == self.h)
+        {
             let desc = D3D11_TEXTURE2D_DESC {
                 Width: self.w as u32,
                 Height: self.h as u32,
                 MipLevels: 1,
                 ArraySize: 1,
                 Format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+                SampleDesc: DXGI_SAMPLE_DESC {
+                    Count: 1,
+                    Quality: 0,
+                },
                 Usage: D3D11_USAGE_STAGING,
                 BindFlags: 0,
                 CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
@@ -482,7 +603,9 @@ impl GpuTarget {
             self.d3d.CreateTexture2D(&desc, None, Some(&mut tex))?;
             self.staging = tex.map(|t| (t, self.w, self.h));
         }
-        let Some((staging, _, _)) = self.staging.as_ref() else { return Err(E_NOTIMPL.into()) };
+        let Some((staging, _, _)) = self.staging.as_ref() else {
+            return Err(E_NOTIMPL.into());
+        };
         self.ctx.CopyResource(staging, &back);
         let mut m = D3D11_MAPPED_SUBRESOURCE::default();
         self.ctx.Map(staging, 0, D3D11_MAP_READ, 0, Some(&mut m))?;
@@ -490,7 +613,8 @@ impl GpuTarget {
         let (x1, y1) = (r.right.clamp(x0, self.w), r.bottom.clamp(y0, self.h));
         let mut out = Vec::with_capacity(((x1 - x0) * (y1 - y0) * 4) as usize);
         for y in y0..y1 {
-            let row = (m.pData as *const u8).add(y as usize * m.RowPitch as usize + x0 as usize * 4);
+            let row =
+                (m.pData as *const u8).add(y as usize * m.RowPitch as usize + x0 as usize * 4);
             out.extend_from_slice(std::slice::from_raw_parts(row, ((x1 - x0) * 4) as usize));
         }
         self.ctx.Unmap(staging, 0);
@@ -525,7 +649,9 @@ pub struct HitMask {
 impl HitMask {
     fn bounds(&self) -> Option<Rect> {
         let a = self.rect;
-        let b = self.notch.map(|(body, _, s)| Rect::new(body.x - s, body.y, body.w + 2.0 * s, body.h));
+        let b = self
+            .notch
+            .map(|(body, _, s)| Rect::new(body.x - s, body.y, body.w + 2.0 * s, body.h));
         let c = self.pill.map(|(body, _)| body);
         [a, b, c].into_iter().flatten().reduce(union_rect)
     }
@@ -535,8 +661,12 @@ impl HitMask {
     /// the mouse.
     pub fn contains(&self, p: Point) -> bool {
         self.rect.is_some_and(|r| r.contains(p))
-            || self.pill.is_some_and(|(body, radius)| in_rounded_rect(body, radius, p))
-            || self.notch.is_some_and(|(body, radius, shoulder)| in_notch(body, radius, shoulder, p))
+            || self
+                .pill
+                .is_some_and(|(body, radius)| in_rounded_rect(body, radius, p))
+            || self
+                .notch
+                .is_some_and(|(body, radius, shoulder)| in_notch(body, radius, shoulder, p))
     }
 }
 
@@ -573,7 +703,11 @@ fn in_notch(body: Rect, radius: f32, shoulder: f32, p: Point) -> bool {
     // the arc from `shoulder` out along the edge to `shoulder` down the side
     // (an ellipse when the body is shorter than that).
     let (sw, sh) = (shoulder.max(0.0), shoulder.max(0.0).min(body.h));
-    let out = if p.x < body.x { body.x - p.x } else { p.x - body.right() };
+    let out = if p.x < body.x {
+        body.x - p.x
+    } else {
+        p.x - body.right()
+    };
     if sw <= 0.0 || sh <= 0.0 || out > sw || p.y >= sh {
         return false;
     }
@@ -584,7 +718,12 @@ fn in_notch(body: Rect, radius: f32, shoulder: f32, p: Point) -> bool {
 /// Smallest rectangle holding both.
 pub fn union_rect(a: Rect, b: Rect) -> Rect {
     let (x0, y0) = (a.x.min(b.x), a.y.min(b.y));
-    Rect::new(x0, y0, a.right().max(b.right()) - x0, a.bottom().max(b.bottom()) - y0)
+    Rect::new(
+        x0,
+        y0,
+        a.right().max(b.right()) - x0,
+        a.bottom().max(b.bottom()) - y0,
+    )
 }
 
 /// `r` (DIPs) as whole pixels, grown outwards by `pad` px and clamped to `w`×`h`.
@@ -605,12 +744,24 @@ pub fn px_union(a: RECT, b: RECT) -> RECT {
     if b.right <= b.left || b.bottom <= b.top {
         return a;
     }
-    RECT { left: a.left.min(b.left), top: a.top.min(b.top), right: a.right.max(b.right), bottom: a.bottom.max(b.bottom) }
+    RECT {
+        left: a.left.min(b.left),
+        top: a.top.min(b.top),
+        right: a.right.max(b.right),
+        bottom: a.bottom.max(b.bottom),
+    }
 }
 
 /// Scale by `s` about `p`.
 pub fn scale_about(p: Point, s: f32) -> Matrix3x2 {
-    Matrix3x2 { M11: s, M12: 0.0, M21: 0.0, M22: s, M31: p.x * (1.0 - s), M32: p.y * (1.0 - s) }
+    Matrix3x2 {
+        M11: s,
+        M12: 0.0,
+        M21: 0.0,
+        M22: s,
+        M31: p.x * (1.0 - s),
+        M32: p.y * (1.0 - s),
+    }
 }
 
 /// Text layouts are cached by everything that shapes them (not colour).
@@ -628,8 +779,16 @@ struct LayoutKey {
     h: u32,
 }
 
-const PREMUL_BGRA: D2D1_PIXEL_FORMAT = D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED };
-const CLEAR: D2D1_COLOR_F = D2D1_COLOR_F { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+const PREMUL_BGRA: D2D1_PIXEL_FORMAT = D2D1_PIXEL_FORMAT {
+    format: DXGI_FORMAT_B8G8R8A8_UNORM,
+    alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
+};
+const CLEAR: D2D1_COLOR_F = D2D1_COLOR_F {
+    r: 0.0,
+    g: 0.0,
+    b: 0.0,
+    a: 0.0,
+};
 
 pub struct Gfx {
     pub d2d: ID2D1Factory,
@@ -723,7 +882,11 @@ fn pick_font_family(dwrite: &IDWriteFactory) -> Vec<u16> {
                     let w: Vec<u16> = wide(name).into_iter().chain(Some(0)).collect();
                     let mut index = 0u32;
                     let mut exists = BOOL(0);
-                    if coll.FindFamilyName(PCWSTR(w.as_ptr()), &mut index, &mut exists).is_ok() && exists.as_bool() {
+                    if coll
+                        .FindFamilyName(PCWSTR(w.as_ptr()), &mut index, &mut exists)
+                        .is_ok()
+                        && exists.as_bool()
+                    {
                         return w;
                     }
                 }
@@ -754,7 +917,12 @@ fn load_embedded_fonts(dwrite: &IDWriteFactory) -> Result<IDWriteFontCollection>
         let builder = f5.CreateFontSetBuilder()?;
         for data in EMBEDDED_FONTS {
             // No owner object: DirectWrite keeps its own copy of the bytes.
-            let file = loader.CreateInMemoryFontFileReference(&f5, data.as_ptr() as *const c_void, data.len() as u32, None::<&windows::core::IUnknown>)?;
+            let file = loader.CreateInMemoryFontFileReference(
+                &f5,
+                data.as_ptr() as *const c_void,
+                data.len() as u32,
+                None::<&windows::core::IUnknown>,
+            )?;
             builder.AddFontFile(&file)?;
         }
         let set = builder.CreateFontSet()?;
@@ -766,7 +934,11 @@ fn load_embedded_fonts(dwrite: &IDWriteFactory) -> Result<IDWriteFontCollection>
 fn has_family(coll: &IDWriteFontCollection, name: &[u16]) -> bool {
     let mut index = 0u32;
     let mut exists = BOOL(0);
-    unsafe { coll.FindFamilyName(PCWSTR(name.as_ptr()), &mut index, &mut exists).is_ok() && exists.as_bool() }
+    unsafe {
+        coll.FindFamilyName(PCWSTR(name.as_ptr()), &mut index, &mut exists)
+            .is_ok()
+            && exists.as_bool()
+    }
 }
 
 /// `PONI_RENDERER=software` forces the software renderer (troubleshooting).
@@ -788,7 +960,9 @@ impl Gfx {
             let dwrite: IDWriteFactory = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)?;
             let font_fallback = dwrite.cast::<IDWriteFactory2>()?.GetSystemFontFallback()?;
             let soft = SoftTarget::new(&d2d)?;
-            let mask_brush = soft.rt.CreateSolidColorBrush(&d2d_color(Color::black(1.0 / 255.0)), None)?;
+            let mask_brush = soft
+                .rt
+                .CreateSolidColorBrush(&d2d_color(Color::black(1.0 / 255.0)), None)?;
             let main: ID2D1RenderTarget = soft.rt.cast()?;
             setup_target(&main);
             let brush = main.CreateSolidColorBrush(&d2d_color(Color::white(1.0)), None)?;
@@ -906,33 +1080,51 @@ impl Gfx {
         } else {
             let family: Vec<u16> = wide(name).into_iter().chain(Some(0)).collect();
             let mut collection = None;
-            valid = unsafe { self.dwrite.GetSystemFontCollection(&mut collection, true).is_ok() }
-                && collection.as_ref().is_some_and(|collection| {
-                    unsafe {
-                        let mut index = 0;
-                        let mut exists = BOOL(0);
-                        if collection.FindFamilyName(PCWSTR(family.as_ptr()), &mut index, &mut exists).is_err() || !exists.as_bool() {
-                            return false;
-                        }
-                        let Ok(font) = collection.GetFontFamily(index).and_then(|family| family.GetFirstMatchingFont(
-                            DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL,
-                        )) else {
-                            return false;
-                        };
-                        // Symbol 会把普通字母映射成希腊符号；图标字体也不能作为界面字体。
-                        // 中文不要求来自所选字体，缺字交给系统字体回退。
-                        if font.IsSymbolFont().as_bool() {
-                            return false;
-                        }
-                        for ch in ' '..='~' {
-                            if !font.HasCharacter(ch as u32).is_ok_and(|present| present.as_bool()) {
-                                return false;
-                            }
-                        }
-                        true
+            valid = unsafe {
+                self.dwrite
+                    .GetSystemFontCollection(&mut collection, true)
+                    .is_ok()
+            } && collection.as_ref().is_some_and(|collection| {
+                unsafe {
+                    let mut index = 0;
+                    let mut exists = BOOL(0);
+                    if collection
+                        .FindFamilyName(PCWSTR(family.as_ptr()), &mut index, &mut exists)
+                        .is_err()
+                        || !exists.as_bool()
+                    {
+                        return false;
                     }
-                });
-            if valid { Some(family) } else { None }
+                    let Ok(font) = collection.GetFontFamily(index).and_then(|family| {
+                        family.GetFirstMatchingFont(
+                            DWRITE_FONT_WEIGHT_NORMAL,
+                            DWRITE_FONT_STRETCH_NORMAL,
+                            DWRITE_FONT_STYLE_NORMAL,
+                        )
+                    }) else {
+                        return false;
+                    };
+                    // Symbol 会把普通字母映射成希腊符号；图标字体也不能作为界面字体。
+                    // 中文不要求来自所选字体，缺字交给系统字体回退。
+                    if font.IsSymbolFont().as_bool() {
+                        return false;
+                    }
+                    for ch in ' '..='~' {
+                        if !font
+                            .HasCharacter(ch as u32)
+                            .is_ok_and(|present| present.as_bool())
+                        {
+                            return false;
+                        }
+                    }
+                    true
+                }
+            });
+            if valid {
+                Some(family)
+            } else {
+                None
+            }
         };
         self.apply_font();
         valid
@@ -946,7 +1138,9 @@ impl Gfx {
                     self.embedded_tried = true;
                     match load_embedded_fonts(&self.dwrite) {
                         Ok(c) => self.embedded = Some(c),
-                        Err(e) => crate::pwarn!("fonts: embedded fonts unavailable ({e}); using the system font"),
+                        Err(e) => crate::pwarn!(
+                            "fonts: embedded fonts unavailable ({e}); using the system font"
+                        ),
                     }
                 }
                 let w: Vec<u16> = wide(name).into_iter().chain(Some(0)).collect();
@@ -1033,14 +1227,30 @@ impl Gfx {
                 Err(e) => return self.gpu_failed(e),
             },
         };
-        let made = self.d2d.cast::<ID2D1Factory1>().and_then(|f| unsafe { GpuTarget::new(&f, visual, self.surf_w, self.surf_h) });
+        let made = self
+            .d2d
+            .cast::<ID2D1Factory1>()
+            .and_then(|f| unsafe { GpuTarget::new(&f, visual, self.surf_w, self.surf_h) });
         match made {
             Ok(g) => {
                 let main = g.dc.cast::<ID2D1RenderTarget>();
                 match main.and_then(|m| self.use_main(m)) {
                     Ok(()) => {
-                        crate::pinfo!("renderer: GPU ({}), DirectComposition, {}x{} px", if g.warp { "WARP" } else { "hardware" }, self.surf_w, self.surf_h);
-                        crate::pinfo!("renderer: adapter {}{}", g.adapter, if g.soft_adapter { " (software rasterizer)" } else { "" });
+                        crate::pinfo!(
+                            "renderer: GPU ({}), DirectComposition, {}x{} px",
+                            if g.warp { "WARP" } else { "hardware" },
+                            self.surf_w,
+                            self.surf_h
+                        );
+                        crate::pinfo!(
+                            "renderer: adapter {}{}",
+                            g.adapter,
+                            if g.soft_adapter {
+                                " (software rasterizer)"
+                            } else {
+                                ""
+                            }
+                        );
                         self.gpu = Some(g);
                         self.visual_at = None;
                         self.renderer_changed = true;
@@ -1081,7 +1291,10 @@ impl Gfx {
         self.gpu_failures += 1;
         if self.gpu_failures >= 3 {
             self.gpu_allowed = false;
-            crate::pwarn!("renderer: staying on software after {} GPU failures", self.gpu_failures);
+            crate::pwarn!(
+                "renderer: staying on software after {} GPU failures",
+                self.gpu_failures
+            );
         }
         self.soft_full = true;
         if let Ok(m) = self.soft.rt.cast::<ID2D1RenderTarget>() {
@@ -1098,7 +1311,9 @@ impl Gfx {
         if self.glass_broken {
             return false;
         }
-        let Some(g) = self.gpu.as_ref() else { return false };
+        let Some(g) = self.gpu.as_ref() else {
+            return false;
+        };
         match unsafe { GlassPass::new(&g.d3d, &g.dc) } {
             Ok(p) => {
                 crate::pinfo!("glass: shader ready");
@@ -1120,7 +1335,9 @@ impl Gfx {
             return false;
         }
         let scale = self.scale();
-        let (Some(g), Some(p)) = (self.gpu.as_ref(), self.glass.as_mut()) else { return false };
+        let (Some(g), Some(p)) = (self.gpu.as_ref(), self.glass.as_mut()) else {
+            return false;
+        };
         match unsafe { p.set_copy(&g.d3d, &g.ctx, &g.dc, px, w, h, scale) } {
             Ok(()) => true,
             Err(e) => {
@@ -1162,7 +1379,9 @@ impl Gfx {
             return false;
         }
         let (w, h, dpi) = (self.surf_w, self.surf_h, self.dpi);
-        let (Some(g), Some(p)) = (self.gpu.as_ref(), self.glass.as_mut()) else { return false };
+        let (Some(g), Some(p)) = (self.gpu.as_ref(), self.glass.as_mut()) else {
+            return false;
+        };
         match unsafe { p.render(&g.d3d, &g.ctx, &g.dc, w, h, dpi, params, area) } {
             Ok(()) => {
                 self.glass_drawn = true;
@@ -1206,8 +1425,17 @@ impl Gfx {
         self.used_bitmaps.clear();
         self.layers_used = 0;
         self.frame_no += 1;
-        let full = RECT { left: 0, top: 0, right: self.surf_w, bottom: self.surf_h };
-        self.dirty = if self.soft_full { full } else { px_union(RECT::default(), dirty) };
+        let full = RECT {
+            left: 0,
+            top: 0,
+            right: self.surf_w,
+            bottom: self.surf_h,
+        };
+        self.dirty = if self.soft_full {
+            full
+        } else {
+            px_union(RECT::default(), dirty)
+        };
         if let Some(g) = self.gpu.as_mut() {
             if let Err(e) = unsafe { g.begin(self.dpi) } {
                 self.gpu_lost("begin", e);
@@ -1225,14 +1453,25 @@ impl Gfx {
                 // Only the dirty part: the rest of the DIB is already clear.
                 let s = self.scale();
                 let d = self.dirty;
-                let r = D2D_RECT_F { left: d.left as f32 / s, top: d.top as f32 / s, right: d.right as f32 / s, bottom: d.bottom as f32 / s };
-                self.main.PushAxisAlignedClip(&r, D2D1_ANTIALIAS_MODE_ALIASED);
+                let r = D2D_RECT_F {
+                    left: d.left as f32 / s,
+                    top: d.top as f32 / s,
+                    right: d.right as f32 / s,
+                    bottom: d.bottom as f32 / s,
+                };
+                self.main
+                    .PushAxisAlignedClip(&r, D2D1_ANTIALIAS_MODE_ALIASED);
                 self.main.Clear(Some(&CLEAR));
                 self.main.PopAxisAlignedClip();
             }
         }
         self.rt = self.main.clone();
-        Ok(Canvas { g: self, alpha: 1.0, snap_text: true, window_from_target: Matrix3x2::identity() })
+        Ok(Canvas {
+            g: self,
+            alpha: 1.0,
+            snap_text: true,
+            window_from_target: Matrix3x2::identity(),
+        })
     }
 
     /// Finish the frame. Evicts bitmaps and text layouts that weren't used
@@ -1272,7 +1511,9 @@ impl Gfx {
             self.bitmaps.retain(|k, _| used.contains(k));
         }
         if self.frame_no % 120 == 0 || self.layouts.len() > 1500 {
-            let keep_after = self.frame_no.saturating_sub(if self.layouts.len() > 1500 { 2 } else { 240 });
+            let keep_after =
+                self.frame_no
+                    .saturating_sub(if self.layouts.len() > 1500 { 2 } else { 240 });
             self.layouts.retain(|_, (_, used)| *used >= keep_after);
         }
         r
@@ -1295,7 +1536,16 @@ impl Gfx {
             return Ok(());
         }
         let dirty = std::mem::take(&mut self.dirty);
-        let r = unsafe { self.soft.push(self.hwnd, x, y, self.surf_w, self.surf_h, (!self.soft_full).then_some(dirty)) };
+        let r = unsafe {
+            self.soft.push(
+                self.hwnd,
+                x,
+                y,
+                self.surf_w,
+                self.surf_h,
+                (!self.soft_full).then_some(dirty),
+            )
+        };
         if r.is_ok() {
             self.soft_full = false;
         }
@@ -1327,7 +1577,10 @@ impl Gfx {
     /// the GPU renderer draws in it.
     pub fn set_shown(&mut self, on: bool) {
         self.shown = on;
-        if let Some(v) = self.visual.filter(|_| self.gpu.is_some() && self.visual_at.is_some()) {
+        if let Some(v) = self
+            .visual
+            .filter(|_| self.gpu.is_some() && self.visual_at.is_some())
+        {
             unsafe {
                 let _ = ShowWindow(v, if on { SW_SHOWNOACTIVATE } else { SW_HIDE });
             }
@@ -1337,11 +1590,26 @@ impl Gfx {
     /// GPU renderer: update the window's own bitmap, an invisible mask that
     /// decides where the island takes the mouse. `prev` is the last mask
     /// pushed (only the area of either is redrawn).
-    pub fn push_hit_mask(&mut self, x: i32, y: i32, mask: &HitMask, prev: Option<&HitMask>) -> Result<()> {
+    pub fn push_hit_mask(
+        &mut self,
+        x: i32,
+        y: i32,
+        mask: &HitMask,
+        prev: Option<&HitMask>,
+    ) -> Result<()> {
         let s = self.scale();
         let (w, h) = (self.surf_w, self.surf_h);
-        let full = RECT { left: 0, top: 0, right: w, bottom: h };
-        let area = |m: &HitMask| m.bounds().map(|b| px_rect(b, s, 2, w, h)).unwrap_or_default();
+        let full = RECT {
+            left: 0,
+            top: 0,
+            right: w,
+            bottom: h,
+        };
+        let area = |m: &HitMask| {
+            m.bounds()
+                .map(|b| px_rect(b, s, 2, w, h))
+                .unwrap_or_default()
+        };
         let dirty = match prev {
             Some(p) if !self.soft_full => px_union(area(p), area(mask)),
             _ => full,
@@ -1350,7 +1618,12 @@ impl Gfx {
             self.soft.begin(w, h, self.dpi)?;
             let rt = &self.soft.rt;
             rt.SetTransform(&Matrix3x2::identity());
-            let r = D2D_RECT_F { left: dirty.left as f32 / s, top: dirty.top as f32 / s, right: dirty.right as f32 / s, bottom: dirty.bottom as f32 / s };
+            let r = D2D_RECT_F {
+                left: dirty.left as f32 / s,
+                top: dirty.top as f32 / s,
+                right: dirty.right as f32 / s,
+                bottom: dirty.bottom as f32 / s,
+            };
             rt.PushAxisAlignedClip(&r, D2D1_ANTIALIAS_MODE_ALIASED);
             rt.Clear(Some(&CLEAR));
             if let Some(r) = mask.rect {
@@ -1362,14 +1635,17 @@ impl Gfx {
                 }
             }
             if let Some((body, radius)) = mask.pill {
-                if let Ok(geo) = self.path_geometry(&crate::pill::shape::segments(body, radius), true) {
+                if let Ok(geo) =
+                    self.path_geometry(&crate::pill::shape::segments(body, radius), true)
+                {
                     rt.FillGeometry(&geo, &self.mask_brush, None);
                 }
             }
             rt.PopAxisAlignedClip();
             rt.EndDraw(None, None)?;
             let full_push = self.soft_full || prev.is_none();
-            self.soft.push(self.hwnd, x, y, w, h, (!full_push).then_some(dirty))?;
+            self.soft
+                .push(self.hwnd, x, y, w, h, (!full_push).then_some(dirty))?;
         }
         self.soft_full = false;
         Ok(())
@@ -1383,9 +1659,22 @@ impl Gfx {
             return Ok(l.clone());
         }
         let s = self.scale();
-        let px = D2D_SIZE_U { width: self.surf_w.max(1) as u32, height: self.surf_h.max(1) as u32 };
-        let dip = D2D_SIZE_F { width: px.width as f32 / s, height: px.height as f32 / s };
-        let l = unsafe { self.main.CreateCompatibleRenderTarget(Some(&dip), Some(&px), Some(&PREMUL_BGRA), D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE)? };
+        let px = D2D_SIZE_U {
+            width: self.surf_w.max(1) as u32,
+            height: self.surf_h.max(1) as u32,
+        };
+        let dip = D2D_SIZE_F {
+            width: px.width as f32 / s,
+            height: px.height as f32 / s,
+        };
+        let l = unsafe {
+            self.main.CreateCompatibleRenderTarget(
+                Some(&dip),
+                Some(&px),
+                Some(&PREMUL_BGRA),
+                D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE,
+            )?
+        };
         setup_target(&l.cast()?);
         self.layers.push(l.clone());
         Ok(l)
@@ -1396,7 +1685,11 @@ impl Gfx {
         if let Some(f) = self.formats.get(&key) {
             return Ok(f.clone());
         }
-        let coll = if self.family_embedded { self.embedded.clone() } else { None };
+        let coll = if self.family_embedded {
+            self.embedded.clone()
+        } else {
+            None
+        };
         let f = unsafe {
             let f = self.dwrite.CreateTextFormat(
                 PCWSTR(self.family.as_ptr()),
@@ -1409,10 +1702,18 @@ impl Gfx {
             )?;
             let format: IDWriteTextFormat1 = f.cast()?;
             format.SetFontFallback(&self.font_fallback)?;
-            f.SetWordWrapping(if wrap { DWRITE_WORD_WRAPPING_WRAP } else { DWRITE_WORD_WRAPPING_NO_WRAP })?;
+            f.SetWordWrapping(if wrap {
+                DWRITE_WORD_WRAPPING_WRAP
+            } else {
+                DWRITE_WORD_WRAPPING_NO_WRAP
+            })?;
             if !wrap {
                 let sign = self.dwrite.CreateEllipsisTrimmingSign(&f)?;
-                let trimming = DWRITE_TRIMMING { granularity: DWRITE_TRIMMING_GRANULARITY_CHARACTER, delimiter: 0, delimiterCount: 0 };
+                let trimming = DWRITE_TRIMMING {
+                    granularity: DWRITE_TRIMMING_GRANULARITY_CHARACTER,
+                    delimiter: 0,
+                    delimiterCount: 0,
+                };
                 f.SetTrimming(&trimming, &sign)?;
             }
             f
@@ -1451,14 +1752,31 @@ impl Gfx {
                 Align::Center => DWRITE_TEXT_ALIGNMENT_CENTER,
                 Align::Right => DWRITE_TEXT_ALIGNMENT_TRAILING,
             })?;
-            layout.SetParagraphAlignment(if st.vcenter { DWRITE_PARAGRAPH_ALIGNMENT_CENTER } else { DWRITE_PARAGRAPH_ALIGNMENT_NEAR })?;
+            layout.SetParagraphAlignment(if st.vcenter {
+                DWRITE_PARAGRAPH_ALIGNMENT_CENTER
+            } else {
+                DWRITE_PARAGRAPH_ALIGNMENT_NEAR
+            })?;
             if st.line > 0.0 {
-                layout.SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, st.line * st.size, 0.8 * st.line * st.size)?;
+                layout.SetLineSpacing(
+                    DWRITE_LINE_SPACING_METHOD_UNIFORM,
+                    st.line * st.size,
+                    0.8 * st.line * st.size,
+                )?;
             }
             if st.tabular && !text.is_empty() {
                 let typo = self.dwrite.CreateTypography()?;
-                typo.AddFontFeature(DWRITE_FONT_FEATURE { nameTag: DWRITE_FONT_FEATURE_TAG_TABULAR_FIGURES, parameter: 1 })?;
-                layout.SetTypography(&typo, DWRITE_TEXT_RANGE { startPosition: 0, length: text.len() as u32 })?;
+                typo.AddFontFeature(DWRITE_FONT_FEATURE {
+                    nameTag: DWRITE_FONT_FEATURE_TAG_TABULAR_FIGURES,
+                    parameter: 1,
+                })?;
+                layout.SetTypography(
+                    &typo,
+                    DWRITE_TEXT_RANGE {
+                        startPosition: 0,
+                        length: text.len() as u32,
+                    },
+                )?;
             }
             layout
         };
@@ -1473,11 +1791,17 @@ impl Gfx {
         }
         let bmp = unsafe {
             self.main.CreateBitmap(
-                D2D_SIZE_U { width: img.width, height: img.height },
+                D2D_SIZE_U {
+                    width: img.width,
+                    height: img.height,
+                },
                 Some(img.pixels.as_ptr() as *const c_void),
                 img.width * 4,
                 &D2D1_BITMAP_PROPERTIES {
-                    pixelFormat: D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED },
+                    pixelFormat: D2D1_PIXEL_FORMAT {
+                        format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                        alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
+                    },
                     dpiX: 96.0,
                     dpiY: 96.0,
                 },
@@ -1495,7 +1819,11 @@ impl Gfx {
             sink.SetFillMode(D2D1_FILL_MODE_WINDING);
             let mut open = false;
             let mut cur = (0.0f32, 0.0f32);
-            let begin = if close_fill { D2D1_FIGURE_BEGIN_FILLED } else { D2D1_FIGURE_BEGIN_HOLLOW };
+            let begin = if close_fill {
+                D2D1_FIGURE_BEGIN_FILLED
+            } else {
+                D2D1_FIGURE_BEGIN_HOLLOW
+            };
             for s in segs {
                 match *s {
                     Seg::MoveTo(x, y) => {
@@ -1519,7 +1847,11 @@ impl Gfx {
                             sink.BeginFigure(pt(cur.0, cur.1), begin);
                             open = true;
                         }
-                        sink.AddBezier(&D2D1_BEZIER_SEGMENT { point1: pt(x1, y1), point2: pt(x2, y2), point3: pt(x, y) });
+                        sink.AddBezier(&D2D1_BEZIER_SEGMENT {
+                            point1: pt(x1, y1),
+                            point2: pt(x2, y2),
+                            point3: pt(x, y),
+                        });
                         cur = (x, y);
                     }
                     Seg::QuadTo(x1, y1, x, y) => {
@@ -1527,7 +1859,10 @@ impl Gfx {
                             sink.BeginFigure(pt(cur.0, cur.1), begin);
                             open = true;
                         }
-                        sink.AddQuadraticBezier(&D2D1_QUADRATIC_BEZIER_SEGMENT { point1: pt(x1, y1), point2: pt(x, y) });
+                        sink.AddQuadraticBezier(&D2D1_QUADRATIC_BEZIER_SEGMENT {
+                            point1: pt(x1, y1),
+                            point2: pt(x, y),
+                        });
                         cur = (x, y);
                     }
                     Seg::ArcTo(rx, ry, rot, large, sweep, x, y) => {
@@ -1537,8 +1872,14 @@ impl Gfx {
                         }
                         // Flatten to Béziers ourselves: native arc support varies
                         // between Direct2D implementations (Wine draws chords).
-                        for c in poni_core::svgpath::arc_to_cubics(cur.0, cur.1, rx, ry, rot, large, sweep, x, y) {
-                            sink.AddBezier(&D2D1_BEZIER_SEGMENT { point1: pt(c[0], c[1]), point2: pt(c[2], c[3]), point3: pt(c[4], c[5]) });
+                        for c in poni_core::svgpath::arc_to_cubics(
+                            cur.0, cur.1, rx, ry, rot, large, sweep, x, y,
+                        ) {
+                            sink.AddBezier(&D2D1_BEZIER_SEGMENT {
+                                point1: pt(c[0], c[1]),
+                                point2: pt(c[2], c[3]),
+                                point3: pt(c[4], c[5]),
+                            });
                         }
                         cur = (x, y);
                     }
@@ -1578,23 +1919,48 @@ impl Gfx {
 
     /// The gradient brushes [`Canvas::rrect_shadow`] fills with for `stops`
     /// in `c` (its opacity is set per fill), made on first use.
-    fn shadow_brushes(&mut self, stops: &[(f32, f32)], c: Color) -> Option<(ID2D1RadialGradientBrush, ID2D1LinearGradientBrush)> {
+    fn shadow_brushes(
+        &mut self,
+        stops: &[(f32, f32)],
+        c: Color,
+    ) -> Option<(ID2D1RadialGradientBrush, ID2D1LinearGradientBrush)> {
         // FNV-1a over the stops and the colour.
         let key = stops
             .iter()
             .flat_map(|&(p, a)| [p, a])
             .chain([c.r, c.g, c.b])
-            .fold(0xcbf2_9ce4_8422_2325u64, |h, v| (h ^ v.to_bits() as u64).wrapping_mul(0x0100_0000_01b3));
+            .fold(0xcbf2_9ce4_8422_2325u64, |h, v| {
+                (h ^ v.to_bits() as u64).wrapping_mul(0x0100_0000_01b3)
+            });
         if let Some(b) = self.shadows.get(&key) {
             return Some(b.clone());
         }
-        let grad: Vec<D2D1_GRADIENT_STOP> = stops.iter().map(|&(position, a)| D2D1_GRADIENT_STOP { position, color: d2d_color(c.with_alpha(a)) }).collect();
-        let made = unsafe {
-            self.main.CreateGradientStopCollection(&grad, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP).and_then(|coll| {
-                let radial = D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES { center: pt(0.0, 0.0), gradientOriginOffset: pt(0.0, 0.0), radiusX: 1.0, radiusY: 1.0 };
-                let linear = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES { startPoint: pt(0.0, 0.0), endPoint: pt(0.0, 1.0) };
-                Ok((self.main.CreateRadialGradientBrush(&radial, None, &coll)?, self.main.CreateLinearGradientBrush(&linear, None, &coll)?))
+        let grad: Vec<D2D1_GRADIENT_STOP> = stops
+            .iter()
+            .map(|&(position, a)| D2D1_GRADIENT_STOP {
+                position,
+                color: d2d_color(c.with_alpha(a)),
             })
+            .collect();
+        let made = unsafe {
+            self.main
+                .CreateGradientStopCollection(&grad, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)
+                .and_then(|coll| {
+                    let radial = D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES {
+                        center: pt(0.0, 0.0),
+                        gradientOriginOffset: pt(0.0, 0.0),
+                        radiusX: 1.0,
+                        radiusY: 1.0,
+                    };
+                    let linear = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
+                        startPoint: pt(0.0, 0.0),
+                        endPoint: pt(0.0, 1.0),
+                    };
+                    Ok((
+                        self.main.CreateRadialGradientBrush(&radial, None, &coll)?,
+                        self.main.CreateLinearGradientBrush(&linear, None, &coll)?,
+                    ))
+                })
         };
         let b = made.ok()?;
         // A morph walks through radii (whole half DIPs); a long session
@@ -1687,31 +2053,63 @@ impl<'a> Canvas<'a> {
 
     pub fn fill_rrect(&mut self, r: Rect, radius: f32, c: Color) {
         self.set_brush(c);
-        let rr = D2D1_ROUNDED_RECT { rect: rectf(r), radiusX: radius, radiusY: radius };
+        let rr = D2D1_ROUNDED_RECT {
+            rect: rectf(r),
+            radiusX: radius,
+            radiusY: radius,
+        };
         unsafe { self.g.rt.FillRoundedRectangle(&rr, &self.g.brush) };
     }
 
     pub fn stroke_rrect(&mut self, r: Rect, radius: f32, c: Color, width: f32) {
         self.set_brush(c);
-        let rr = D2D1_ROUNDED_RECT { rect: rectf(r.inset(width / 2.0, width / 2.0)), radiusX: radius, radiusY: radius };
-        unsafe { self.g.rt.DrawRoundedRectangle(&rr, &self.g.brush, width, &self.g.round_stroke) };
+        let rr = D2D1_ROUNDED_RECT {
+            rect: rectf(r.inset(width / 2.0, width / 2.0)),
+            radiusX: radius,
+            radiusY: radius,
+        };
+        unsafe {
+            self.g
+                .rt
+                .DrawRoundedRectangle(&rr, &self.g.brush, width, &self.g.round_stroke)
+        };
     }
 
     pub fn fill_circle(&mut self, c: Point, radius: f32, color: Color) {
         self.set_brush(color);
-        let e = D2D1_ELLIPSE { point: pt(c.x, c.y), radiusX: radius, radiusY: radius };
+        let e = D2D1_ELLIPSE {
+            point: pt(c.x, c.y),
+            radiusX: radius,
+            radiusY: radius,
+        };
         unsafe { self.g.rt.FillEllipse(&e, &self.g.brush) };
     }
 
     pub fn stroke_circle(&mut self, c: Point, radius: f32, color: Color, width: f32) {
         self.set_brush(color);
-        let e = D2D1_ELLIPSE { point: pt(c.x, c.y), radiusX: radius, radiusY: radius };
-        unsafe { self.g.rt.DrawEllipse(&e, &self.g.brush, width, &self.g.round_stroke) };
+        let e = D2D1_ELLIPSE {
+            point: pt(c.x, c.y),
+            radiusX: radius,
+            radiusY: radius,
+        };
+        unsafe {
+            self.g
+                .rt
+                .DrawEllipse(&e, &self.g.brush, width, &self.g.round_stroke)
+        };
     }
 
     pub fn line(&mut self, a: Point, b: Point, c: Color, width: f32) {
         self.set_brush(c);
-        unsafe { self.g.rt.DrawLine(pt(a.x, a.y), pt(b.x, b.y), &self.g.brush, width, &self.g.round_stroke) };
+        unsafe {
+            self.g.rt.DrawLine(
+                pt(a.x, a.y),
+                pt(b.x, b.y),
+                &self.g.brush,
+                width,
+                &self.g.round_stroke,
+            )
+        };
     }
 
     /// Arc clockwise from 12 o'clock: starts at `start` (0..1 of a turn) and
@@ -1729,15 +2127,30 @@ impl<'a> Canvas<'a> {
         let (a0, a1) = (ang(start), ang(start + sweep));
         let p0 = (c.x + radius * a0.cos(), c.y + radius * a0.sin());
         let p1 = (c.x + radius * a1.cos(), c.y + radius * a1.sin());
-        let segs = [Seg::MoveTo(p0.0, p0.1), Seg::ArcTo(radius, radius, 0.0, sweep > 0.5, true, p1.0, p1.1)];
+        let segs = [
+            Seg::MoveTo(p0.0, p0.1),
+            Seg::ArcTo(radius, radius, 0.0, sweep > 0.5, true, p1.0, p1.1),
+        ];
         if let Ok(geo) = self.g.path_geometry(&segs, false) {
             self.set_brush(color);
-            unsafe { self.g.rt.DrawGeometry(&geo, &self.g.brush, width, &self.g.round_stroke) };
+            unsafe {
+                self.g
+                    .rt
+                    .DrawGeometry(&geo, &self.g.brush, width, &self.g.round_stroke)
+            };
         }
     }
 
     /// Progress ring: full track circle plus a progress arc on top.
-    pub fn ring(&mut self, c: Point, radius: f32, width: f32, progress: f32, track: Color, fill: Color) {
+    pub fn ring(
+        &mut self,
+        c: Point,
+        radius: f32,
+        width: f32,
+        progress: f32,
+        track: Color,
+        fill: Color,
+    ) {
         self.stroke_circle(c, radius, track, width);
         self.arc(c, radius, 0.0, progress, fill, width);
     }
@@ -1752,7 +2165,9 @@ impl<'a> Canvas<'a> {
                 }
                 if let Some((c, w)) = stroke {
                     self.set_brush(c);
-                    self.g.rt.DrawGeometry(&geo, &self.g.brush, w, &self.g.round_stroke);
+                    self.g
+                        .rt
+                        .DrawGeometry(&geo, &self.g.brush, w, &self.g.round_stroke);
                 }
             }
         }
@@ -1760,15 +2175,39 @@ impl<'a> Canvas<'a> {
 
     /// Fill a path with `c` fading from `alpha0` at height `y0` to `alpha1`
     /// at `y1` (a vertical gradient, as under Stats' charts).
-    pub fn fill_path_fade(&mut self, segs: &[Seg], c: Color, y0: f32, y1: f32, alpha0: f32, alpha1: f32) {
-        let Ok(geo) = self.g.path_geometry(segs, true) else { return };
+    pub fn fill_path_fade(
+        &mut self,
+        segs: &[Seg],
+        c: Color,
+        y0: f32,
+        y1: f32,
+        alpha0: f32,
+        alpha1: f32,
+    ) {
+        let Ok(geo) = self.g.path_geometry(segs, true) else {
+            return;
+        };
         let c = self.g.look.paint(c);
-        let stop = |position: f32, a: f32| D2D1_GRADIENT_STOP { position, color: d2d_color(c.with_alpha(c.a * a)) };
+        let stop = |position: f32, a: f32| D2D1_GRADIENT_STOP {
+            position,
+            color: d2d_color(c.with_alpha(c.a * a)),
+        };
         let stops = [stop(0.0, alpha0), stop(1.0, alpha1)];
         unsafe {
-            let Ok(coll) = self.g.rt.CreateGradientStopCollection(&stops, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP) else { return };
-            let props = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES { startPoint: pt(0.0, y0), endPoint: pt(0.0, y1) };
-            let Ok(brush) = self.g.rt.CreateLinearGradientBrush(&props, None, &coll) else { return };
+            let Ok(coll) = self.g.rt.CreateGradientStopCollection(
+                &stops,
+                D2D1_GAMMA_2_2,
+                D2D1_EXTEND_MODE_CLAMP,
+            ) else {
+                return;
+            };
+            let props = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
+                startPoint: pt(0.0, y0),
+                endPoint: pt(0.0, y1),
+            };
+            let Ok(brush) = self.g.rt.CreateLinearGradientBrush(&props, None, &coll) else {
+                return;
+            };
             brush.SetOpacity(self.alpha);
             self.g.rt.FillGeometry(&geo, &brush, None);
         }
@@ -1784,13 +2223,17 @@ impl<'a> Canvas<'a> {
     /// on whole pixels, so draw it without a content transform. The
     /// gradients are kept between frames.
     pub fn rrect_shadow(&mut self, r: Rect, radius: f32, c: Color, ramp: &[(f32, f32)]) {
-        let Some(plan) = crate::pill::shape::shadow_plan(r, radius, ramp, self.scale()) else { return };
+        let Some(plan) = crate::pill::shape::shadow_plan(r, radius, ramp, self.scale()) else {
+            return;
+        };
         let c = self.g.look.paint(c);
         let opacity = (c.a * self.alpha).clamp(0.0, 1.0);
         if opacity <= 0.0 {
             return;
         }
-        let Some((radial, linear)) = self.g.shadow_brushes(&plan.stops, c) else { return };
+        let Some((radial, linear)) = self.g.shadow_brushes(&plan.stops, c) else {
+            return;
+        };
         unsafe {
             radial.SetOpacity(opacity);
             radial.SetRadiusX(plan.reach);
@@ -1815,7 +2258,14 @@ impl<'a> Canvas<'a> {
     /// The island silhouette: flat top flush with the screen edge, concave
     /// "shoulders" flaring into the top edge and rounded bottom corners.
     /// `body` is the main rectangle; shoulders extend `shoulder` DIPs outside it.
-    pub fn notch(&mut self, body: Rect, radius: f32, shoulder: f32, fill: Color, border: Option<Color>) {
+    pub fn notch(
+        &mut self,
+        body: Rect,
+        radius: f32,
+        shoulder: f32,
+        fill: Color,
+        border: Option<Color>,
+    ) {
         self.path(&notch_segments(body, radius, shoulder), Some(fill), None);
         if let Some(b) = border {
             // Stroke only the sides and bottom: stroking the closing top segment
@@ -1842,7 +2292,15 @@ impl<'a> Canvas<'a> {
         if self.g.glass_drawn {
             if let Some(bmp) = self.g.glass.as_ref().and_then(|x| x.output()).cloned() {
                 let r = rectf(area);
-                unsafe { self.g.rt.DrawBitmap(&bmp, Some(&r), self.alpha, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, Some(&r)) };
+                unsafe {
+                    self.g.rt.DrawBitmap(
+                        &bmp,
+                        Some(&r),
+                        self.alpha,
+                        D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+                        Some(&r),
+                    )
+                };
                 return;
             }
         }
@@ -1855,11 +2313,27 @@ impl<'a> Canvas<'a> {
         for i in 1..=3 {
             let grow = i as f32 * p.shadow_reach / 3.0;
             let b = p.body;
-            let shadow = Rect::new(b.x - grow, b.y, b.w + 2.0 * grow, b.h + p.shadow_drop + grow);
-            self.path(&notch_segments(shadow, p.radius + grow, p.shoulder), Some(Color::black(p.shadow_alpha / 4.0)), None);
+            let shadow = Rect::new(
+                b.x - grow,
+                b.y,
+                b.w + 2.0 * grow,
+                b.h + p.shadow_drop + grow,
+            );
+            self.path(
+                &notch_segments(shadow, p.radius + grow, p.shoulder),
+                Some(Color::black(p.shadow_alpha / 4.0)),
+                None,
+            );
         }
-        let ground = Color::lerp(p.ground_dark, p.ground_light, p.light_mix).with_alpha(poni_core::glass::SMOKED_OPACITY);
-        self.notch(p.body, p.radius, p.shoulder, ground, Some(Color::white((0.55 * p.rim).clamp(0.0, 1.0))));
+        let ground = Color::lerp(p.ground_dark, p.ground_light, p.light_mix)
+            .with_alpha(poni_core::glass::SMOKED_OPACITY);
+        self.notch(
+            p.body,
+            p.radius,
+            p.shoulder,
+            ground,
+            Some(Color::white((0.55 * p.rim).clamp(0.0, 1.0))),
+        );
     }
 
     /// Mask subsequent drawing to the island silhouette (anti-aliased) until
@@ -1871,10 +2345,19 @@ impl<'a> Canvas<'a> {
     /// Mask subsequent drawing to the closed outline `segs` (anti-aliased)
     /// until [`Canvas::pop_shape_mask`] (the floating island's outline).
     pub fn push_outline_mask(&mut self, segs: &[Seg]) {
-        let pushed = match self.g.path_geometry(segs, true).and_then(|g| g.cast::<ID2D1Geometry>()) {
+        let pushed = match self
+            .g
+            .path_geometry(segs, true)
+            .and_then(|g| g.cast::<ID2D1Geometry>())
+        {
             Ok(geom) => unsafe {
                 let params = D2D1_LAYER_PARAMETERS {
-                    contentBounds: D2D_RECT_F { left: -1.0e7, top: -1.0e7, right: 1.0e7, bottom: 1.0e7 },
+                    contentBounds: D2D_RECT_F {
+                        left: -1.0e7,
+                        top: -1.0e7,
+                        right: 1.0e7,
+                        bottom: 1.0e7,
+                    },
                     geometricMask: ManuallyDrop::new(Some(geom)),
                     maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
                     maskTransform: Matrix3x2::identity(),
@@ -1910,12 +2393,24 @@ impl<'a> Canvas<'a> {
         }
         if let Ok(layout) = self.g.layout(s, st, r.w, r.h) {
             if st.preserve_color {
-                unsafe { self.g.brush.SetColor(&d2d_color(st.color.mul_alpha(self.alpha))) };
+                unsafe {
+                    self.g
+                        .brush
+                        .SetColor(&d2d_color(st.color.mul_alpha(self.alpha)))
+                };
             } else {
                 self.set_text_brush(st.color);
             }
-            let opts = if self.snap_text { D2D1_DRAW_TEXT_OPTIONS_NONE } else { D2D1_DRAW_TEXT_OPTIONS_NO_SNAP };
-            unsafe { self.g.rt.DrawTextLayout(pt(r.x, r.y), &layout, &self.g.brush, opts) };
+            let opts = if self.snap_text {
+                D2D1_DRAW_TEXT_OPTIONS_NONE
+            } else {
+                D2D1_DRAW_TEXT_OPTIONS_NO_SNAP
+            };
+            unsafe {
+                self.g
+                    .rt
+                    .DrawTextLayout(pt(r.x, r.y), &layout, &self.g.brush, opts)
+            };
         }
     }
 
@@ -1952,30 +2447,56 @@ impl<'a> Canvas<'a> {
     /// between pixels, which a GPU does a hair off even at one to one;
     /// pixel art must not be smoothed at all. `r` sits on whole pixels.
     pub fn image_exact(&mut self, img: &Image, r: Rect, radius: f32) {
-        self.image_as(img, r, radius, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+        self.image_as(
+            img,
+            r,
+            radius,
+            D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+        );
     }
 
-    fn image_as(&mut self, img: &Image, r: Rect, radius: f32, interpolation: D2D1_BITMAP_INTERPOLATION_MODE) {
+    fn image_as(
+        &mut self,
+        img: &Image,
+        r: Rect,
+        radius: f32,
+        interpolation: D2D1_BITMAP_INTERPOLATION_MODE,
+    ) {
         if img.width == 0 || img.height == 0 || r.w <= 0.0 || r.h <= 0.0 {
             return;
         }
-        let Ok(bmp) = self.g.bitmap_for(img) else { return };
+        let Ok(bmp) = self.g.bitmap_for(img) else {
+            return;
+        };
         unsafe {
             let props = D2D1_BITMAP_BRUSH_PROPERTIES {
                 extendModeX: D2D1_EXTEND_MODE_CLAMP,
                 extendModeY: D2D1_EXTEND_MODE_CLAMP,
                 interpolationMode: interpolation,
             };
-            let Ok(brush) = self.g.rt.CreateBitmapBrush(&bmp, Some(&props), None) else { return };
+            let Ok(brush) = self.g.rt.CreateBitmapBrush(&bmp, Some(&props), None) else {
+                return;
+            };
             // Bitmaps are created at 96 DPI so their DIP size equals pixel size.
             let (iw, ih) = (img.width as f32, img.height as f32);
             let s = (r.w / iw).max(r.h / ih);
             let (dw, dh) = (iw * s, ih * s);
             let ox = r.x + (r.w - dw) / 2.0;
             let oy = r.y + (r.h - dh) / 2.0;
-            brush.SetTransform(&Matrix3x2 { M11: s, M12: 0.0, M21: 0.0, M22: s, M31: ox, M32: oy });
+            brush.SetTransform(&Matrix3x2 {
+                M11: s,
+                M12: 0.0,
+                M21: 0.0,
+                M22: s,
+                M31: ox,
+                M32: oy,
+            });
             brush.SetOpacity(self.alpha);
-            let rr = D2D1_ROUNDED_RECT { rect: rectf(r), radiusX: radius, radiusY: radius };
+            let rr = D2D1_ROUNDED_RECT {
+                rect: rectf(r),
+                radiusX: radius,
+                radiusY: radius,
+            };
             self.g.rt.FillRoundedRectangle(&rr, &brush);
         }
     }
@@ -2001,13 +2522,22 @@ impl<'a> Canvas<'a> {
         unsafe {
             let mut prev = Matrix3x2::identity();
             self.g.rt.GetTransform(&mut prev);
-            let m = Matrix3x2 { M11: s, M12: 0.0, M21: 0.0, M22: s, M31: ox, M32: oy };
+            let m = Matrix3x2 {
+                M11: s,
+                M12: 0.0,
+                M21: 0.0,
+                M22: s,
+                M31: ox,
+                M32: oy,
+            };
             self.g.rt.SetTransform(&(m * prev));
             for (geo, fill) in &geoms {
                 if *fill {
                     self.g.rt.FillGeometry(geo, &self.g.brush, None);
                 } else {
-                    self.g.rt.DrawGeometry(geo, &self.g.brush, icons::STROKE, &self.g.round_stroke);
+                    self.g
+                        .rt
+                        .DrawGeometry(geo, &self.g.brush, icons::STROKE, &self.g.round_stroke);
                 }
             }
             self.g.rt.SetTransform(&prev);
@@ -2016,7 +2546,11 @@ impl<'a> Canvas<'a> {
 
     /// Clip subsequent drawing to `r` until [`Canvas::unclip`].
     pub fn clip(&mut self, r: Rect) {
-        unsafe { self.g.rt.PushAxisAlignedClip(&rectf(r), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE) };
+        unsafe {
+            self.g
+                .rt
+                .PushAxisAlignedClip(&rectf(r), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE)
+        };
     }
 
     pub fn unclip(&mut self) {
@@ -2028,7 +2562,9 @@ impl<'a> Canvas<'a> {
         unsafe {
             let mut prev = Matrix3x2::identity();
             self.g.rt.GetTransform(&mut prev);
-            self.g.rt.SetTransform(&(Matrix3x2::translation(dx, dy) * prev));
+            self.g
+                .rt
+                .SetTransform(&(Matrix3x2::translation(dx, dy) * prev));
         }
     }
 
@@ -2055,7 +2591,12 @@ impl<'a> Canvas<'a> {
         let mut top = f32::INFINITY;
         let mut right = f32::NEG_INFINITY;
         let mut bottom = f32::NEG_INFINITY;
-        for (x, y) in [(r.x, r.y), (r.right(), r.y), (r.x, r.bottom()), (r.right(), r.bottom())] {
+        for (x, y) in [
+            (r.x, r.y),
+            (r.right(), r.y),
+            (r.x, r.bottom()),
+            (r.right(), r.bottom()),
+        ] {
             let window_x = x * m.M11 + y * m.M21 + m.M31;
             let window_y = x * m.M12 + y * m.M22 + m.M32;
             left = left.min(window_x);
@@ -2069,7 +2610,14 @@ impl<'a> Canvas<'a> {
     /// Scale subsequent drawing by `s` about point `p` (on top of the current transform).
     pub fn scale_about(&mut self, p: Point, s: f32) {
         let prev = self.save_transform();
-        let m = Matrix3x2 { M11: s, M12: 0.0, M21: 0.0, M22: s, M31: p.x * (1.0 - s), M32: p.y * (1.0 - s) };
+        let m = Matrix3x2 {
+            M11: s,
+            M12: 0.0,
+            M21: 0.0,
+            M22: s,
+            M31: p.x * (1.0 - s),
+            M32: p.y * (1.0 - s),
+        };
         unsafe { self.g.rt.SetTransform(&(m * prev)) };
     }
 
@@ -2080,11 +2628,20 @@ impl<'a> Canvas<'a> {
     /// size, so it glides while it scales instead of re-hinting every frame.
     /// `f` always runs, even when the layer ends up invisible, so hit regions
     /// and animation state stay continuous.
-    pub fn layered<R>(&mut self, bounds: Rect, alpha: f32, xf: Matrix3x2, f: impl FnOnce(&mut Canvas<'a>) -> R) -> R {
+    pub fn layered<R>(
+        &mut self,
+        bounds: Rect,
+        alpha: f32,
+        xf: Matrix3x2,
+        f: impl FnOnce(&mut Canvas<'a>) -> R,
+    ) -> R {
         let s = self.scale().max(0.1);
         // Whole pixels: with an identity `xf` the layer lands 1:1 on the frame.
         let (x0, y0) = ((bounds.x * s).floor() / s, (bounds.y * s).floor() / s);
-        let (x1, y1) = ((bounds.right() * s).ceil() / s, (bounds.bottom() * s).ceil() / s);
+        let (x1, y1) = (
+            (bounds.right() * s).ceil() / s,
+            (bounds.bottom() * s).ceil() / s,
+        );
         let b = rectf(Rect::new(x0, y0, (x1 - x0).max(0.0), (y1 - y0).max(0.0)));
         let Ok(layer) = self.g.layer() else {
             // No offscreen target: per-primitive opacity, live transform.
@@ -2094,7 +2651,9 @@ impl<'a> Canvas<'a> {
             self.restore_transform(prev);
             return r;
         };
-        let Ok(layer_rt) = layer.cast::<ID2D1RenderTarget>() else { return self.with_alpha(alpha, f) };
+        let Ok(layer_rt) = layer.cast::<ID2D1RenderTarget>() else {
+            return self.with_alpha(alpha, f);
+        };
         unsafe {
             layer_rt.BeginDraw();
             layer_rt.SetTransform(&Matrix3x2::identity());
@@ -2126,7 +2685,13 @@ impl<'a> Canvas<'a> {
                 if let Ok(bmp) = layer.GetBitmap() {
                     let prev = self.save_transform();
                     self.g.rt.SetTransform(&(xf * prev));
-                    self.g.rt.DrawBitmap(&bmp, Some(&b), a, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, Some(&b));
+                    self.g.rt.DrawBitmap(
+                        &bmp,
+                        Some(&b),
+                        a,
+                        D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                        Some(&b),
+                    );
                     self.g.rt.SetTransform(&prev);
                 }
             }
@@ -2167,32 +2732,81 @@ mod tests {
     #[test]
     fn mask_bounds_cover_each_shape() {
         let body = Rect::new(100.0, 0.0, 84.0, 30.0);
-        let notch = HitMask { rect: None, notch: Some((body, 14.0, 9.0)), pill: None };
-        assert_eq!(notch.bounds(), Some(Rect::new(91.0, 0.0, 102.0, 30.0)), "Classic: the body and both shoulders");
+        let notch = HitMask {
+            rect: None,
+            notch: Some((body, 14.0, 9.0)),
+            pill: None,
+        };
+        assert_eq!(
+            notch.bounds(),
+            Some(Rect::new(91.0, 0.0, 102.0, 30.0)),
+            "Classic: the body and both shoulders"
+        );
 
         let floating = Rect::new(100.0, 8.0, 152.0, 32.0);
         let gap = Rect::new(100.0, 0.0, 152.0, 24.0);
-        let pill = HitMask { rect: Some(gap), notch: None, pill: Some((floating, 16.0)) };
-        assert_eq!(pill.bounds(), Some(Rect::new(100.0, 0.0, 152.0, 40.0)), "Pill: from the top edge to the pill's bottom, no wider");
+        let pill = HitMask {
+            rect: Some(gap),
+            notch: None,
+            pill: Some((floating, 16.0)),
+        };
+        assert_eq!(
+            pill.bounds(),
+            Some(Rect::new(100.0, 0.0, 152.0, 40.0)),
+            "Pill: from the top edge to the pill's bottom, no wider"
+        );
 
         let open = Rect::new(80.0, 0.0, 660.0, 245.0);
-        assert_eq!(HitMask { rect: Some(open), notch: None, pill: None }.bounds(), Some(open));
-        assert_eq!(HitMask { rect: None, notch: None, pill: None }.bounds(), None);
+        assert_eq!(
+            HitMask {
+                rect: Some(open),
+                notch: None,
+                pill: None
+            }
+            .bounds(),
+            Some(open)
+        );
+        assert_eq!(
+            HitMask {
+                rect: None,
+                notch: None,
+                pill: None
+            }
+            .bounds(),
+            None
+        );
     }
 
     #[test]
     fn capsule_contains_its_shape_only() {
         let body = Rect::new(100.0, 8.0, 152.0, 32.0);
-        let m = HitMask { rect: None, notch: None, pill: Some((body, 16.0)) };
+        let m = HitMask {
+            rect: None,
+            notch: None,
+            pill: Some((body, 16.0)),
+        };
         assert!(m.contains(pt(176.0, 24.0)), "centre");
         assert!(m.contains(pt(100.5, 24.0)), "the left end's middle");
         assert!(m.contains(pt(251.5, 24.0)), "the right end's middle");
         assert!(!m.contains(pt(100.5, 8.5)), "the top-left corner is round");
-        assert!(!m.contains(pt(251.5, 39.5)), "the bottom-right corner is round");
-        assert!(!m.contains(pt(99.5, 24.0)) && !m.contains(pt(252.0, 24.0)), "beside");
-        assert!(!m.contains(pt(176.0, 7.5)) && !m.contains(pt(176.0, 40.0)), "above and below");
+        assert!(
+            !m.contains(pt(251.5, 39.5)),
+            "the bottom-right corner is round"
+        );
+        assert!(
+            !m.contains(pt(99.5, 24.0)) && !m.contains(pt(252.0, 24.0)),
+            "beside"
+        );
+        assert!(
+            !m.contains(pt(176.0, 7.5)) && !m.contains(pt(176.0, 40.0)),
+            "above and below"
+        );
         // A radius past half the height still makes a capsule, not a lens.
-        let big = HitMask { rect: None, notch: None, pill: Some((body, 40.0)) };
+        let big = HitMask {
+            rect: None,
+            notch: None,
+            pill: Some((body, 40.0)),
+        };
         assert!(big.contains(pt(130.0, 9.0)) && !big.contains(pt(101.0, 9.0)));
     }
 
@@ -2201,12 +2815,23 @@ mod tests {
         // Mid-morph values (from the review's float32 spring simulation)
         // where `y + h/2` rounds past `bottom - h/2`: clamp would panic here.
         let body = Rect::new(100.0, 5.903_092_9, 152.0, 38.169_205);
-        let m = HitMask { rect: None, notch: None, pill: Some((body, 20.0)) };
-        assert!(m.contains(pt(176.0, 40.0)), "the lower half of a capsule in motion");
+        let m = HitMask {
+            rect: None,
+            notch: None,
+            pill: Some((body, 20.0)),
+        };
+        assert!(
+            m.contains(pt(176.0, 40.0)),
+            "the lower half of a capsule in motion"
+        );
         for i in 0..400 {
             let (y, h) = (5.0 + i as f32 * 0.0173, 30.0 + i as f32 * 0.0311);
             let b = Rect::new(100.3, y, 151.7, h);
-            let m = HitMask { rect: None, notch: Some((b, h / 2.0, 9.0)), pill: Some((b, h / 2.0)) };
+            let m = HitMask {
+                rect: None,
+                notch: Some((b, h / 2.0, 9.0)),
+                pill: Some((b, h / 2.0)),
+            };
             let _ = m.contains(pt(176.0, y + h * 0.75));
         }
     }
@@ -2214,18 +2839,38 @@ mod tests {
     #[test]
     fn notch_contains_body_and_shoulders() {
         let body = Rect::new(100.0, 0.0, 84.0, 30.0);
-        let m = HitMask { rect: None, notch: Some((body, 14.0, 9.0)), pill: None };
-        assert!(m.contains(pt(142.0, 0.0)) && m.contains(pt(142.0, 29.5)), "the body from the top edge down");
+        let m = HitMask {
+            rect: None,
+            notch: Some((body, 14.0, 9.0)),
+            pill: None,
+        };
+        assert!(
+            m.contains(pt(142.0, 0.0)) && m.contains(pt(142.0, 29.5)),
+            "the body from the top edge down"
+        );
         assert!(m.contains(pt(100.5, 0.5)), "the body's flat top corner");
         assert!(!m.contains(pt(100.5, 29.5)), "the bottom corners are round");
-        assert!(m.contains(pt(99.0, 0.5)) && m.contains(pt(185.0, 0.5)), "a shoulder next to the body at the edge");
-        assert!(!m.contains(pt(99.0, 8.5)), "the shoulder thins out down the side");
+        assert!(
+            m.contains(pt(99.0, 0.5)) && m.contains(pt(185.0, 0.5)),
+            "a shoulder next to the body at the edge"
+        );
+        assert!(
+            !m.contains(pt(99.0, 8.5)),
+            "the shoulder thins out down the side"
+        );
         assert!(!m.contains(pt(91.5, 0.2)), "and out along the edge");
-        assert!(!m.contains(pt(90.0, 0.0)) && !m.contains(pt(194.5, 0.0)), "past the shoulders");
+        assert!(
+            !m.contains(pt(90.0, 0.0)) && !m.contains(pt(194.5, 0.0)),
+            "past the shoulders"
+        );
         assert!(!m.contains(pt(142.0, 30.0)), "below");
         // A body shorter than the shoulder (the Hidden style's strip): the shoulders shrink with it.
         let strip = Rect::new(100.0, 0.0, 150.0, 5.0);
-        let h = HitMask { rect: None, notch: Some((strip, 2.5, 9.0)), pill: None };
+        let h = HitMask {
+            rect: None,
+            notch: Some((strip, 2.5, 9.0)),
+            pill: None,
+        };
         assert!(h.contains(pt(99.0, 0.5)) && !h.contains(pt(99.0, 5.5)));
     }
 }

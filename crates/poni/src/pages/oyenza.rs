@@ -94,7 +94,10 @@ pub fn next_wake(st: &AppState) -> Option<f64> {
     }
     // A glow fades in steps of a second: no frame clock for a minute.
     if let Some(a) = &o.activity {
-        if a.days.iter().any(|d| o.seen.glowing_until(d, st.now).is_some()) {
+        if a.days
+            .iter()
+            .any(|d| o.seen.glowing_until(d, st.now).is_some())
+        {
             consider(st.now.floor() + 1.0);
         }
     }
@@ -132,7 +135,11 @@ pub(crate) fn account_disabled_card(ui: &mut Ui, area: Rect, title: &str, body: 
     let (_, body_h) = ui.c.measure(body, &body_st, w);
     let block = title_h + 3.0 + body_h;
     let mut y = area.y + ((area.h - block) / 2.0).max(0.0);
-    crate::oyen::app_icon(ui.c, Point::new(area.x + ICON / 2.0, area.y + area.h / 2.0), ICON);
+    crate::oyen::app_icon(
+        ui.c,
+        Point::new(area.x + ICON / 2.0, area.y + area.h / 2.0),
+        ICON,
+    );
     ui.c.text(title, Rect::new(x, y, w, title_h + 1.0), &title_st);
     y += title_h + 3.0;
     ui.c.text(body, Rect::new(x, y, w, body_h + 1.0), &body_st);
@@ -142,10 +149,21 @@ pub(crate) fn account_disabled_card(ui: &mut Ui, area: Rect, title: &str, body: 
 
 fn draw_connected(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let now = st.now;
-    if st.oyenza.saved.as_ref().is_some_and(|(_, until)| now >= *until) && !undo_held(ui) {
+    if st
+        .oyenza
+        .saved
+        .as_ref()
+        .is_some_and(|(_, until)| now >= *until)
+        && !undo_held(ui)
+    {
         st.oyenza.saved = None;
     }
-    if st.oyenza.flash.as_ref().is_some_and(|(_, until)| now >= *until) {
+    if st
+        .oyenza
+        .flash
+        .as_ref()
+        .is_some_and(|(_, until)| now >= *until)
+    {
         st.oyenza.flash = None;
     }
     let show = st.settings.oyenza_show_amounts || st.oyenza.reveal;
@@ -157,9 +175,21 @@ fn draw_connected(ui: &mut Ui, st: &mut AppState, area: Rect) {
     } else if st.oyenza.saving {
         mark(ui, row, Icon::Plus, palette::TEXT_FAINT, false);
         let text = format!("Saving “{}”…", st.oyenza.input.trim());
-        ui.c.text(&text, Rect::new(row.x + TEXT_X, row.y, row.w - TEXT_X, row.h), &TextStyle::body().color(palette::TEXT_DIM));
+        ui.c.text(
+            &text,
+            Rect::new(row.x + TEXT_X, row.y, row.w - TEXT_X, row.h),
+            &TextStyle::body().color(palette::TEXT_DIM),
+        );
     } else {
-        let resp = ui.text_input_row(wid("oyenza.note"), row, &mut st.oyenza.input, PLACEHOLDER, oyenza::NOTE_MAX_CHARS, ACCENT, Some(Icon::Plus));
+        let resp = ui.text_input_row(
+            wid("oyenza.note"),
+            row,
+            &mut st.oyenza.input,
+            PLACEHOLDER,
+            oyenza::NOTE_MAX_CHARS,
+            ACCENT,
+            Some(Icon::Plus),
+        );
         if resp.changed {
             st.oyenza.error = None;
         }
@@ -178,7 +208,12 @@ fn draw_connected(ui: &mut Ui, st: &mut AppState, area: Rect) {
 
     // ---- The strip of days.
     let today = today_of(st);
-    if let Some(p) = draw_strip(ui, st, Rect::new(area.x, area.y + STRIP_Y, area.w, STRIP_H), &today) {
+    if let Some(p) = draw_strip(
+        ui,
+        st,
+        Rect::new(area.x, area.y + STRIP_Y, area.w, STRIP_H),
+        &today,
+    ) {
         st.oyenza.day = p;
         st.oyenza.scroll = 0.0;
     }
@@ -186,8 +221,12 @@ fn draw_connected(ui: &mut Ui, st: &mut AppState, area: Rect) {
 
     // ---- The chosen day: its rows, heading and sums.
     let activity = st.oyenza.activity.clone();
-    let day = oyenza::pick_date(pick, &today).and_then(|d| activity.as_ref().and_then(|a| a.day(&d).cloned()));
-    let bills: Vec<Bill> = oyenza::bills_for(&st.oyenza.bills, &today, pick).into_iter().cloned().collect();
+    let day = oyenza::pick_date(pick, &today)
+        .and_then(|d| activity.as_ref().and_then(|a| a.day(&d).cloned()));
+    let bills: Vec<Bill> = oyenza::bills_for(&st.oyenza.bills, &today, pick)
+        .into_iter()
+        .cloned()
+        .collect();
     let mut rows: Vec<Line> = bills.iter().map(|b| Line::Bill(b.clone())).collect();
     if let Some(d) = &day {
         rows.extend(d.rows.iter().map(|t| Line::Txn(t.clone())));
@@ -203,23 +242,49 @@ fn draw_connected(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let pill_x = if st.settings.oyenza_show_amounts {
         head.right()
     } else {
-        let text = if st.oyenza.reveal { "Hide amounts" } else { "Show amounts" };
+        let text = if st.oyenza.reveal {
+            "Hide amounts"
+        } else {
+            "Show amounts"
+        };
         let w = ui.pill_width(text, true, true);
         let r = Rect::new(head.right() - w, head.y, w, PILL_SMALL);
-        if ui.pill(wid("oyenza.reveal"), r, text, Some(Icon::Eye), PillStyle::Utility).clicked {
+        if ui
+            .pill(
+                wid("oyenza.reveal"),
+                r,
+                text,
+                Some(Icon::Eye),
+                PillStyle::Utility,
+            )
+            .clicked
+        {
             st.oyenza.reveal = !st.oyenza.reveal;
         }
         r.x
     };
     let heading = oyenza::day_heading(pick, &today, count);
-    let heading_st = TextStyle::caption().weight(Weight::Semibold).color(palette::TEXT_FAINT);
+    let heading_st = TextStyle::caption()
+        .weight(Weight::Semibold)
+        .color(palette::TEXT_FAINT);
     let room = (pill_x - 12.0 - head.x).max(0.0);
     let (hw, _) = ui.c.measure(&heading, &heading_st, 10_000.0);
-    ui.c.text(&heading, Rect::new(head.x, head.y, hw.min(room) + 2.0, head.h), &heading_st);
-    let totals = day.as_ref().map(|d| oyenza::day_totals(d, show)).unwrap_or_default();
+    ui.c.text(
+        &heading,
+        Rect::new(head.x, head.y, hw.min(room) + 2.0, head.h),
+        &heading_st,
+    );
+    let totals = day
+        .as_ref()
+        .map(|d| oyenza::day_totals(d, show))
+        .unwrap_or_default();
     let tx = head.x + hw + 12.0;
     if !totals.is_empty() && pill_x - 12.0 - tx > 60.0 {
-        ui.c.text(&totals, Rect::new(tx, head.y, pill_x - 12.0 - tx, head.h), &TextStyle::footnote().color(palette::TEXT_DIM));
+        ui.c.text(
+            &totals,
+            Rect::new(tx, head.y, pill_x - 12.0 - tx, head.h),
+            &TextStyle::footnote().color(palette::TEXT_DIM),
+        );
     }
 
     // ---- The list.
@@ -242,7 +307,14 @@ fn draw_connected(ui: &mut Ui, st: &mut AppState, area: Rect) {
             let local = oyenza::local_clock(&iso_of(t), offset).unwrap_or(st.local);
             let clock = fmt_clock(&local, st.settings.use_24h);
             let live = st.unix - t <= LIVE_S;
-            (live, if live { format!("Live · updated {clock}") } else { format!("Updated {clock}") })
+            (
+                live,
+                if live {
+                    format!("Live · updated {clock}")
+                } else {
+                    format!("Updated {clock}")
+                },
+            )
         }
         None => (false, "Checking Oyenza…".into()),
     };
@@ -250,11 +322,33 @@ fn draw_connected(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let open = Rect::new(footer.right() - open_w, footer.y, open_w, PILL_SMALL);
     let mut text_x = footer.x;
     if live {
-        ui.c.fill_circle(Point::new(footer.x + 4.0, footer.center().y), 3.5, palette::GREEN);
+        ui.c.fill_circle(
+            Point::new(footer.x + 4.0, footer.center().y),
+            3.5,
+            palette::GREEN,
+        );
         text_x += 14.0;
     }
-    ui.c.text(&updated, Rect::new(text_x, footer.y, (open.x - text_x - 12.0).max(0.0), footer.h), &TextStyle::footnote().color(palette::TEXT_FAINT));
-    if ui.pill(wid("oyenza.open"), open, "Open oyenza.app", Some(Icon::Open), PillStyle::Utility).clicked {
+    ui.c.text(
+        &updated,
+        Rect::new(
+            text_x,
+            footer.y,
+            (open.x - text_x - 12.0).max(0.0),
+            footer.h,
+        ),
+        &TextStyle::footnote().color(palette::TEXT_FAINT),
+    );
+    if ui
+        .pill(
+            wid("oyenza.open"),
+            open,
+            "Open oyenza.app",
+            Some(Icon::Open),
+            PillStyle::Utility,
+        )
+        .clicked
+    {
         st.cmd(Command::OpenUrl(oyenza::WEB.to_string()));
     }
 }
@@ -276,7 +370,11 @@ fn today_of(st: &AppState) -> String {
 fn draw_strip(ui: &mut Ui, st: &AppState, r: Rect, today: &str) -> Option<DayPick> {
     let text_st = TextStyle::footnote().weight(Weight::Semibold);
     let mut days = oyenza::strip(today);
-    let widths = |ui: &mut Ui, days: &[(DayPick, String)], pad: f32| days.iter().map(|(_, l)| (ui.c.measure(l, &text_st, 300.0).0 + 2.0 * pad).ceil()).collect::<Vec<f32>>();
+    let widths = |ui: &mut Ui, days: &[(DayPick, String)], pad: f32| {
+        days.iter()
+            .map(|(_, l)| (ui.c.measure(l, &text_st, 300.0).0 + 2.0 * pad).ceil())
+            .collect::<Vec<f32>>()
+    };
     let mut pad = SEG_PAD;
     let mut w = widths(ui, &days, pad);
     while w.iter().sum::<f32>() + 2.0 * SEG_INSET > r.w && pad > SEG_PAD_MIN {
@@ -289,9 +387,18 @@ fn draw_strip(ui: &mut Ui, st: &AppState, r: Rect, today: &str) -> Option<DayPic
     }
     let inner_h = r.h - 2.0 * SEG_INSET;
     let track_w = w.iter().sum::<f32>() + 2.0 * SEG_INSET;
-    ui.c.fill_rrect(Rect::new(r.x, r.y, track_w, r.h), r.h / 2.0, palette::SURFACE);
+    ui.c.fill_rrect(
+        Rect::new(r.x, r.y, track_w, r.h),
+        r.h / 2.0,
+        palette::SURFACE,
+    );
     let today_glows = st.oyenza.day != DayPick::Today
-        && st.oyenza.activity.as_ref().and_then(|a| a.day(today)).is_some_and(|d| st.oyenza.seen.glowing_until(d, st.now).is_some());
+        && st
+            .oyenza
+            .activity
+            .as_ref()
+            .and_then(|a| a.day(today))
+            .is_some_and(|d| st.oyenza.seen.glowing_until(d, st.now).is_some());
     let mut x = r.x + SEG_INSET;
     let mut picked = None;
     for (i, ((pick, label), cw)) in days.iter().zip(&w).enumerate() {
@@ -301,12 +408,19 @@ fn draw_strip(ui: &mut Ui, st: &AppState, r: Rect, today: &str) -> Option<DayPic
             ui.c.fill_rrect(cell, inner_h / 2.0, Color::white(0.16));
             palette::TEXT
         } else {
-            let resp = ui.button(wid_n("oyenza.day", i as u64), Rect::new(cell.x, r.y, cell.w, r.h));
+            let resp = ui.button(
+                wid_n("oyenza.day", i as u64),
+                Rect::new(cell.x, r.y, cell.w, r.h),
+            );
             if resp.clicked {
                 picked = Some(*pick);
             }
             if resp.pressed || resp.hovered {
-                ui.c.fill_rrect(cell, inner_h / 2.0, Color::white(if resp.pressed { 0.10 } else { 0.06 }));
+                ui.c.fill_rrect(
+                    cell,
+                    inner_h / 2.0,
+                    Color::white(if resp.pressed { 0.10 } else { 0.06 }),
+                );
                 palette::TEXT
             } else {
                 palette::TEXT_DIM
@@ -314,7 +428,11 @@ fn draw_strip(ui: &mut Ui, st: &AppState, r: Rect, today: &str) -> Option<DayPic
         };
         ui.c.text(label, cell, &text_st.color(color).center());
         if *pick == DayPick::Today && today_glows {
-            ui.c.fill_circle(Point::new(cell.right() - 6.0, cell.y + 5.0), 3.0, palette::GREEN);
+            ui.c.fill_circle(
+                Point::new(cell.right() - 6.0, cell.y + 5.0),
+                3.0,
+                palette::GREEN,
+            );
         }
     }
     picked
@@ -356,17 +474,33 @@ fn draw_list(ui: &mut Ui, st: &mut AppState, list: Rect, rows: &[Line], today: &
             Line::Txn(t) => {
                 let glow = st.oyenza.seen.glow(&t.id, st.now);
                 if glow > 0.0 {
-                    ui.c.fill_rrect(Rect::new(r.x - ROW_BLEED, r.y + 1.0, r.w + 2.0 * ROW_BLEED, r.h - 2.0), 10.0, palette::GREEN.with_alpha(0.14 * glow));
+                    ui.c.fill_rrect(
+                        Rect::new(r.x - ROW_BLEED, r.y + 1.0, r.w + 2.0 * ROW_BLEED, r.h - 2.0),
+                        10.0,
+                        palette::GREEN.with_alpha(0.14 * glow),
+                    );
                 }
-                let time = oyenza::local_clock(&t.at, offset).map(|l| fmt_clock(&l, st.settings.use_24h)).unwrap_or_default();
+                let time = oyenza::local_clock(&t.at, offset)
+                    .map(|l| fmt_clock(&l, st.settings.use_24h))
+                    .unwrap_or_default();
                 txn_row(ui, r, t, &time, show);
             }
             Line::More(n) => empty_row(ui, r, &format!("and {n} more in oyenza.app")),
         }
     }
     ui.c.set_text_snap(snap_was);
-    fade_edge(ui, Rect::new(wide.x, wide.y, wide.w, FADE_H), true, (scroll / FADE_H).min(1.0));
-    fade_edge(ui, Rect::new(wide.x, wide.bottom() - FADE_H, wide.w, FADE_H), false, ((max_scroll - scroll) / FADE_H).min(1.0));
+    fade_edge(
+        ui,
+        Rect::new(wide.x, wide.y, wide.w, FADE_H),
+        true,
+        (scroll / FADE_H).min(1.0),
+    );
+    fade_edge(
+        ui,
+        Rect::new(wide.x, wide.bottom() - FADE_H, wide.w, FADE_H),
+        false,
+        ((max_scroll - scroll) / FADE_H).min(1.0),
+    );
     ui.c.unclip();
 }
 
@@ -397,14 +531,32 @@ fn undo_held(ui: &Ui) -> bool {
 fn draw_saved(ui: &mut Ui, st: &mut AppState, row: Rect, saved: &[oyenza::Saved]) {
     mark(ui, row, Icon::Check, palette::GREEN, true);
     let w = ui.pill_width("Undo", true, true);
-    let undo = Rect::new(row.right() - w, row.center().y - PILL_SMALL / 2.0, w, PILL_SMALL);
+    let undo = Rect::new(
+        row.right() - w,
+        row.center().y - PILL_SMALL / 2.0,
+        w,
+        PILL_SMALL,
+    );
     let x = row.x + TEXT_X;
     let head_st = TextStyle::body().weight(Weight::Semibold);
     let (hw, _) = ui.c.measure("Saved", &head_st, 200.0);
     ui.c.text("Saved", Rect::new(x, row.y, hw + 2.0, row.h), &head_st);
     let line_x = x + hw + 8.0;
-    ui.c.text(&oyenza::saved_line(saved), Rect::new(line_x, row.y, (undo.x - 12.0 - line_x).max(0.0), row.h), &TextStyle::body().color(palette::TEXT_DIM));
-    if ui.pill(wid("oyenza.undo"), undo, "Undo", Some(Icon::Undo), PillStyle::UtilityAccent(ACCENT)).clicked {
+    ui.c.text(
+        &oyenza::saved_line(saved),
+        Rect::new(line_x, row.y, (undo.x - 12.0 - line_x).max(0.0), row.h),
+        &TextStyle::body().color(palette::TEXT_DIM),
+    );
+    if ui
+        .pill(
+            wid("oyenza.undo"),
+            undo,
+            "Undo",
+            Some(Icon::Undo),
+            PillStyle::UtilityAccent(ACCENT),
+        )
+        .clicked
+    {
         for s in saved {
             st.cmd(Command::Oyenza(OyenzaCmd::Undo(s.id.clone())));
         }
@@ -425,7 +577,11 @@ fn mark(ui: &mut Ui, row: Rect, icon: Icon, color: Color, disc: bool) {
 }
 
 fn empty_row(ui: &mut Ui, r: Rect, text: &str) {
-    ui.c.text(text, Rect::new(r.x + TEXT_X, r.y, r.w - TEXT_X, r.h), &TextStyle::footnote().color(palette::TEXT_FAINT));
+    ui.c.text(
+        text,
+        Rect::new(r.x + TEXT_X, r.y, r.w - TEXT_X, r.h),
+        &TextStyle::footnote().color(palette::TEXT_FAINT),
+    );
 }
 
 /// One list row: a disc, a title with a dim detail, and the sum.
@@ -444,7 +600,16 @@ struct Row<'a> {
 /// Title and a dim detail on the left, the sum on the right. A long title
 /// gives way first: the detail keeps its room, or at least its time.
 fn row(ui: &mut Ui, r: Rect, row: Row) {
-    let Row { color, icon, title, detail, detail_tail, sum, sum_color, sum_dim } = row;
+    let Row {
+        color,
+        icon,
+        title,
+        detail,
+        detail_tail,
+        sum,
+        sum_color,
+        sum_dim,
+    } = row;
     mark(ui, r, icon, color, true);
     let sum_st = if sum_dim {
         TextStyle::footnote().color(palette::TEXT_DIM).right()
@@ -473,11 +638,23 @@ fn row(ui: &mut Ui, r: Rect, row: Row) {
     } else {
         (detail_tail, tailw)
     };
-    let title_w = if shown_detail.is_empty() { avail } else { (avail - detail_w - 8.0).max(avail * 0.3) };
-    ui.c.text(title, Rect::new(x, r.y, tw.min(title_w) + 2.0, r.h), &title_st);
+    let title_w = if shown_detail.is_empty() {
+        avail
+    } else {
+        (avail - detail_w - 8.0).max(avail * 0.3)
+    };
+    ui.c.text(
+        title,
+        Rect::new(x, r.y, tw.min(title_w) + 2.0, r.h),
+        &title_st,
+    );
     if !shown_detail.is_empty() {
         let dx = x + tw.min(title_w) + 8.0;
-        ui.c.text(shown_detail, Rect::new(dx, r.y, (sum_r.x - 12.0 - dx).max(0.0), r.h), &detail_st);
+        ui.c.text(
+            shown_detail,
+            Rect::new(dx, r.y, (sum_r.x - 12.0 - dx).max(0.0), r.h),
+            &detail_st,
+        );
     }
 }
 
@@ -485,16 +662,37 @@ fn txn_row(ui: &mut Ui, r: Rect, t: &Txn, time: &str, show: bool) {
     let (icon, color, sum_color) = match t.flow() {
         Flow::In => (Icon::MoneyIn, palette::GREEN, Some(palette::GREEN)),
         Flow::Out => (Icon::MoneyOut, palette::BLUE, None),
-        Flow::Move => (Icon::Transfer, palette::WARM_ACCENT, Some(palette::TEXT_DIM)),
+        Flow::Move => (
+            Icon::Transfer,
+            palette::WARM_ACCENT,
+            Some(palette::TEXT_DIM),
+        ),
     };
     let title = oyenza::txn_title(t);
     let detail = oyenza::txn_detail(t, time);
     let sum = oyenza::signed_sum(t, show);
-    row(ui, r, Row { color, icon, title: &title, detail: &detail, detail_tail: time, sum: &sum, sum_color, sum_dim: false });
+    row(
+        ui,
+        r,
+        Row {
+            color,
+            icon,
+            title: &title,
+            detail: &detail,
+            detail_tail: time,
+            sum: &sum,
+            sum_color,
+            sum_dim: false,
+        },
+    );
 }
 
 fn bill_row(ui: &mut Ui, r: Rect, b: &Bill, today: &str, pick: DayPick, show: bool) {
-    let kind = if b.is_card() { "Card bill due" } else { "Subscription" };
+    let kind = if b.is_card() {
+        "Card bill due"
+    } else {
+        "Subscription"
+    };
     let detail = match pick {
         DayPick::Today => format!("{kind} · today"),
         DayPick::Later => format!("{kind} · {}", oyenza::due_label(&b.due, today)),
@@ -502,10 +700,27 @@ fn bill_row(ui: &mut Ui, r: Rect, b: &Bill, today: &str, pick: DayPick, show: bo
     };
     let (icon, sum, dim) = match (&b.text, b.is_card()) {
         (_, true) => (Icon::Card, "card bill".to_string(), true),
-        (Some(t), false) => (Icon::Calendar, if show { t.clone() } else { oyenza::masked(t) }, false),
+        (Some(t), false) => (
+            Icon::Calendar,
+            if show { t.clone() } else { oyenza::masked(t) },
+            false,
+        ),
         (None, false) => (Icon::Calendar, String::new(), true),
     };
-    row(ui, r, Row { color: palette::ORANGE, icon, title: &b.name, detail: &detail, detail_tail: "", sum: &sum, sum_color: None, sum_dim: dim });
+    row(
+        ui,
+        r,
+        Row {
+            color: palette::ORANGE,
+            icon,
+            title: &b.name,
+            detail: &detail,
+            detail_tail: "",
+            sum: &sum,
+            sum_color: None,
+            sum_dim: dim,
+        },
+    );
 }
 
 /// The list eases to where the wheel sent it.
@@ -514,7 +729,11 @@ fn smooth_scroll(ui: &mut Ui, target: f32, max_scroll: f32) -> f32 {
     SCROLL_ANIM.with(|cell| {
         let (prev, last) = cell.get();
         // After an idle gap (the frame clock was parked) step as if one frame passed.
-        let dt = if now > last { (now - last).min(1.0 / 30.0) as f32 } else { 0.0 };
+        let dt = if now > last {
+            (now - last).min(1.0 / 30.0) as f32
+        } else {
+            0.0
+        };
         let mut pos = prev.clamp(0.0, max_scroll);
         pos += (target - pos) * (1.0 - (-dt * 18.0).exp());
         if (target - pos).abs() < 0.5 {
@@ -540,7 +759,11 @@ fn fade_edge(ui: &mut Ui, r: Rect, outer_is_top: bool, strength: f32) {
         let below = if k + 1 < STEPS { target(k + 1) } else { 0.0 };
         let a = 1.0 - (1.0 - target(k)) / (1.0 - below);
         let depth = r.h * (k + 1) as f32 / STEPS as f32;
-        let band = if outer_is_top { Rect::new(r.x, r.y, r.w, depth) } else { Rect::new(r.x, r.bottom() - depth, r.w, depth) };
+        let band = if outer_is_top {
+            Rect::new(r.x, r.y, r.w, depth)
+        } else {
+            Rect::new(r.x, r.bottom() - depth, r.w, depth)
+        };
         ui.c.fill_rect(band, Color::black(a));
     }
 }
@@ -549,5 +772,10 @@ fn fade_edge(ui: &mut Ui, r: Rect, outer_is_top: bool, strength: f32) {
 fn iso_of(unix: i64) -> String {
     let (y, m, d) = poni_core::datetime::civil_from_days(unix.div_euclid(86_400));
     let s = unix.rem_euclid(86_400);
-    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", s / 3600, s % 3600 / 60, s % 60)
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        s / 3600,
+        s % 3600 / 60,
+        s % 60
+    )
 }

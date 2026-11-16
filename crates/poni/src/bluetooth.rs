@@ -63,8 +63,9 @@ impl BluetoothMonitor {
         let cancel = Arc::new(AtomicBool::new(false));
         let worker_cancel = cancel.clone();
         let sink = sink.clone();
-        let started = std::thread::Builder::new().name("poni-bluetooth-devices".into()).spawn(move || {
-            loop {
+        let started = std::thread::Builder::new()
+            .name("poni-bluetooth-devices".into())
+            .spawn(move || loop {
                 if worker_cancel.load(Ordering::Acquire) {
                     break;
                 }
@@ -78,11 +79,13 @@ impl BluetoothMonitor {
                     Ok(()) | Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => break,
                 }
-            }
-        });
+            });
         match started {
             Ok(worker) => {
-                self.session = Some(Session { refresh: tx, cancel });
+                self.session = Some(Session {
+                    refresh: tx,
+                    cancel,
+                });
                 self.workers.push(worker);
             }
             Err(error) => {
@@ -119,14 +122,22 @@ impl BluetoothMonitor {
         }
     }
 
-    pub fn receive(&self, generation: u64, result: Result<BluetoothSnapshot, String>, state: &mut BluetoothState, now: f64) {
+    pub fn receive(
+        &self,
+        generation: u64,
+        result: Result<BluetoothSnapshot, String>,
+        state: &mut BluetoothState,
+        now: f64,
+    ) {
         if !self.active || generation != self.generation {
             return;
         }
         state.loading = false;
         match result {
             Ok(mut snapshot) => {
-                snapshot.devices.sort_by_cached_key(|device| (device.name.to_lowercase(), device.id.clone()));
+                snapshot
+                    .devices
+                    .sort_by_cached_key(|device| (device.name.to_lowercase(), device.id.clone()));
                 state.devices = snapshot.devices;
                 state.updated_at = Some(now);
                 state.error = None;

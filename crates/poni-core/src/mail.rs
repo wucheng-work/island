@@ -14,7 +14,13 @@ pub enum MailProvider {
 }
 
 impl MailProvider {
-    pub const ALL: [Self; 5] = [Self::Qq, Self::Gmail, Self::Icloud, Self::Aruba, Self::Custom];
+    pub const ALL: [Self; 5] = [
+        Self::Qq,
+        Self::Gmail,
+        Self::Icloud,
+        Self::Aruba,
+        Self::Custom,
+    ];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -102,7 +108,13 @@ impl Default for MailAccount {
 
 impl MailAccount {
     pub fn validate(&self) -> Result<(), String> {
-        if self.id.is_empty() || self.id.len() > 100 || !self.id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+        if self.id.is_empty()
+            || self.id.len() > 100
+            || !self
+                .id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        {
             return Err("账户标识无效，请重新添加账户".into());
         }
         if self.name.trim().is_empty() || self.name.chars().count() > 40 {
@@ -111,10 +123,23 @@ impl MailAccount {
         let Some((local, domain)) = self.address.split_once('@') else {
             return Err("请输入完整邮箱地址".into());
         };
-        if local.is_empty() || domain.is_empty() || domain.contains('@') || self.address.len() > 254 || self.address.chars().any(char::is_whitespace) || self.address.chars().any(char::is_control) {
+        if local.is_empty()
+            || domain.is_empty()
+            || domain.contains('@')
+            || self.address.len() > 254
+            || self.address.chars().any(char::is_whitespace)
+            || self.address.chars().any(char::is_control)
+        {
             return Err("请输入有效的邮箱地址".into());
         }
-        if self.provider != MailProvider::Gmail && (self.host.is_empty() || self.host.len() > 253 || !self.host.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-') || self.port == 0)
+        if self.provider != MailProvider::Gmail
+            && (self.host.is_empty()
+                || self.host.len() > 253
+                || !self
+                    .host
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+                || self.port == 0)
         {
             return Err("请填写有效的 IMAP 服务器和端口，连接使用 SSL/TLS".into());
         }
@@ -136,7 +161,11 @@ pub struct MailSettings {
 
 impl Default for MailSettings {
     fn default() -> Self {
-        Self { enabled: true, sound: true, accounts: Vec::new(), quiet_during_focus: false }
+        Self {
+            enabled: true,
+            sound: true,
+            accounts: Vec::new(),
+            quiet_during_focus: false,
+        }
     }
 }
-

@@ -78,7 +78,10 @@ fn rest_eyes(now: f64, night: bool, look: Option<f32>, eyes: f64) -> (Frame, boo
         return (oyen::frame(Mood::Sleep, 0.6, Input::default(), eyes), false);
     }
     if let Some(x) = look {
-        let input = Input { pencil: x.clamp(-1.0, 1.0) as f64, ..Input::default() };
+        let input = Input {
+            pencil: x.clamp(-1.0, 1.0) as f64,
+            ..Input::default()
+        };
         return (oyen::frame(Mood::Nulis, 0.0, input, eyes), false);
     }
     let phase = now.rem_euclid(REST_CYCLE);
@@ -96,13 +99,27 @@ fn rest_eyes(now: f64, night: bool, look: Option<f32>, eyes: f64) -> (Frame, boo
 /// (the lean straightens out first).
 pub fn music(now: f64, playing: bool, paused_at: Option<f64>) -> Frame {
     let (mut f, lean) = if playing {
-        (oyen::frame(Mood::Happy, now.rem_euclid(Mood::Happy.loop_secs()), Input::default(), SMALL_EYES), lean(now))
+        (
+            oyen::frame(
+                Mood::Happy,
+                now.rem_euclid(Mood::Happy.loop_secs()),
+                Input::default(),
+                SMALL_EYES,
+            ),
+            lean(now),
+        )
     } else {
         let left = paused_at.map_or(0.0, |p| 1.0 - smooth(((now - p) / SETTLE) as f32) as f64);
-        (oyen::frame(Mood::Oyen, 0.0, Input::default(), SMALL_EYES), paused_at.map_or(0.0, lean) * left)
+        (
+            oyen::frame(Mood::Oyen, 0.0, Input::default(), SMALL_EYES),
+            paused_at.map_or(0.0, lean) * left,
+        )
     };
     if lean != 0.0 {
-        f.head = f.head.then(Affine::rotation_about(lean, oyen::Point::new(0.0, oyen::CHIN)));
+        f.head = f.head.then(Affine::rotation_about(
+            lean,
+            oyen::Point::new(0.0, oyen::CHIN),
+        ));
     }
     f
 }
@@ -185,14 +202,62 @@ struct Flight {
 /// him or further out; two go up the narrow side on his right, far enough
 /// apart that they never meet there.
 const FLIGHTS: [Flight; 8] = [
-    Flight { x: -16.5, drift: -7.0, pair: false, deep: true, phase: 0.0 },
-    Flight { x: 15.0, drift: 2.5, pair: true, deep: false, phase: 0.35 },
-    Flight { x: -26.0, drift: -6.0, pair: true, deep: false, phase: 0.6 },
-    Flight { x: -17.0, drift: -6.5, pair: true, deep: true, phase: 0.8 },
-    Flight { x: -25.5, drift: -7.0, pair: false, deep: false, phase: 0.25 },
-    Flight { x: 16.0, drift: 3.0, pair: false, deep: true, phase: 0.15 },
-    Flight { x: -17.5, drift: -6.0, pair: false, deep: true, phase: 0.45 },
-    Flight { x: -27.0, drift: -6.5, pair: true, deep: false, phase: 0.7 },
+    Flight {
+        x: -16.5,
+        drift: -7.0,
+        pair: false,
+        deep: true,
+        phase: 0.0,
+    },
+    Flight {
+        x: 15.0,
+        drift: 2.5,
+        pair: true,
+        deep: false,
+        phase: 0.35,
+    },
+    Flight {
+        x: -26.0,
+        drift: -6.0,
+        pair: true,
+        deep: false,
+        phase: 0.6,
+    },
+    Flight {
+        x: -17.0,
+        drift: -6.5,
+        pair: true,
+        deep: true,
+        phase: 0.8,
+    },
+    Flight {
+        x: -25.5,
+        drift: -7.0,
+        pair: false,
+        deep: false,
+        phase: 0.25,
+    },
+    Flight {
+        x: 16.0,
+        drift: 3.0,
+        pair: false,
+        deep: true,
+        phase: 0.15,
+    },
+    Flight {
+        x: -17.5,
+        drift: -6.0,
+        pair: false,
+        deep: true,
+        phase: 0.45,
+    },
+    Flight {
+        x: -27.0,
+        drift: -6.5,
+        pair: true,
+        deep: false,
+        phase: 0.7,
+    },
 ];
 
 /// ♪ and ♫ (original drawings), about 10 units tall around (0, 0): tilted
@@ -225,16 +290,23 @@ pub fn notes(c: &mut Canvas, notes: &Notes, now: f64, cx: f32, bar_y: f32, clip:
         let f = &FLIGHTS[b.rem_euclid(FLIGHTS.len() as i64) as usize];
         let age = now - b as f64 * BEAT;
         let u = (age / NOTE_LIFE).clamp(0.0, 1.0) as f32;
-        let alpha = ((age / 0.08).min(1.0) as f32) * (1.0 - smooth((u - 0.55) / 0.45)) * if f.x < 0.0 { left } else { 1.0 };
+        let alpha = ((age / 0.08).min(1.0) as f32)
+            * (1.0 - smooth((u - 0.55) / 0.45))
+            * if f.x < 0.0 { left } else { 1.0 };
         if alpha <= 0.004 {
             continue;
         }
         // Off quickly, slowing as it climbs; a little sway and spin all the way.
         let rise = 1.0 - (1.0 - u).powf(1.6);
         let turn = TAU * (u * 1.1 + f.phase);
-        let at = Point::new(cx + f.x + f.drift * rise + 1.4 * turn.sin(), bar_y - NOTE_START - NOTE_RISE * rise);
+        let at = Point::new(
+            cx + f.x + f.drift * rise + 1.4 * turn.sin(),
+            bar_y - NOTE_START - NOTE_RISE * rise,
+        );
         let spin = f.x.signum() * 9.0 + 12.0 * (0.85 * turn + 0.6).sin();
-        let size = if f.deep { 0.8 } else { 0.72 } * (0.4 + 0.6 * back_out((age / POP) as f32)) * (1.0 - 0.15 * u);
+        let size = if f.deep { 0.8 } else { 0.72 }
+            * (0.4 + 0.6 * back_out((age / POP) as f32))
+            * (1.0 - 0.15 * u);
         let color = if f.deep { FOLD } else { ORANGE };
         let segs = place(glyph(f.pair), at, spin, size);
         c.with_alpha(alpha, |c| c.unthemed(|c| c.path(&segs, Some(color), None)));
@@ -245,7 +317,12 @@ pub fn notes(c: &mut Canvas, notes: &Notes, now: f64, cx: f32, bar_y: f32, clip:
 /// `segs` turned `deg` degrees clockwise, scaled by `k` and moved to `at`.
 fn place(segs: &[Seg], at: Point, deg: f32, k: f32) -> Vec<Seg> {
     let (sin, cos) = deg.to_radians().sin_cos();
-    let map = |x: f32, y: f32| (at.x + k * (x * cos - y * sin), at.y + k * (x * sin + y * cos));
+    let map = |x: f32, y: f32| {
+        (
+            at.x + k * (x * cos - y * sin),
+            at.y + k * (x * sin + y * cos),
+        )
+    };
     segs.iter()
         .map(|s| match *s {
             Seg::MoveTo(x, y) => {
@@ -301,7 +378,11 @@ pub fn peek(c: &mut Canvas, frame: &Frame, cx: f32, bar_y: f32, w: f32, top: f32
 pub fn app_icon(c: &mut Canvas, center: Point, size: f32) {
     static IMAGE: OnceLock<crate::gfx::Image> = OnceLock::new();
     let image = IMAGE.get_or_init(|| {
-        crate::gfx::ImageData::new(80, 80, include_bytes!("../assets/island-app-icon.bgra").to_vec())
+        crate::gfx::ImageData::new(
+            80,
+            80,
+            include_bytes!("../assets/island-app-icon.bgra").to_vec(),
+        )
     });
     c.unthemed(|c| c.image(image, Rect::from_center(center, size, size), 0.0));
 }
@@ -309,7 +390,13 @@ pub fn app_icon(c: &mut Canvas, center: Point, size: f32) {
 #[cfg(windows)]
 pub fn app_icon(c: &mut Canvas, center: Point, size: f32) {
     static IMAGE: OnceLock<crate::gfx::Image> = OnceLock::new();
-    let image = IMAGE.get_or_init(|| crate::gfx::ImageData::new(80, 80, include_bytes!("../assets/island-app-icon.bgra").to_vec()));
+    let image = IMAGE.get_or_init(|| {
+        crate::gfx::ImageData::new(
+            80,
+            80,
+            include_bytes!("../assets/island-app-icon.bgra").to_vec(),
+        )
+    });
     c.unthemed(|c| c.image(image, Rect::from_center(center, size, size), 0.0));
 }
 
@@ -318,7 +405,11 @@ pub fn app_icon(c: &mut Canvas, center: Point, size: f32) {
 /// on it, then eyes and extras. Oyen keeps his own colours in every theme.
 fn draw(c: &mut Canvas, f: &Frame, origin: Point, k: f32) {
     let look = c.look();
-    let float = if look.light { look.ink.with_alpha(FLOAT_ON_LIGHT) } else { FLOAT };
+    let float = if look.light {
+        look.ink.with_alpha(FLOAT_ON_LIGHT)
+    } else {
+        FLOAT
+    };
     c.unthemed(|c| draw_face(c, f, origin, k, float));
 }
 

@@ -71,11 +71,17 @@ struct QuestionReply {
 
 /// 系统回执只展示回答，不把协议标签、问题副本和内部 ID 当成用户正文。
 pub(crate) fn display_user_text(text: &str) -> Cow<'_, str> {
-    let Some(payload) = text.trim().strip_prefix("<send_user_message_question_reply>") else {
+    let Some(payload) = text
+        .trim()
+        .strip_prefix("<send_user_message_question_reply>")
+    else {
         return Cow::Borrowed(text);
     };
     let unavailable = "此回答的格式暂不支持，请在 Codex 中查看";
-    let Some(payload) = payload.trim().strip_suffix("</send_user_message_question_reply>") else {
+    let Some(payload) = payload
+        .trim()
+        .strip_suffix("</send_user_message_question_reply>")
+    else {
         return Cow::Borrowed(unavailable);
     };
     let Ok(replies) = serde_json::from_str::<Vec<QuestionReply>>(payload.trim()) else {
@@ -94,7 +100,11 @@ pub(crate) fn display_user_text(text: &str) -> Cow<'_, str> {
             display.push_str(&format!("{}. ", index + 1));
         }
         let answer = reply.answer.trim();
-        display.push_str(if answer.is_empty() { "（未填写回答）" } else { answer });
+        display.push_str(if answer.is_empty() {
+            "（未填写回答）"
+        } else {
+            answer
+        });
     }
     Cow::Owned(display)
 }
@@ -107,7 +117,9 @@ pub(crate) fn display_user_content(content: &[Value]) -> (String, Vec<ChatAttach
     for part in content {
         let kind = part["type"].as_str().unwrap_or("");
         if kind == "text" {
-            let Some(raw) = part["text"].as_str() else { continue };
+            let Some(raw) = part["text"].as_str() else {
+                continue;
+            };
             let body = if let Some((body, files)) = file_wrapper(raw) {
                 for file in files {
                     push_attachment(&mut attachments, file);
@@ -132,7 +144,11 @@ pub(crate) fn display_user_content(content: &[Value]) -> (String, Vec<ChatAttach
         }
 
         let image = matches!(kind, "localImage" | "image");
-        let default_name = if image { "图片附件" } else { "非文本附件" };
+        let default_name = if image {
+            "图片附件"
+        } else {
+            "非文本附件"
+        };
         let path = part["path"].as_str().or_else(|| part["filePath"].as_str());
         let path = path.filter(|path| Path::new(path).is_absolute() && !path.contains('\0'));
         let name = part["name"]
@@ -141,12 +157,23 @@ pub(crate) fn display_user_content(content: &[Value]) -> (String, Vec<ChatAttach
             .or_else(|| part["filename"].as_str())
             .or_else(|| path.and_then(|path| Path::new(path).file_name()?.to_str()))
             .unwrap_or(default_name);
-        let name: String = name.chars().filter(|ch| !ch.is_control()).take(200).collect();
-        push_attachment(&mut attachments, ChatAttachment {
-            name: if name.is_empty() { default_name.to_owned() } else { name },
-            path: path.map(str::to_owned),
-            image,
-        });
+        let name: String = name
+            .chars()
+            .filter(|ch| !ch.is_control())
+            .take(200)
+            .collect();
+        push_attachment(
+            &mut attachments,
+            ChatAttachment {
+                name: if name.is_empty() {
+                    default_name.to_owned()
+                } else {
+                    name
+                },
+                path: path.map(str::to_owned),
+                image,
+            },
+        );
     }
     (text, attachments)
 }
@@ -154,19 +181,23 @@ pub(crate) fn display_user_content(content: &[Value]) -> (String, Vec<ChatAttach
 /// 只拆解完整的桌面附件包装，用户普通正文中的标题、链接和路径保持原样。
 fn file_wrapper(text: &str) -> Option<(&str, Vec<ChatAttachment>)> {
     let text = text.trim_start();
-    let (metadata, pasted) = if let Some(metadata) = text.strip_prefix("# Files mentioned by the user:") {
-        (metadata, false)
-    } else if let Some(metadata) = text.strip_prefix("# Files pasted by the user:") {
-        (metadata, true)
-    } else {
-        return None;
-    };
-    let metadata = metadata.strip_prefix("\r\n").or_else(|| metadata.strip_prefix('\n'))?;
+    let (metadata, pasted) =
+        if let Some(metadata) = text.strip_prefix("# Files mentioned by the user:") {
+            (metadata, false)
+        } else if let Some(metadata) = text.strip_prefix("# Files pasted by the user:") {
+            (metadata, true)
+        } else {
+            return None;
+        };
+    let metadata = metadata
+        .strip_prefix("\r\n")
+        .or_else(|| metadata.strip_prefix('\n'))?;
     let (metadata, body) = metadata.split_once("\n## My request:")?;
     let body = if body.is_empty() {
         body
     } else {
-        body.strip_prefix("\r\n").or_else(|| body.strip_prefix('\n'))?
+        body.strip_prefix("\r\n")
+            .or_else(|| body.strip_prefix('\n'))?
     };
     let footer = if pasted {
         "Pasted text contains the user's request."
@@ -183,11 +214,19 @@ fn file_wrapper(text: &str) -> Option<(&str, Vec<ChatAttachment>)> {
             }
             continue;
         }
-        let Some(file) = line.strip_prefix("## ") else { continue };
+        let Some(file) = line.strip_prefix("## ") else {
+            continue;
+        };
         // 粘贴标题是带引号的内容摘要，摘要内也可能含路径；优先找结束引号。
         // 普通上传文件仍按文件名后的绝对路径分隔，路径本身可包含“: ”。
-        let quoted_separator = if pasted { file.rfind("\": ").map(|index| index + 1) } else { None };
-        let separator = quoted_separator.or_else(|| file.find(": /")).or_else(|| file.find(": "))?;
+        let quoted_separator = if pasted {
+            file.rfind("\": ").map(|index| index + 1)
+        } else {
+            None
+        };
+        let separator = quoted_separator
+            .or_else(|| file.find(": /"))
+            .or_else(|| file.find(": "))?;
         let (name, path) = (&file[..separator], &file[separator + 2..]);
         let name = if pasted {
             Path::new(path).file_name()?.to_str()?
@@ -198,7 +237,11 @@ fn file_wrapper(text: &str) -> Option<(&str, Vec<ChatAttachment>)> {
             return None;
         }
         files.push(ChatAttachment {
-            name: name.chars().filter(|ch| !ch.is_control()).take(200).collect(),
+            name: name
+                .chars()
+                .filter(|ch| !ch.is_control())
+                .take(200)
+                .collect(),
             path: (Path::new(path).is_absolute() && !path.contains('\0')).then(|| path.to_owned()),
             image: false,
         });
@@ -212,7 +255,10 @@ fn file_wrapper(text: &str) -> Option<(&str, Vec<ChatAttachment>)> {
 /// 桌面会同时提供包装中的文件路径和 localImage；同一路径只显示一张卡片。
 fn push_attachment(attachments: &mut Vec<ChatAttachment>, file: ChatAttachment) {
     if let Some(path) = &file.path {
-        if let Some(existing) = attachments.iter_mut().find(|existing| existing.path.as_ref() == Some(path)) {
+        if let Some(existing) = attachments
+            .iter_mut()
+            .find(|existing| existing.path.as_ref() == Some(path))
+        {
             existing.image |= file.image;
             return;
         }
@@ -317,7 +363,10 @@ fn cli_path() -> Option<PathBuf> {
     #[cfg(unix)]
     if let Some(home) = std::env::var_os("HOME") {
         let applications = PathBuf::from(home).join("Applications");
-        candidates.push(applications.join("ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"));
+        candidates
+            .push(applications.join(
+                "ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+            ));
         candidates.push(applications.join("Codex.app/Contents/Resources/codex"));
     }
     #[cfg(windows)]
@@ -332,14 +381,29 @@ fn cli_path() -> Option<PathBuf> {
         let npm = PathBuf::from(appdata).join("npm/node_modules/@openai");
         for package in ["codex", "codex-win32-x64", "codex-win32-arm64"] {
             for target in ["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"] {
-                candidates.push(npm.join(package).join("vendor").join(target).join("codex/codex.exe"));
-                candidates.push(npm.join("codex/node_modules/@openai").join(package).join("vendor").join(target).join("codex/codex.exe"));
+                candidates.push(
+                    npm.join(package)
+                        .join("vendor")
+                        .join(target)
+                        .join("codex/codex.exe"),
+                );
+                candidates.push(
+                    npm.join("codex/node_modules/@openai")
+                        .join(package)
+                        .join("vendor")
+                        .join(target)
+                        .join("codex/codex.exe"),
+                );
             }
         }
     }
     if let Some(path) = std::env::var_os("PATH") {
         #[cfg(windows)]
-        candidates.extend(std::env::split_paths(&path).filter(|directory| directory.is_absolute()).map(|directory| directory.join("codex.exe")));
+        candidates.extend(
+            std::env::split_paths(&path)
+                .filter(|directory| directory.is_absolute())
+                .map(|directory| directory.join("codex.exe")),
+        );
         #[cfg(unix)]
         candidates.extend(std::env::split_paths(&path).map(|directory| directory.join("codex")));
     }
@@ -639,35 +703,48 @@ impl LineReader {
             }
             #[cfg(unix)]
             {
-            let mut fd = PollFd {
-                fd: self.stdout.as_raw_fd(),
-                events: 0x0001, // POLLIN
-                revents: 0,
-            };
-            // 单个 stdout 管道只有本线程读取，poll 就绪后 read 不会等待一整行。
-            let ready = unsafe { poll(&mut fd, 1, remaining.as_millis().max(1) as i32) };
-            if ready < 0 {
-                let error = io::Error::last_os_error();
-                if error.kind() == io::ErrorKind::Interrupted {
-                    continue;
+                let mut fd = PollFd {
+                    fd: self.stdout.as_raw_fd(),
+                    events: 0x0001, // POLLIN
+                    revents: 0,
+                };
+                // 单个 stdout 管道只有本线程读取，poll 就绪后 read 不会等待一整行。
+                let ready = unsafe { poll(&mut fd, 1, remaining.as_millis().max(1) as i32) };
+                if ready < 0 {
+                    let error = io::Error::last_os_error();
+                    if error.kind() == io::ErrorKind::Interrupted {
+                        continue;
+                    }
+                    return Err(error);
                 }
-                return Err(error);
-            }
-            if ready == 0 {
-                return Err(io::ErrorKind::TimedOut.into());
-            }
+                if ready == 0 {
+                    return Err(io::ErrorKind::TimedOut.into());
+                }
             }
             #[cfg(windows)]
             {
-                use windows::Win32::Foundation::{HANDLE, ERROR_BROKEN_PIPE};
+                use windows::Win32::Foundation::{ERROR_BROKEN_PIPE, HANDLE};
                 use windows::Win32::System::Pipes::PeekNamedPipe;
                 let mut available = 0;
-                let result = unsafe { PeekNamedPipe(HANDLE(self.stdout.as_raw_handle()), None, 0, None, Some(&mut available), None) };
+                let result = unsafe {
+                    PeekNamedPipe(
+                        HANDLE(self.stdout.as_raw_handle()),
+                        None,
+                        0,
+                        None,
+                        Some(&mut available),
+                        None,
+                    )
+                };
                 if let Err(error) = result {
                     if error.code() == windows::core::HRESULT::from_win32(ERROR_BROKEN_PIPE.0) {
-                        return Ok((!self.buffer.is_empty()).then(|| std::mem::take(&mut self.buffer)));
+                        return Ok(
+                            (!self.buffer.is_empty()).then(|| std::mem::take(&mut self.buffer))
+                        );
                     }
-                    return Err(io::Error::from_raw_os_error((error.code().0 & 0xffff) as i32));
+                    return Err(io::Error::from_raw_os_error(
+                        (error.code().0 & 0xffff) as i32,
+                    ));
                 }
                 if available == 0 {
                     // 仅在本次15秒命令存活时等stdout，退出或到期即停止；不是常驻轮询。
@@ -697,29 +774,67 @@ pub fn desktop_path() -> Option<PathBuf> {
     use windows::Win32::System::Diagnostics::ToolHelp::*;
     use windows::Win32::System::Threading::*;
     if let Ok(snapshot) = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) } {
-        let mut entry = PROCESSENTRY32W { dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
         let mut found = None;
         let mut next = unsafe { Process32FirstW(snapshot, &mut entry) }.is_ok();
         while next {
-            let end = entry.szExeFile.iter().position(|ch| *ch == 0).unwrap_or(entry.szExeFile.len());
+            let end = entry
+                .szExeFile
+                .iter()
+                .position(|ch| *ch == 0)
+                .unwrap_or(entry.szExeFile.len());
             if String::from_utf16_lossy(&entry.szExeFile[..end]).eq_ignore_ascii_case("Codex.exe") {
-                if let Ok(process) = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, entry.th32ProcessID) } {
+                if let Ok(process) = unsafe {
+                    OpenProcess(
+                        PROCESS_QUERY_LIMITED_INFORMATION,
+                        false,
+                        entry.th32ProcessID,
+                    )
+                } {
                     let mut buffer = vec![0u16; 32768];
                     let mut count = buffer.len() as u32;
-                    let result = unsafe { QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, PWSTR(buffer.as_mut_ptr()), &mut count) };
-                    unsafe { let _ = CloseHandle(process); }
+                    let result = unsafe {
+                        QueryFullProcessImageNameW(
+                            process,
+                            PROCESS_NAME_WIN32,
+                            PWSTR(buffer.as_mut_ptr()),
+                            &mut count,
+                        )
+                    };
+                    unsafe {
+                        let _ = CloseHandle(process);
+                    }
                     if result.is_ok() {
-                        let path = PathBuf::from(String::from_utf16_lossy(&buffer[..count as usize]));
+                        let path =
+                            PathBuf::from(String::from_utf16_lossy(&buffer[..count as usize]));
                         // CLI的codex.exe同名；桌面进程应带Electron资源目录。
-                        if path.parent().is_some_and(|directory| directory.join("resources").is_dir()) { found = Some(path); break; }
+                        if path
+                            .parent()
+                            .is_some_and(|directory| directory.join("resources").is_dir())
+                        {
+                            found = Some(path);
+                            break;
+                        }
                     }
                 }
             }
             next = unsafe { Process32NextW(snapshot, &mut entry) }.is_ok();
         }
-        unsafe { let _ = CloseHandle(snapshot); }
-        if found.is_some() { return found; }
+        unsafe {
+            let _ = CloseHandle(snapshot);
+        }
+        if found.is_some() {
+            return found;
+        }
     }
     let local = PathBuf::from(std::env::var_os("LOCALAPPDATA")?);
-    [local.join("Programs/Codex/Codex.exe"), local.join("OpenAI/Codex/Codex.exe")].into_iter().find(|path| path.is_file())
+    [
+        local.join("Programs/Codex/Codex.exe"),
+        local.join("OpenAI/Codex/Codex.exe"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
 }

@@ -13,7 +13,10 @@ pub fn mono() -> f64 {
 }
 
 pub fn unix_now() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// `struct tm` as macOS lays it out.
@@ -38,7 +41,19 @@ extern "C" {
 
 /// The wall clock for `unix` in the Mac's time zone.
 pub fn local_at(unix: i64) -> LocalDateTime {
-    let mut tm = Tm { tm_sec: 0, tm_min: 0, tm_hour: 0, tm_mday: 1, tm_mon: 0, tm_year: 70, tm_wday: 0, tm_yday: 0, tm_isdst: 0, tm_gmtoff: 0, tm_zone: std::ptr::null_mut() };
+    let mut tm = Tm {
+        tm_sec: 0,
+        tm_min: 0,
+        tm_hour: 0,
+        tm_mday: 1,
+        tm_mon: 0,
+        tm_year: 70,
+        tm_wday: 0,
+        tm_yday: 0,
+        tm_isdst: 0,
+        tm_gmtoff: 0,
+        tm_zone: std::ptr::null_mut(),
+    };
     if unsafe { localtime_r(&unix, &mut tm) }.is_null() {
         return LocalDateTime::default();
     }

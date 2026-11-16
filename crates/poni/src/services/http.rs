@@ -13,10 +13,18 @@ use std::fmt;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant};
 use windows::core::{h, RuntimeType, HSTRING};
-use windows::Foundation::{AsyncOperationProgressHandler, AsyncOperationWithProgressCompletedHandler, AsyncStatus, IAsyncOperationWithProgress, Uri};
+use windows::Foundation::{
+    AsyncOperationProgressHandler, AsyncOperationWithProgressCompletedHandler, AsyncStatus,
+    IAsyncOperationWithProgress, Uri,
+};
 use windows::Storage::Streams::{DataReader, IBuffer, UnicodeEncoding};
-use windows::Web::Http::Filters::{HttpBaseProtocolFilter, HttpCacheReadBehavior, HttpCacheWriteBehavior, HttpCookieUsageBehavior};
-use windows::Web::Http::{HttpClient, HttpMethod, HttpProgress, HttpRequestMessage, HttpResponseMessage, HttpStringContent, IHttpContent};
+use windows::Web::Http::Filters::{
+    HttpBaseProtocolFilter, HttpCacheReadBehavior, HttpCacheWriteBehavior, HttpCookieUsageBehavior,
+};
+use windows::Web::Http::{
+    HttpClient, HttpMethod, HttpProgress, HttpRequestMessage, HttpResponseMessage,
+    HttpStringContent, IHttpContent,
+};
 use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
 
@@ -80,11 +88,15 @@ impl MtaGuard {
     pub fn new() -> Self {
         let hr = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
         if hr == RPC_E_CHANGED_MODE {
-            crate::pwarn!("http: called on a single-threaded apartment thread; requests block this thread");
+            crate::pwarn!(
+                "http: called on a single-threaded apartment thread; requests block this thread"
+            );
         } else if let Err(e) = hr.ok() {
             crate::pwarn!("http: CoInitializeEx failed ({e})");
         }
-        Self { initialized: hr.is_ok() }
+        Self {
+            initialized: hr.is_ok(),
+        }
     }
 }
 
@@ -128,7 +140,8 @@ impl Client {
     /// sends no cookies beyond the request's own `Cookie` header, never reads
     /// or writes the disk cache, and never puts up a sign-in prompt.
     pub fn private(user_agent: &str) -> Result<Self, FetchError> {
-        let filter = HttpBaseProtocolFilter::new().map_err(|e| other("could not create an HTTP filter", &e))?;
+        let filter = HttpBaseProtocolFilter::new()
+            .map_err(|e| other("could not create an HTTP filter", &e))?;
         let set = || -> windows::core::Result<()> {
             filter.SetAllowAutoRedirect(false)?;
             filter.SetAllowUI(false)?;
@@ -136,21 +149,33 @@ impl Client {
             let cache = filter.CacheControl()?;
             // NoCache came with Windows 10 1607; before it, MostRecent still
             // asks the server every time.
-            cache.SetReadBehavior(HttpCacheReadBehavior::NoCache).or_else(|_| cache.SetReadBehavior(HttpCacheReadBehavior::MostRecent))?;
+            cache
+                .SetReadBehavior(HttpCacheReadBehavior::NoCache)
+                .or_else(|_| cache.SetReadBehavior(HttpCacheReadBehavior::MostRecent))?;
             cache.SetWriteBehavior(HttpCacheWriteBehavior::NoCache)
         };
         set().map_err(|e| other("could not set up the HTTP filter", &e))?;
-        let http = HttpClient::Create(&filter).map_err(|e| other("could not create an HTTP client", &e))?;
+        let http = HttpClient::Create(&filter)
+            .map_err(|e| other("could not create an HTTP client", &e))?;
         Self::with(http, user_agent)
     }
 
     fn with(http: HttpClient, user_agent: &str) -> Result<Self, FetchError> {
-        let headers = http.DefaultRequestHeaders().map_err(|e| other("could not set request headers", &e))?;
+        let headers = http
+            .DefaultRequestHeaders()
+            .map_err(|e| other("could not set request headers", &e))?;
         let ua = HSTRING::from(user_agent);
         // The typed collection validates "product/version (comment)"; fall
         // back to the raw header if a future UA string doesn't parse.
-        let parsed = headers.UserAgent().and_then(|c| c.TryParseAdd(&ua)).unwrap_or(false);
-        if !parsed && !headers.TryAppendWithoutValidation(h!("User-Agent"), &ua).unwrap_or(false) {
+        let parsed = headers
+            .UserAgent()
+            .and_then(|c| c.TryParseAdd(&ua))
+            .unwrap_or(false);
+        if !parsed
+            && !headers
+                .TryAppendWithoutValidation(h!("User-Agent"), &ua)
+                .unwrap_or(false)
+        {
             crate::pwarn!("http: could not set the User-Agent header");
         }
         Ok(Self { http })
@@ -169,13 +194,25 @@ impl Client {
     }
 
     /// GET `url` with extra request headers (`Authorization`, `Origin`, …).
-    pub fn get_with_headers(&self, url: &str, headers: &[(&str, &str)], timeout: Duration) -> Result<Response, FetchError> {
+    pub fn get_with_headers(
+        &self,
+        url: &str,
+        headers: &[(&str, &str)],
+        timeout: Duration,
+    ) -> Result<Response, FetchError> {
         self.send(Method::Get, url, headers, None, timeout)
     }
 
     /// `method` on `url` with extra request headers and, when given, a JSON
     /// body (sent as `application/json; charset=utf-8`).
-    pub fn send(&self, method: Method, url: &str, headers: &[(&str, &str)], json: Option<&str>, timeout: Duration) -> Result<Response, FetchError> {
+    pub fn send(
+        &self,
+        method: Method,
+        url: &str,
+        headers: &[(&str, &str)],
+        json: Option<&str>,
+        timeout: Duration,
+    ) -> Result<Response, FetchError> {
         let deadline = Instant::now() + timeout;
         let uri = Uri::CreateUri(&HSTRING::from(url)).map_err(|e| other("invalid URL", &e))?;
         let method = match method {
@@ -184,17 +221,31 @@ impl Client {
             Method::Delete => HttpMethod::Delete(),
         }
         .map_err(|e| other("could not create a request", &e))?;
-        let request = HttpRequestMessage::Create(&method, &uri).map_err(|e| other("could not create a request", &e))?;
-        let request_headers = request.Headers().map_err(|e| other("could not set request headers", &e))?;
+        let request = HttpRequestMessage::Create(&method, &uri)
+            .map_err(|e| other("could not create a request", &e))?;
+        let request_headers = request
+            .Headers()
+            .map_err(|e| other("could not set request headers", &e))?;
         for (name, value) in headers {
-            if !request_headers.TryAppendWithoutValidation(&HSTRING::from(*name), &HSTRING::from(*value)).unwrap_or(false) {
-                return Err(FetchError::Other(format!("could not set the {name} header")));
+            if !request_headers
+                .TryAppendWithoutValidation(&HSTRING::from(*name), &HSTRING::from(*value))
+                .unwrap_or(false)
+            {
+                return Err(FetchError::Other(format!(
+                    "could not set the {name} header"
+                )));
             }
         }
         if let Some(body) = json {
-            let content = HttpStringContent::CreateFromStringWithEncodingAndMediaType(&HSTRING::from(body), UnicodeEncoding::Utf8, h!("application/json"))
+            let content = HttpStringContent::CreateFromStringWithEncodingAndMediaType(
+                &HSTRING::from(body),
+                UnicodeEncoding::Utf8,
+                h!("application/json"),
+            )
+            .map_err(|e| other("could not set the request body", &e))?;
+            request
+                .SetContent(&content)
                 .map_err(|e| other("could not set the request body", &e))?;
-            request.SetContent(&content).map_err(|e| other("could not set the request body", &e))?;
         }
         let op = self.http.SendRequestAsync(&request).map_err(classify)?;
         let resp = wait(&op, deadline)?;
@@ -205,14 +256,26 @@ impl Client {
     }
 
     /// OAuth token endpoints accept form data rather than JSON.
-    pub fn post_form(&self, url: &str, form: &str, timeout: Duration) -> Result<Response, FetchError> {
+    pub fn post_form(
+        &self,
+        url: &str,
+        form: &str,
+        timeout: Duration,
+    ) -> Result<Response, FetchError> {
         let deadline = Instant::now() + timeout;
         let uri = Uri::CreateUri(&HSTRING::from(url)).map_err(|e| other("invalid URL", &e))?;
         let method = HttpMethod::Post().map_err(|e| other("could not create a request", &e))?;
-        let request = HttpRequestMessage::Create(&method, &uri).map_err(|e| other("could not create a request", &e))?;
-        let content = HttpStringContent::CreateFromStringWithEncodingAndMediaType(&HSTRING::from(form), UnicodeEncoding::Utf8, h!("application/x-www-form-urlencoded"))
+        let request = HttpRequestMessage::Create(&method, &uri)
+            .map_err(|e| other("could not create a request", &e))?;
+        let content = HttpStringContent::CreateFromStringWithEncodingAndMediaType(
+            &HSTRING::from(form),
+            UnicodeEncoding::Utf8,
+            h!("application/x-www-form-urlencoded"),
+        )
+        .map_err(|e| other("could not set the request body", &e))?;
+        request
+            .SetContent(&content)
             .map_err(|e| other("could not set the request body", &e))?;
-        request.SetContent(&content).map_err(|e| other("could not set the request body", &e))?;
         let op = self.http.SendRequestAsync(&request).map_err(classify)?;
         let resp = wait(&op, deadline)?;
         let out = read_response(&resp, deadline);
@@ -220,9 +283,6 @@ impl Client {
         let _ = request.Close();
         out
     }
-
-
-
 }
 
 impl Client {
@@ -238,19 +298,32 @@ impl Client {
         let deadline = Instant::now() + timeout;
         let uri = Uri::CreateUri(&HSTRING::from(url)).map_err(|e| other("invalid URL", &e))?;
         let op = self.http.GetAsync(&uri).map_err(classify)?;
-        let report = AsyncOperationProgressHandler::<HttpResponseMessage, HttpProgress>::new(move |_, p| {
-            progress(p.BytesReceived);
-            Ok(())
-        });
+        let report =
+            AsyncOperationProgressHandler::<HttpResponseMessage, HttpProgress>::new(move |_, p| {
+                progress(p.BytesReceived);
+                Ok(())
+            });
         let _ = op.SetProgress(&report);
         let resp = wait(&op, deadline)?;
         let out = (|| {
-            let status = resp.StatusCode().map_err(|e| other("response without a status", &e))?.0.clamp(0, u16::MAX as i32) as u16;
-            let content = resp.Content().map_err(|e| other("response without a body", &e))?;
-            if let Ok(len) = content.Headers().and_then(|h| h.ContentLength()).and_then(|r| r.Value()) {
+            let status = resp
+                .StatusCode()
+                .map_err(|e| other("response without a status", &e))?
+                .0
+                .clamp(0, u16::MAX as i32) as u16;
+            let content = resp
+                .Content()
+                .map_err(|e| other("response without a body", &e))?;
+            if let Ok(len) = content
+                .Headers()
+                .and_then(|h| h.ContentLength())
+                .and_then(|r| r.Value())
+            {
                 if len > max_bytes {
                     let _ = content.Close();
-                    return Err(FetchError::Other(format!("response too large ({len} bytes)")));
+                    return Err(FetchError::Other(format!(
+                        "response too large ({len} bytes)"
+                    )));
                 }
             }
             let buf = wait(&content.ReadAsBufferAsync().map_err(classify)?, deadline);
@@ -275,7 +348,9 @@ impl Drop for Client {
 /// GET `url`; returns (status, body). Worker threads only.
 #[allow(dead_code)] // shared helper for services that need a one-off GET
 pub fn get(url: &str, user_agent: &str) -> Result<(u16, String), String> {
-    get_full(url, user_agent, DEFAULT_TIMEOUT).map(|r| (r.status, r.body)).map_err(|e| e.to_string())
+    get_full(url, user_agent, DEFAULT_TIMEOUT)
+        .map(|r| (r.status, r.body))
+        .map_err(|e| e.to_string())
 }
 
 /// GET `url` with a one-shot client, returning the full [`Response`]
@@ -289,9 +364,12 @@ pub fn get_full(url: &str, user_agent: &str, timeout: Duration) -> Result<Respon
 }
 
 fn read_response(resp: &HttpResponseMessage, deadline: Instant) -> Result<Response, FetchError> {
-    let status = resp.StatusCode().map_err(|e| other("response without a status", &e))?;
+    let status = resp
+        .StatusCode()
+        .map_err(|e| other("response without a status", &e))?;
     let status = status.0.clamp(0, u16::MAX as i32) as u16;
-    let retry_after_s = header(resp, "Retry-After").and_then(|v| parse_retry_after(&v, crate::clock::unix_now()));
+    let retry_after_s =
+        header(resp, "Retry-After").and_then(|v| parse_retry_after(&v, crate::clock::unix_now()));
     let body = match resp.Content() {
         Ok(content) => {
             let body = read_body(&content, deadline);
@@ -301,33 +379,49 @@ fn read_response(resp: &HttpResponseMessage, deadline: Instant) -> Result<Respon
         // No content object at all (e.g. some 204/304 replies).
         Err(_) => String::new(),
     };
-    Ok(Response { status, body, retry_after_s })
+    Ok(Response {
+        status,
+        body,
+        retry_after_s,
+    })
 }
 
 fn read_body(content: &IHttpContent, deadline: Instant) -> Result<String, FetchError> {
-    if let Ok(len) = content.Headers().and_then(|h| h.ContentLength()).and_then(|r| r.Value()) {
+    if let Ok(len) = content
+        .Headers()
+        .and_then(|h| h.ContentLength())
+        .and_then(|r| r.Value())
+    {
         if len > MAX_BODY_BYTES {
-            return Err(FetchError::Other(format!("response too large ({len} bytes)")));
+            return Err(FetchError::Other(format!(
+                "response too large ({len} bytes)"
+            )));
         }
     }
     let op = content.ReadAsBufferAsync().map_err(classify)?;
     let buf = wait(&op, deadline)?;
     let len = buf.Length().unwrap_or(0);
     if u64::from(len) > MAX_BODY_BYTES {
-        return Err(FetchError::Other(format!("response too large ({len} bytes)")));
+        return Err(FetchError::Other(format!(
+            "response too large ({len} bytes)"
+        )));
     }
     let bytes = buffer_bytes(&buf)?;
     Ok(decode_body(&bytes))
 }
 
 fn buffer_bytes(buf: &IBuffer) -> Result<Vec<u8>, FetchError> {
-    let len = buf.Length().map_err(|e| other("unreadable response body", &e))?;
+    let len = buf
+        .Length()
+        .map_err(|e| other("unreadable response body", &e))?;
     if len == 0 {
         return Ok(Vec::new());
     }
     let reader = DataReader::FromBuffer(buf).map_err(|e| other("unreadable response body", &e))?;
     let mut bytes = vec![0u8; len as usize];
-    reader.ReadBytes(&mut bytes).map_err(|e| other("unreadable response body", &e))?;
+    reader
+        .ReadBytes(&mut bytes)
+        .map_err(|e| other("unreadable response body", &e))?;
     // Give the buffer back instead of closing it with the reader.
     let _ = reader.DetachBuffer();
     Ok(bytes)
@@ -378,7 +472,11 @@ where
 fn classify(e: windows::core::Error) -> FetchError {
     let code = e.code().0 as u32;
     // WinINet / WinHTTP errors are Win32 codes 12001..=12199 (HRESULT 0x80072EE1..).
-    let win32 = if code & 0xFFFF_0000 == 0x8007_0000 { code & 0xFFFF } else { 0 };
+    let win32 = if code & 0xFFFF_0000 == 0x8007_0000 {
+        code & 0xFFFF
+    } else {
+        0
+    };
     match win32 {
         12002 => FetchError::Timeout,
         12001..=12199 => FetchError::Network(format!("{} (0x{code:08X})", network_detail(win32))),
@@ -428,7 +526,15 @@ mod pure {
             let day = dmy.next()?;
             let mon = dmy.next()?;
             let yy: i32 = dmy.next()?.parse().ok()?;
-            let year = if yy < 100 { if yy < 70 { 2000 + yy } else { 1900 + yy } } else { yy };
+            let year = if yy < 100 {
+                if yy < 70 {
+                    2000 + yy
+                } else {
+                    1900 + yy
+                }
+            } else {
+                yy
+            };
             (day, mon, year)
         } else {
             (first, parts.next()?, parts.next()?.parse().ok()?)
@@ -439,7 +545,8 @@ mod pure {
         let hour: i64 = hms.next()?.parse().ok()?;
         let minute: i64 = hms.next()?.parse().ok()?;
         let second: i64 = hms.next()?.parse().ok()?;
-        if hms.next().is_some() || !matches!(parts.next()?, "GMT" | "UTC") || parts.next().is_some() {
+        if hms.next().is_some() || !matches!(parts.next()?, "GMT" | "UTC") || parts.next().is_some()
+        {
             return None;
         }
         if !(1970..=9999).contains(&year)
@@ -455,7 +562,9 @@ mod pure {
     }
 
     fn month_number(m: &str) -> Option<u8> {
-        const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+        const MONTHS: [&str; 12] = [
+            "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+        ];
         let m = m.to_ascii_lowercase();
         MONTHS.iter().position(|x| *x == m).map(|i| i as u8 + 1)
     }
@@ -490,7 +599,10 @@ mod pure {
             assert_eq!(parse_retry_after("120", 0), Some(120));
             assert_eq!(parse_retry_after("  7 ", 0), Some(7));
             assert_eq!(parse_retry_after("0", 0), Some(0));
-            assert_eq!(parse_retry_after("99999999999999999999999", 0), Some(u64::MAX));
+            assert_eq!(
+                parse_retry_after("99999999999999999999999", 0),
+                Some(u64::MAX)
+            );
             assert_eq!(parse_retry_after("", 0), None);
             assert_eq!(parse_retry_after("-5", 0), None);
             assert_eq!(parse_retry_after("soon", 0), None);
@@ -501,11 +613,23 @@ mod pure {
             // The RFC 9110 example date.
             let t = parse_http_date("Sun, 06 Nov 1994 08:49:37 GMT");
             assert_eq!(t, Some(784_111_777));
-            assert_eq!(parse_http_date("Sunday, 06-Nov-94 08:49:37 GMT"), Some(784_111_777));
-            assert_eq!(parse_retry_after("Sun, 06 Nov 1994 08:49:57 GMT", 784_111_777), Some(20));
+            assert_eq!(
+                parse_http_date("Sunday, 06-Nov-94 08:49:37 GMT"),
+                Some(784_111_777)
+            );
+            assert_eq!(
+                parse_retry_after("Sun, 06 Nov 1994 08:49:57 GMT", 784_111_777),
+                Some(20)
+            );
             // Already past → wait 0.
-            assert_eq!(parse_retry_after("Sun, 06 Nov 1994 08:49:37 GMT", 784_200_000), Some(0));
-            assert_eq!(parse_http_date("Thu, 29 Feb 2024 23:59:59 GMT"), Some(1_709_251_199));
+            assert_eq!(
+                parse_retry_after("Sun, 06 Nov 1994 08:49:37 GMT", 784_200_000),
+                Some(0)
+            );
+            assert_eq!(
+                parse_http_date("Thu, 29 Feb 2024 23:59:59 GMT"),
+                Some(1_709_251_199)
+            );
         }
 
         #[test]
@@ -560,12 +684,25 @@ mod cache_tests {
             }
         });
         // A URL no earlier run asked for: the cache outlives the process.
-        let run = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+        let run = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
         let url = format!("http://127.0.0.1:{port}/island/bills?tz=%2B07%3A00&days=35&run={run}");
         let _com = MtaGuard::new();
         let client = Client::new("OyenzaStudio/test").expect("a client");
         let bodies = (0..2)
-            .map(|_| client.send(Method::Get, &url, &[("Authorization", "Bearer oyzd_test")], None, DEFAULT_TIMEOUT).expect("an answer").body)
+            .map(|_| {
+                client
+                    .send(
+                        Method::Get,
+                        &url,
+                        &[("Authorization", "Bearer oyzd_test")],
+                        None,
+                        DEFAULT_TIMEOUT,
+                    )
+                    .expect("an answer")
+                    .body
+            })
             .collect();
         (bodies, hits.load(Ordering::SeqCst))
     }
@@ -596,7 +733,11 @@ mod cache_tests {
         // If Windows stops caching this response, the test below proves
         // nothing: look at both again.
         let (bodies, hits) = ask_twice("");
-        assert_eq!((hits, bodies[1].as_str()), (1, r#"{"hit":1}"#), "answers {bodies:?}");
+        assert_eq!(
+            (hits, bodies[1].as_str()),
+            (1, r#"{"hit":1}"#),
+            "answers {bodies:?}"
+        );
     }
 
     #[test]
@@ -604,6 +745,10 @@ mod cache_tests {
         // The headers api.oyenza.app sends on every /island route
         // (catat-server's requirePc), so bills and money are asked for every time.
         let (bodies, hits) = ask_twice("Cache-Control: no-store\r\nVary: Origin\r\n");
-        assert_eq!((hits, bodies[1].as_str()), (2, r#"{"hit":2}"#), "answers {bodies:?}");
+        assert_eq!(
+            (hits, bodies[1].as_str()),
+            (2, r#"{"hit":2}"#),
+            "answers {bodies:?}"
+        );
     }
 }

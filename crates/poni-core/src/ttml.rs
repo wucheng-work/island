@@ -17,12 +17,15 @@ const GAP_S: f64 = 4.0;
 /// one; otherwise (or with `itunes:timing="None"`) the lyrics are unsynced.
 pub fn parse_ttml(src: &str) -> Lyrics {
     let body = src.find("<body").map_or(src, |i| &src[i..]);
-    let untimed_doc = attr(tag_at(src, "<tt").unwrap_or(""), "itunes:timing").is_some_and(|t| t.eq_ignore_ascii_case("none"));
+    let untimed_doc = attr(tag_at(src, "<tt").unwrap_or(""), "itunes:timing")
+        .is_some_and(|t| t.eq_ignore_ascii_case("none"));
     let mut lines: Vec<(Option<f64>, Option<f64>, String)> = Vec::new();
     let mut rest = body;
     while let Some(start) = find_tag(rest, "p") {
         rest = &rest[start..];
-        let Some(open_end) = rest.find('>') else { break };
+        let Some(open_end) = rest.find('>') else {
+            break;
+        };
         let open = &rest[..open_end];
         let begin = attr(open, "begin").and_then(parse_time);
         let end = attr(open, "end").and_then(parse_time);
@@ -30,7 +33,9 @@ pub fn parse_ttml(src: &str) -> Lyrics {
             rest = &rest[open_end + 1..];
             continue;
         }
-        let content_end = rest[open_end..].find("</p>").map_or(rest.len(), |i| open_end + i);
+        let content_end = rest[open_end..]
+            .find("</p>")
+            .map_or(rest.len(), |i| open_end + i);
         let text = line_text(&rest[open_end + 1..content_end]);
         rest = &rest[content_end..];
         if !text.is_empty() {
@@ -39,20 +44,35 @@ pub fn parse_ttml(src: &str) -> Lyrics {
     }
     let synced = !untimed_doc && !lines.is_empty() && lines.iter().all(|(b, _, _)| b.is_some());
     if !synced {
-        return Lyrics { lines: lines.into_iter().map(|(_, _, text)| LyricLine { time_s: 0.0, text }).collect(), synced: false };
+        return Lyrics {
+            lines: lines
+                .into_iter()
+                .map(|(_, _, text)| LyricLine { time_s: 0.0, text })
+                .collect(),
+            synced: false,
+        };
     }
     lines.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
     let mut out = Vec::with_capacity(lines.len());
     for i in 0..lines.len() {
         let (begin, end, text) = &lines[i];
-        out.push(LyricLine { time_s: begin.unwrap_or(0.0), text: text.clone() });
+        out.push(LyricLine {
+            time_s: begin.unwrap_or(0.0),
+            text: text.clone(),
+        });
         if let (Some(end), Some((Some(next), _, _))) = (end, lines.get(i + 1)) {
             if next - end >= GAP_S {
-                out.push(LyricLine { time_s: *end, text: String::new() });
+                out.push(LyricLine {
+                    time_s: *end,
+                    text: String::new(),
+                });
             }
         }
     }
-    Lyrics { lines: out, synced: true }
+    Lyrics {
+        lines: out,
+        synced: true,
+    }
 }
 
 /// What a span's text belongs to.
@@ -124,7 +144,9 @@ fn collapse(s: &str) -> String {
 }
 
 fn tag_name(tag: &str) -> &str {
-    tag.split(|c: char| c.is_whitespace() || c == '/').next().unwrap_or("")
+    tag.split(|c: char| c.is_whitespace() || c == '/')
+        .next()
+        .unwrap_or("")
 }
 
 /// Byte offset of the next `<name` start tag (`<p` but not `<parent`).
@@ -155,12 +177,17 @@ fn attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
         let at = from + i;
         from = at + name.len();
         // Whole attribute names only: "begin" must not match "xbegin".
-        let before_ok = tag[..at].chars().next_back().is_some_and(char::is_whitespace);
+        let before_ok = tag[..at]
+            .chars()
+            .next_back()
+            .is_some_and(char::is_whitespace);
         let after = tag[from..].trim_start();
         if !before_ok {
             continue;
         }
-        let Some(after_eq) = after.strip_prefix('=') else { continue };
+        let Some(after_eq) = after.strip_prefix('=') else {
+            continue;
+        };
         let after_eq = after_eq.trim_start();
         let quote = after_eq.chars().next()?;
         if quote != '"' && quote != '\'' {
@@ -197,7 +224,10 @@ pub fn parse_time(s: &str) -> Option<f64> {
 
 fn number(s: &str) -> Option<f64> {
     let s = s.trim();
-    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit() || b == b'.') || s.matches('.').count() > 1 {
+    if s.is_empty()
+        || !s.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+        || s.matches('.').count() > 1
+    {
         return None;
     }
     s.parse().ok()
@@ -257,7 +287,11 @@ mod tests {
     fn word_timed_lines() {
         let l = parse_ttml(WORD_TIMED);
         assert!(l.synced);
-        let rows: Vec<(f64, &str)> = l.lines.iter().map(|x| (x.time_s, x.text.as_str())).collect();
+        let rows: Vec<(f64, &str)> = l
+            .lines
+            .iter()
+            .map(|x| (x.time_s, x.text.as_str()))
+            .collect();
         assert_eq!(
             rows,
             vec![
@@ -277,8 +311,19 @@ mod tests {
                row</p><p begin="7s" end="8000ms">Third &#x2019;row&#39;</p></div></body></tt>"#;
         let l = parse_ttml(line);
         assert!(l.synced);
-        let rows: Vec<(f64, &str)> = l.lines.iter().map(|x| (x.time_s, x.text.as_str())).collect();
-        assert_eq!(rows, vec![(1.5, "First row"), (4.25, "Second row"), (7.0, "Third \u{2019}row'")]);
+        let rows: Vec<(f64, &str)> = l
+            .lines
+            .iter()
+            .map(|x| (x.time_s, x.text.as_str()))
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                (1.5, "First row"),
+                (4.25, "Second row"),
+                (7.0, "Third \u{2019}row'")
+            ]
+        );
 
         let none = r#"<tt itunes:timing="None"><body><div><p>First row</p><p>Second row</p></div></body></tt>"#;
         let l = parse_ttml(none);

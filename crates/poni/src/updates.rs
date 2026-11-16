@@ -7,8 +7,8 @@ use crate::state::{AppState, InlineAction, Notice, NoticeAction, Said};
 use crate::version::VERSION;
 use poni_core::geom::{palette, Color};
 use poni_core::store::{load_json, save_json_atomic};
-use poni_core::update::{self, Memory, Release};
 use poni_core::update::Download;
+use poni_core::update::{self, Memory, Release};
 use std::path::PathBuf;
 
 /// How long the island shows "Updated to" ("Update available" stays until
@@ -73,9 +73,17 @@ impl Updater {
         st.update.said = None;
         st.update.looks = update::enabled();
         Self {
-            path, memory, due: None, updated: false, asked: None, told: None,
-            setup: Setup::None, setups: setup_dir(), installs: crate::services::update::can_install(),
-            verified: None, checking: false,
+            path,
+            memory,
+            due: None,
+            updated: false,
+            asked: None,
+            told: None,
+            setup: Setup::None,
+            setups: setup_dir(),
+            installs: crate::services::update::can_install(),
+            verified: None,
+            checking: false,
         }
     }
 
@@ -97,7 +105,11 @@ impl Updater {
     }
 
     /// 只由验证过签名的服务返回值调用，不把缓存视为可信发行信息。
-    pub fn manual_checked(&mut self, st: &mut AppState, result: Result<Release, String>) -> Result<Option<Release>, String> {
+    pub fn manual_checked(
+        &mut self,
+        st: &mut AppState,
+        result: Result<Release, String>,
+    ) -> Result<Option<Release>, String> {
         if !self.checking {
             return Err("更新检查已失效，请重新检查".into());
         }
@@ -123,7 +135,11 @@ impl Updater {
         Ok((download, path))
     }
 
-    pub fn manual_fetched(&mut self, st: &mut AppState, result: Result<PathBuf, String>) -> Result<Release, String> {
+    pub fn manual_fetched(
+        &mut self,
+        st: &mut AppState,
+        result: Result<PathBuf, String>,
+    ) -> Result<Release, String> {
         if !matches!(self.setup, Setup::Fetching) {
             return Err("更新下载已失效，请重新检查".into());
         }
@@ -142,10 +158,15 @@ impl Updater {
 
     /// 安装前再次要求会话内验证结果，不接受仅来自 update.json 的数据。
     pub fn manual_ready(&self) -> Result<(PathBuf, Release), String> {
-        let release = self.verified.as_ref().ok_or("本次运行尚未验证更新签名，请重新检查")?;
+        let release = self
+            .verified
+            .as_ref()
+            .ok_or("本次运行尚未验证更新签名，请重新检查")?;
         let download = crate::services::update::validate_release(release)?;
         match &self.setup {
-            Setup::Ready(path) if *path == self.ready_path(download) => Ok((path.clone(), release.clone())),
+            Setup::Ready(path) if *path == self.ready_path(download) => {
+                Ok((path.clone(), release.clone()))
+            }
             _ => Err("安装器尚未准备好，请重新检查更新".into()),
         }
     }
@@ -174,8 +195,16 @@ impl Updater {
         st.update.looks = true;
         u.show(st);
         u.clear_old_setups(st);
-        let latest = u.memory.latest.as_ref().map_or("none", |r| r.version.as_str());
-        crate::pinfo!("updates: latest known {latest}, offering {:?}, next look in {} s", st.update.offer.as_ref().map(|r| &r.version), due.unwrap_or(now).saturating_sub(now));
+        let latest = u
+            .memory
+            .latest
+            .as_ref()
+            .map_or("none", |r| r.version.as_str());
+        crate::pinfo!(
+            "updates: latest known {latest}, offering {:?}, next look in {} s",
+            st.update.offer.as_ref().map(|r| &r.version),
+            due.unwrap_or(now).saturating_sub(now)
+        );
         u
     }
 
@@ -214,7 +243,11 @@ impl Updater {
         }
         save(&self.path, &self.memory);
         self.show(st);
-        if self.asked.is_some() { self.answer(st, read) } else { false }
+        if self.asked.is_some() {
+            self.answer(st, read)
+        } else {
+            false
+        }
     }
 
     /// The answer to Check for updates…, once the file is read: up to date,
@@ -230,7 +263,14 @@ impl Updater {
             if in_settings {
                 st.update.said = Some(Said::Failed);
             } else {
-                st.notify(Icon::Unlink, palette::ORANGE, "Couldn't check for updates", "Check the connection and try again.", ANSWER_S, None);
+                st.notify(
+                    Icon::Unlink,
+                    palette::ORANGE,
+                    "Couldn't check for updates",
+                    "Check the connection and try again.",
+                    ANSWER_S,
+                    None,
+                );
             }
             return false;
         }
@@ -240,7 +280,14 @@ impl Updater {
                 st.update.said = Some(Said::UpToDate);
             } else {
                 let subtitle = format!("{VERSION} 是最新版本。");
-                st.notify(Icon::CheckCircle, palette::GREEN, "灵动岛已是最新版本", subtitle, ANSWER_S, None);
+                st.notify(
+                    Icon::CheckCircle,
+                    palette::GREEN,
+                    "灵动岛已是最新版本",
+                    subtitle,
+                    ANSWER_S,
+                    None,
+                );
             }
             return false;
         };
@@ -295,7 +342,9 @@ impl Updater {
         if st.notice.as_ref().is_some_and(is_new_version_notice) {
             st.notice = None;
         }
-        let Some(v) = st.update.offer.as_ref().map(|r| &r.version) else { return };
+        let Some(v) = st.update.offer.as_ref().map(|r| &r.version) else {
+            return;
+        };
         if self.memory.announced != *v {
             self.memory.announced = v.clone();
             save(&self.path, &self.memory);
@@ -328,8 +377,12 @@ impl Updater {
         self.setup = r.map_or(Setup::Failed, Setup::Ready);
         self.show(st);
         self.clear_old_setups(st);
-        let Some(at) = self.asked.take() else { return false };
-        let Some(version) = st.update.offer.as_ref().map(|r| r.version.clone()) else { return false };
+        let Some(at) = self.asked.take() else {
+            return false;
+        };
+        let Some(version) = st.update.offer.as_ref().map(|r| r.version.clone()) else {
+            return false;
+        };
         if unix_now().saturating_sub(at) > ASK_OPEN_S {
             // Too slow to open by itself now: the notice tells as usual.
             self.told = None;
@@ -354,7 +407,9 @@ impl Updater {
 
     /// 历史设置格式的兼容入口。生产窗口不再调用，启动时会清除此字段。
     pub fn install_on_next_start(&mut self, st: &mut AppState) {
-        let Some(v) = st.update.offer.as_ref().map(|r| r.version.clone()) else { return };
+        let Some(v) = st.update.offer.as_ref().map(|r| r.version.clone()) else {
+            return;
+        };
         crate::pinfo!("updates: {v} installs on the next start");
         self.memory.install_on_start = v;
         save(&self.path, &self.memory);
@@ -364,12 +419,24 @@ impl Updater {
     /// Downloads in the cache folder except the offered one's: older
     /// versions, or all once this version is the latest.
     fn clear_old_setups(&self, st: &AppState) {
-        let keep: Vec<PathBuf> = st.update.offer.as_ref().and_then(|r| r.download(false)).map(|d| vec![self.setups.join(d.file_name()), self.ready_path(d)]).unwrap_or_default();
-        let Ok(entries) = std::fs::read_dir(&self.setups) else { return };
+        let keep: Vec<PathBuf> = st
+            .update
+            .offer
+            .as_ref()
+            .and_then(|r| r.download(false))
+            .map(|d| vec![self.setups.join(d.file_name()), self.ready_path(d)])
+            .unwrap_or_default();
+        let Ok(entries) = std::fs::read_dir(&self.setups) else {
+            return;
+        };
         for e in entries.flatten() {
             let path = e.path();
             if !keep.contains(&path) {
-                let _ = if path.is_dir() { std::fs::remove_dir_all(&path) } else { std::fs::remove_file(&path) };
+                let _ = if path.is_dir() {
+                    std::fs::remove_dir_all(&path)
+                } else {
+                    std::fs::remove_file(&path)
+                };
             }
         }
     }
@@ -392,7 +459,12 @@ impl Updater {
         }
         if self.updated {
             self.updated = false;
-            let headline = self.memory.latest.as_ref().filter(|r| r.version == VERSION).map(|r| r.headline.clone());
+            let headline = self
+                .memory
+                .latest
+                .as_ref()
+                .filter(|r| r.version == VERSION)
+                .map(|r| r.headline.clone());
             st.notice = Some(updated_notice(headline, st.now + UPDATED_S));
             return true;
         }
@@ -404,7 +476,9 @@ impl Updater {
         if self.installs && matches!(self.setup, Setup::None | Setup::Fetching) {
             return false;
         }
-        let Some(rel) = st.update.offer.clone() else { return false };
+        let Some(rel) = st.update.offer.clone() else {
+            return false;
+        };
         crate::pinfo!("updates: telling about {}", rel.version);
         // No time limit: it stays until Update or Hide. Another notice may
         // take its place; it comes back once the island is free again.
@@ -417,7 +491,11 @@ impl Updater {
     fn show(&self, st: &mut AppState) {
         st.update.offer = self.memory.offer(VERSION, false).cloned();
         st.update.sheet &= st.update.offer.is_some();
-        st.update.next_start = st.update.offer.as_ref().is_some_and(|r| r.version == self.memory.install_on_start);
+        st.update.next_start = st
+            .update
+            .offer
+            .as_ref()
+            .is_some_and(|r| r.version == self.memory.install_on_start);
         st.update.ready = self.ready_setup(st).is_some();
     }
 }
@@ -494,7 +572,9 @@ fn save(path: &PathBuf, memory: &Memory) {
 
 /// Unix seconds now.
 pub fn unix_now() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }
 
 #[cfg(all(test, windows))]
@@ -505,7 +585,8 @@ mod tests {
 
     /// A temporary folder for `update.json` and the Setups.
     fn folder(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("poni-updates-test-{name}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("poni-updates-test-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("setups")).unwrap();
         dir
@@ -520,8 +601,20 @@ mod tests {
             size: setup.len() as u64,
             sha256: poni_core::sha256::hex(&poni_core::sha256::sha256(setup)),
         };
-        let rel = Release { version: next.clone(), date: String::new(), headline: "Next".into(), notes: format!("{repo}/tag/v{next}"), windows: Some(d), mac: None };
-        let memory = Memory { checked: 1, latest: Some(rel), ran: VERSION.into(), ..Memory::default() };
+        let rel = Release {
+            version: next.clone(),
+            date: String::new(),
+            headline: "Next".into(),
+            notes: format!("{repo}/tag/v{next}"),
+            windows: Some(d),
+            mac: None,
+        };
+        let memory = Memory {
+            checked: 1,
+            latest: Some(rel),
+            ran: VERSION.into(),
+            ..Memory::default()
+        };
         let path = dir.join("update.json");
         save(&path, &memory);
         path
@@ -574,16 +667,32 @@ mod tests {
         u.begin();
         assert!(!u.ask(now), "not a second one while it runs");
         let repo = "https://github.com/lucacadalora/oyenza-studio/releases";
-        let this = Release { version: VERSION.into(), date: String::new(), headline: "This".into(), notes: format!("{repo}/tag/v{VERSION}"), windows: None, mac: None };
+        let this = Release {
+            version: VERSION.into(),
+            date: String::new(),
+            headline: "This".into(),
+            notes: format!("{repo}/tag/v{VERSION}"),
+            windows: None,
+            mac: None,
+        };
         assert!(!u.checked(&mut st, Ok(this), now));
-        assert_eq!(st.notice.as_ref().map(|n| n.title.as_str()), Some("灵动岛已是最新版本"));
+        assert_eq!(
+            st.notice.as_ref().map(|n| n.title.as_str()),
+            Some("灵动岛已是最新版本")
+        );
         let subtitle = format!("{VERSION} 是最新版本。");
-        assert_eq!(st.notice.as_ref().map(|n| n.subtitle.as_str()), Some(subtitle.as_str()));
+        assert_eq!(
+            st.notice.as_ref().map(|n| n.subtitle.as_str()),
+            Some(subtitle.as_str())
+        );
         st.notice = None;
         assert!(u.ask(now));
         u.begin();
         assert!(!u.checked(&mut st, Err("offline".into()), now));
-        assert_eq!(st.notice.as_ref().map(|n| n.title.as_str()), Some("Couldn't check for updates"));
+        assert_eq!(
+            st.notice.as_ref().map(|n| n.title.as_str()),
+            Some("Couldn't check for updates")
+        );
         // The hourly looks say nothing.
         st.notice = None;
         u.begin();
@@ -602,14 +711,25 @@ mod tests {
         let now = unix_now();
         assert!(u.ask(now));
         u.begin();
-        assert!(!u.checked(&mut st, Ok(rel.clone()), now), "the Setup comes first");
+        assert!(
+            !u.checked(&mut st, Ok(rel.clone()), now),
+            "the Setup comes first"
+        );
         let version = rel.version.as_str();
-        assert_eq!(st.notice.as_ref().map(|n| (n.title.as_str(), n.title_dim.as_str())), Some(("Downloading", version)));
+        assert_eq!(
+            st.notice
+                .as_ref()
+                .map(|n| (n.title.as_str(), n.title_dim.as_str())),
+            Some(("Downloading", version))
+        );
         let (_, setup) = u.want_setup(&mut st).expect("the Setup to download");
         std::fs::write(&setup, b"setup bytes").unwrap();
         assert!(u.fetched(&mut st, Ok(setup)), "now the sheet opens");
         assert!(st.update.sheet && st.update.ready && st.notice.is_none());
-        assert!(!u.announce(&mut st, true), "and no notice for that version afterwards");
+        assert!(
+            !u.announce(&mut st, true),
+            "and no notice for that version afterwards"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -629,7 +749,10 @@ mod tests {
         assert!(st.update.looks, "a copy with an updater has Check now");
         fetch(&mut u, &mut st);
         assert!(u.announce(&mut st, true));
-        assert!(st.notice.as_ref().is_some_and(|n| n.until.is_infinite()), "no time limit");
+        assert!(
+            st.notice.as_ref().is_some_and(|n| n.until.is_infinite()),
+            "no time limit"
+        );
         // Another notice took its place: it comes back once the island is free.
         st.notice = None;
         assert!(u.announce(&mut st, true));
@@ -646,7 +769,10 @@ mod tests {
         let mut u = Updater::open(path, dir.join("setups"), &mut st, 10);
         fetch(&mut u, &mut st);
         assert!(!u.announce(&mut st, true));
-        assert!(st.update.offer.is_some(), "Settings and the menu still offer it");
+        assert!(
+            st.update.offer.is_some(),
+            "Settings and the menu still offer it"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -675,7 +801,14 @@ mod tests {
         let mut u = Updater::open(dir.join("update.json"), dir.join("setups"), &mut st, 10);
         let now = unix_now();
         let repo = "https://github.com/lucacadalora/oyenza-studio/releases";
-        let this = Release { version: VERSION.into(), date: String::new(), headline: "This".into(), notes: format!("{repo}/tag/v{VERSION}"), windows: None, mac: None };
+        let this = Release {
+            version: VERSION.into(),
+            date: String::new(),
+            headline: "This".into(),
+            notes: format!("{repo}/tag/v{VERSION}"),
+            windows: None,
+            mac: None,
+        };
         st.update.said = Some(Said::Checking);
         assert!(u.ask(now));
         u.begin();
@@ -715,11 +848,17 @@ mod tests {
         std::fs::write(dir.join("setups/Oyenza-Studio-Setup-0.0.1.exe"), b"old").unwrap();
         let mut st = AppState::new(Settings::default(), Store::default());
         let mut u = Updater::open(path.clone(), dir.join("setups"), &mut st, 10);
-        assert!(!dir.join("setups/Oyenza-Studio-Setup-0.0.1.exe").exists(), "an older version's Setup goes at start");
+        assert!(
+            !dir.join("setups/Oyenza-Studio-Setup-0.0.1.exe").exists(),
+            "an older version's Setup goes at start"
+        );
         u.install_on_next_start(&mut st);
         assert!(st.update.next_start);
         let (memory, _) = load_json::<Memory>(&path);
-        assert_eq!(memory.pending_install(VERSION).map(|r| r.version.clone()), st.update.offer.as_ref().map(|r| r.version.clone()));
+        assert_eq!(
+            memory.pending_install(VERSION).map(|r| r.version.clone()),
+            st.update.offer.as_ref().map(|r| r.version.clone())
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

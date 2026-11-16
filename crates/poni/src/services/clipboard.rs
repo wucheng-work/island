@@ -13,9 +13,12 @@
 use std::time::Duration;
 use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL, HWND};
 use windows::Win32::System::DataExchange::{
-    CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard, SetClipboardData,
+    CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+    SetClipboardData,
 };
-use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE};
+use windows::Win32::System::Memory::{
+    GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
+};
 use windows::Win32::System::Ole::CF_UNICODETEXT;
 
 /// Largest clipboard text we read or write: 1 MiB of UTF-16 (512 Ki units).
@@ -37,7 +40,9 @@ pub fn set_text(hwnd: HWND, text: &str) {
     units.push(0);
 
     // A failed open is logged by the guard.
-    let Some(_open) = OpenGuard::open(hwnd) else { return };
+    let Some(_open) = OpenGuard::open(hwnd) else {
+        return;
+    };
     unsafe {
         if let Err(e) = EmptyClipboard() {
             crate::pwarn!("clipboard: EmptyClipboard failed ({e})");
@@ -53,7 +58,10 @@ pub fn set_text(hwnd: HWND, text: &str) {
         };
         let dst = GlobalLock(mem) as *mut u16;
         if dst.is_null() {
-            crate::pwarn!("clipboard: GlobalLock failed ({})", windows::core::Error::from_win32());
+            crate::pwarn!(
+                "clipboard: GlobalLock failed ({})",
+                windows::core::Error::from_win32()
+            );
             let _ = GlobalFree(mem);
             return;
         }
@@ -85,7 +93,10 @@ impl OpenGuard {
             }
         }
         if let Some(e) = last {
-            crate::pwarn!("clipboard: OpenClipboard failed after {} attempts ({e})", OPEN_RETRY_MS.len() + 1);
+            crate::pwarn!(
+                "clipboard: OpenClipboard failed after {} attempts ({e})",
+                OPEN_RETRY_MS.len() + 1
+            );
         }
         None
     }
@@ -111,10 +122,14 @@ unsafe fn read_unicode_text() -> Option<String> {
     with_locked(handle, |bytes| {
         if bytes.as_ptr().align_offset(std::mem::align_of::<u16>()) == 0 {
             // Global memory is 8-byte aligned: read the UTF-16 in place.
-            decode_clipboard_text(std::slice::from_raw_parts(bytes.as_ptr().cast::<u16>(), bytes.len() / 2))
+            decode_clipboard_text(std::slice::from_raw_parts(
+                bytes.as_ptr().cast::<u16>(),
+                bytes.len() / 2,
+            ))
         } else {
-            let units: Vec<u16> =
-                (0..bytes.len() / 2).map(|i| u16::from_le_bytes([bytes[2 * i], bytes[2 * i + 1]])).collect();
+            let units: Vec<u16> = (0..bytes.len() / 2)
+                .map(|i| u16::from_le_bytes([bytes[2 * i], bytes[2 * i + 1]]))
+                .collect();
             decode_clipboard_text(&units)
         }
     })
@@ -172,7 +187,10 @@ mod tests {
 
     #[test]
     fn missing_nul_reads_the_whole_buffer() {
-        assert_eq!(decode_clipboard_text(&utf16("no terminator")).as_deref(), Some("no terminator"));
+        assert_eq!(
+            decode_clipboard_text(&utf16("no terminator")).as_deref(),
+            Some("no terminator")
+        );
     }
 
     #[test]

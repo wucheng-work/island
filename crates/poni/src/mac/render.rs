@@ -30,7 +30,10 @@ use crate::island::{Island, SHOULDER};
 use crate::mail::{MailAttachment, MailConnection, MailMessage, MailPreview};
 use crate::notch::{self, Notch};
 use crate::pages::{self, PageKind};
-use crate::state::{AppState, Hud, HudKind, InlineAction, LyricsState, LyricsStatus, MediaSession, NoticeAction, OyenzaLink, OyenzaState, PowerState, VolumeState};
+use crate::state::{
+    AppState, Hud, HudKind, InlineAction, LyricsState, LyricsStatus, MediaSession, NoticeAction,
+    OyenzaLink, OyenzaState, PowerState, VolumeState,
+};
 use crate::ui::{Hit, Input};
 use poni_core::bluetooth::{BatteryComponent, BluetoothDevice, DeviceKind};
 use poni_core::datetime::LocalDateTime;
@@ -43,7 +46,8 @@ use poni_core::power::PowerReading;
 use poni_core::settings::{IdleStyle, Settings, Theme};
 use poni_core::store::Store;
 use poni_core::sysmon::{
-    level_pressure, AppUse, BatteryReading, CoreKind, CoreLoad, CpuReading, DiskActivity, Drive, GpuReading, MemoryReading, Module, Monitor, NetReading, PressureLevel, Reading, HISTORY_LEN,
+    level_pressure, AppUse, BatteryReading, CoreKind, CoreLoad, CpuReading, DiskActivity, Drive,
+    GpuReading, MemoryReading, Module, Monitor, NetReading, PressureLevel, Reading, HISTORY_LEN,
 };
 use poni_core::timeline::Timeline;
 use std::path::{Path, PathBuf};
@@ -237,18 +241,39 @@ const SCENES: [Scene; 15] = [
     Scene::ShelfItems,
 ];
 
-const SYSTEM_SCENES: [Scene; 6] =
-    [Scene::System(Module::Cpu), Scene::System(Module::Gpu), Scene::System(Module::Memory), Scene::System(Module::Drives), Scene::System(Module::Network), Scene::System(Module::Battery)];
+const SYSTEM_SCENES: [Scene; 6] = [
+    Scene::System(Module::Cpu),
+    Scene::System(Module::Gpu),
+    Scene::System(Module::Memory),
+    Scene::System(Module::Drives),
+    Scene::System(Module::Network),
+    Scene::System(Module::Battery),
+];
 
 const PILL_SCENES: [Scene; 2] = [Scene::IdleStatus, Scene::MediaNoLine];
 const SETTINGS_SCENES: [Scene; 1] = [Scene::Page(PageKind::Settings)];
 const HEADPHONE_SCENES: [Scene; 1] = [Scene::HeadphonesHud];
-const OYENZA_SCENES: [Scene; 4] = [Scene::Oyenza, Scene::OyenzaCode, Scene::OyenzaNotice, Scene::SettingsSignedIn];
+const OYENZA_SCENES: [Scene; 4] = [
+    Scene::Oyenza,
+    Scene::OyenzaCode,
+    Scene::OyenzaNotice,
+    Scene::SettingsSignedIn,
+];
 const POWER_SCENES: [Scene; 1] = [Scene::System(Module::Power)];
-const TODAY_SCENES: [Scene; 4] = [Scene::TodayDay, Scene::TodayPicked, Scene::TodayEmpty, Scene::TodayNarrow];
+const TODAY_SCENES: [Scene; 4] = [
+    Scene::TodayDay,
+    Scene::TodayPicked,
+    Scene::TodayEmpty,
+    Scene::TodayNarrow,
+];
 const UPDATE_SCENES: [Scene; 2] = [Scene::UpdateSheet, Scene::UpdateReady];
 const MAIL_SCENES: [Scene; 3] = [Scene::MailEmpty, Scene::MailInbox, Scene::MailPreview];
-const CODEX_SCENES: [Scene; 4] = [Scene::CodexDisabled, Scene::CodexMessages, Scene::CodexWaiting, Scene::CodexExpired];
+const CODEX_SCENES: [Scene; 4] = [
+    Scene::CodexDisabled,
+    Scene::CodexMessages,
+    Scene::CodexWaiting,
+    Scene::CodexExpired,
+];
 const BLUETOOTH_SCENES: [BluetoothScene; 15] = [
     BluetoothScene::Devices,
     BluetoothScene::Unknown,
@@ -336,7 +361,12 @@ pub fn run(dir: &str, args: &[String]) -> i32 {
         eprintln!("render: {}: {e}", out.display());
         return 2;
     }
-    let theme = match args.iter().position(|a| a == "--theme").and_then(|i| args.get(i + 1)).map(|s| s.as_str()) {
+    let theme = match args
+        .iter()
+        .position(|a| a == "--theme")
+        .and_then(|i| args.get(i + 1))
+        .map(|s| s.as_str())
+    {
         Some("oyen") => Theme::Oyen,
         Some("glass") => Theme::Glass,
         Some("pill") => Theme::Pill,
@@ -345,13 +375,22 @@ pub fn run(dir: &str, args: &[String]) -> i32 {
     };
     // 与产品实际支持的宽度一致，离屏验收无需改写用户设置。
     let width = match args.iter().position(|a| a == "--width") {
-        Some(index) => match args.get(index + 1).and_then(|value| value.parse::<f32>().ok()) {
+        Some(index) => match args
+            .get(index + 1)
+            .and_then(|value| value.parse::<f32>().ok())
+        {
             Some(value) if value.is_finite() && (480.0..=900.0).contains(&value) => Some(value),
-            _ => { eprintln!("render: --width must be between 480 and 900 DIPs"); return 2; }
+            _ => {
+                eprintln!("render: --width must be between 480 and 900 DIPs");
+                return 2;
+            }
         },
         None => None,
     };
-    let notch = args.iter().any(|a| a == "--notch").then_some(Notch::MACBOOK);
+    let notch = args
+        .iter()
+        .any(|a| a == "--notch")
+        .then_some(Notch::MACBOOK);
     let name = match theme {
         Theme::Classic => "",
         Theme::Oyen => "-oyen",
@@ -368,9 +407,24 @@ pub fn run(dir: &str, args: &[String]) -> i32 {
     let mut gfx = Gfx::new(SCALE);
     if args.iter().any(|arg| arg == "--mail-error-preview") {
         for light in [false, true] {
-            let path = out.join(if light { "mail-error-light.png" } else { "mail-error-dark.png" });
-            let error = Some(MailConnection::Error("邮箱认证失败，请检查 IMAP 开关、授权码或应用专用密码".into()));
-            if let Err(error) = render_settings(&mut gfx, crate::settings_model::Section::Mail, theme, light, false, false, error, &path) {
+            let path = out.join(if light {
+                "mail-error-light.png"
+            } else {
+                "mail-error-dark.png"
+            });
+            let error = Some(MailConnection::Error(
+                "邮箱认证失败，请检查 IMAP 开关、授权码或应用专用密码".into(),
+            ));
+            if let Err(error) = render_settings(
+                &mut gfx,
+                crate::settings_model::Section::Mail,
+                theme,
+                light,
+                false,
+                false,
+                error,
+                &path,
+            ) {
                 eprintln!("render: {error}");
                 failed += 1;
             }
@@ -430,7 +484,9 @@ pub fn run(dir: &str, args: &[String]) -> i32 {
         }
         for (k, scene) in PILL_SCENES.into_iter().enumerate() {
             // The status bar is a look only the Pill theme offers.
-            if scene == Scene::IdleStatus && !crate::pill::status::looks(theme).contains(&IdleStyle::Status) {
+            if scene == Scene::IdleStatus
+                && !crate::pill::status::looks(theme).contains(&IdleStyle::Status)
+            {
                 continue;
             }
             let path = out.join(format!("{:02}-{}{suffix}.png", n + 1 + k, scene.name()));
@@ -446,7 +502,14 @@ pub fn run(dir: &str, args: &[String]) -> i32 {
     // The remaining pages and ordinary Japanese lyrics in every theme.
     let first = SCENES.len() + SYSTEM_SCENES.len() + 2 + PILL_SCENES.len();
     let mut next = first;
-    let later = SETTINGS_SCENES.into_iter().chain(HEADPHONE_SCENES).chain(OYENZA_SCENES).chain(POWER_SCENES).chain(TODAY_SCENES).chain(UPDATE_SCENES).chain([Scene::Japanese]);
+    let later = SETTINGS_SCENES
+        .into_iter()
+        .chain(HEADPHONE_SCENES)
+        .chain(OYENZA_SCENES)
+        .chain(POWER_SCENES)
+        .chain(TODAY_SCENES)
+        .chain(UPDATE_SCENES)
+        .chain([Scene::Japanese]);
     for (k, scene) in later.enumerate() {
         let path = out.join(format!("{:02}-{}{suffix}.png", first + k, scene.name()));
         match render_scene(&mut gfx, scene, theme, notch, width, &path) {
@@ -464,8 +527,14 @@ pub fn run(dir: &str, args: &[String]) -> i32 {
         let mode = if light { "-light" } else { "" };
         let pick = if on_top { "-on-top" } else { "" };
         let system = if system_on { "-system-on" } else { "" };
-        let path = out.join(format!("{:02}-settings-window-{}{pick}{system}{mode}{suffix}.png", next + k, section.key()));
-        match render_settings(&mut gfx, section, theme, light, on_top, system_on, None, &path) {
+        let path = out.join(format!(
+            "{:02}-settings-window-{}{pick}{system}{mode}{suffix}.png",
+            next + k,
+            section.key()
+        ));
+        match render_settings(
+            &mut gfx, section, theme, light, on_top, system_on, None, &path,
+        ) {
             Ok(()) => println!("render: {}", path.display()),
             Err(e) => {
                 eprintln!("render: {}: {e}", path.display());
@@ -500,8 +569,22 @@ pub fn run(dir: &str, args: &[String]) -> i32 {
     }
     // 新邮件场景放在既有编号之后，保留之前各场景的图片路径。
     let mail_first = next + 1 + DIORAMA_SCENES.len();
-    for (index, scene) in MAIL_SCENES.into_iter().chain([Scene::MailAccountMenu, Scene::MediaLyricsOff, Scene::SaveFailed, Scene::QuitSaveFailed, Scene::SaveProtected]).enumerate() {
-        let path = out.join(format!("{:02}-{}{suffix}.png", mail_first + index, scene.name()));
+    for (index, scene) in MAIL_SCENES
+        .into_iter()
+        .chain([
+            Scene::MailAccountMenu,
+            Scene::MediaLyricsOff,
+            Scene::SaveFailed,
+            Scene::QuitSaveFailed,
+            Scene::SaveProtected,
+        ])
+        .enumerate()
+    {
+        let path = out.join(format!(
+            "{:02}-{}{suffix}.png",
+            mail_first + index,
+            scene.name()
+        ));
         match render_scene(&mut gfx, scene, theme, notch, width, &path) {
             Ok(()) => println!("render: {}", path.display()),
             Err(error) => {
@@ -523,8 +606,16 @@ pub fn run(dir: &str, args: &[String]) -> i32 {
 /// top. Each is (section, light, Stay on top, System enabled).
 fn settings_shots() -> Vec<(crate::settings_model::Section, bool, bool, bool)> {
     use crate::settings_model::Section;
-    let mut v: Vec<_> = Section::ALL.into_iter().map(|s| (s, false, false, false)).collect();
-    v.extend([(Section::General, true, false, false), (Section::General, false, false, true), (Section::Appearance, true, false, false), (Section::Island, false, true, false)]);
+    let mut v: Vec<_> = Section::ALL
+        .into_iter()
+        .map(|s| (s, false, false, false))
+        .collect();
+    v.extend([
+        (Section::General, true, false, false),
+        (Section::General, false, false, true),
+        (Section::Appearance, true, false, false),
+        (Section::Island, false, true, false),
+    ]);
     v
 }
 
@@ -533,12 +624,28 @@ fn settings_shots() -> Vec<(crate::settings_model::Section, bool, bool, bool)> {
 /// draws those itself; the smoke test pictures that one). `on_top`: In
 /// full-screen apps set to Stay on top instead of Hide; `system_on` shows
 /// the System switch enabled with its history setting.
-fn render_settings(gfx: &mut Gfx, section: crate::settings_model::Section, theme: Theme, light: bool, on_top: bool, system_on: bool, mail_error: Option<MailConnection>, path: &Path) -> Result<(), String> {
+fn render_settings(
+    gfx: &mut Gfx,
+    section: crate::settings_model::Section,
+    theme: Theme,
+    light: bool,
+    on_top: bool,
+    system_on: bool,
+    mail_error: Option<MailConnection>,
+    path: &Path,
+) -> Result<(), String> {
     use crate::settings_host::{HEIGHT, TITLEBAR, WIDTH};
     let (w, h) = (WIDTH as f32, HEIGHT as f32);
     let (w_px, h_px) = ((w * SCALE) as usize, (h * SCALE) as usize);
     let bmp = Bitmap::new(w_px, h_px, SCALE).ok_or("no bitmap")?;
-    let mut st = AppState::new(Settings { theme, hide_in_fullscreen: !on_top, ..Settings::default() }, Store::default());
+    let mut st = AppState::new(
+        Settings {
+            theme,
+            hide_in_fullscreen: !on_top,
+            ..Settings::default()
+        },
+        Store::default(),
+    );
     st.settings.set_system(system_on);
     st.accent = crate::app::theme_accent(theme);
     st.ui.autostart = Some(true);
@@ -552,7 +659,12 @@ fn render_settings(gfx: &mut Gfx, section: crate::settings_model::Section, theme
         }
     }
     let mut view = crate::settings_window::View::new(section);
-    let frame = crate::settings_window::Frame { card: Rect::new(0.0, 0.0, w, h), own_chrome: false, top: TITLEBAR, still: true };
+    let frame = crate::settings_window::Frame {
+        card: Rect::new(0.0, 0.0, w, h),
+        own_chrome: false,
+        top: TITLEBAR,
+        still: true,
+    };
     gfx.set_look(poni_core::look::glass(light));
     {
         let mut c = gfx.canvas(bmp.ctx());
@@ -560,7 +672,11 @@ fn render_settings(gfx: &mut Gfx, section: crate::settings_model::Section, theme
         // Close, minimise and zoom, 12 points across and 20 apart from 20 in.
         c.unthemed(|c| {
             for (i, rgb) in [0xFF5F57u32, 0xFEBC2E, 0x28C840].into_iter().enumerate() {
-                c.fill_circle(Point::new(20.0 + 6.0 + i as f32 * 20.0, TITLEBAR / 2.0), 6.0, Color::hex(rgb));
+                c.fill_circle(
+                    Point::new(20.0 + 6.0 + i as f32 * 20.0, TITLEBAR / 2.0),
+                    6.0,
+                    Color::hex(rgb),
+                );
             }
         });
     }
@@ -572,7 +688,12 @@ fn render_settings(gfx: &mut Gfx, section: crate::settings_model::Section, theme
 /// closing again (right), a frame every few sixtieths of a second, stepped on
 /// the app's own springs: for the Pill theme, how the floating outline moves
 /// and, around a notch, how it lets go of the edge and comes back.
-fn render_morph(gfx: &mut Gfx, theme: Theme, notch: Option<Notch>, path: &Path) -> Result<(), String> {
+fn render_morph(
+    gfx: &mut Gfx,
+    theme: Theme,
+    notch: Option<Notch>,
+    path: &Path,
+) -> Result<(), String> {
     /// Sixtieths of a second after the change, one row each.
     const FRAMES: [usize; 12] = [0, 2, 4, 6, 8, 10, 13, 16, 20, 25, 30, 45];
     const DT: f32 = 1.0 / 60.0;
@@ -587,14 +708,27 @@ fn render_morph(gfx: &mut Gfx, theme: Theme, notch: Option<Notch>, path: &Path) 
         let g = activities::geom(m, st);
         notch.map_or(g, |n| notch::geom(m, st, n, g))
     };
-    let gap_at = |m: &Mode, st: &AppState| notch.map_or(Some(crate::pill::TOP_GAP), |n| notch::pill_gap(m, st, n));
-    let ends = [(rest, size(&rest, &st), gap_at(&rest, &st)), (open, size(&open, &st), gap_at(&open, &st))];
+    let gap_at = |m: &Mode, st: &AppState| {
+        notch.map_or(Some(crate::pill::TOP_GAP), |n| notch::pill_gap(m, st, n))
+    };
+    let ends = [
+        (rest, size(&rest, &st), gap_at(&rest, &st)),
+        (open, size(&open, &st), gap_at(&open, &st)),
+    ];
     let menu_h = notch.map_or(MENU_BAR, |n| n.h);
     let cell_w = st.settings.expanded_width + 2.0 * MARGIN_X;
-    let cell_h = (notch.map_or(0.0, |n| n.h) + crate::pill::TOP_GAP + ends[1].1.h * 1.06 + 28.0).ceil();
-    let (w_px, h_px) = ((2.0 * cell_w * STRIP_SCALE).ceil() as usize, (FRAMES.len() as f32 * cell_h * STRIP_SCALE).ceil() as usize);
+    let cell_h =
+        (notch.map_or(0.0, |n| n.h) + crate::pill::TOP_GAP + ends[1].1.h * 1.06 + 28.0).ceil();
+    let (w_px, h_px) = (
+        (2.0 * cell_w * STRIP_SCALE).ceil() as usize,
+        (FRAMES.len() as f32 * cell_h * STRIP_SCALE).ceil() as usize,
+    );
     let bmp = Bitmap::new(w_px, h_px, STRIP_SCALE).ok_or("no bitmap context")?;
-    let look = if notch.is_some() { poni_core::look::around_notch(theme) } else { poni_core::look::of(theme) };
+    let look = if notch.is_some() {
+        poni_core::look::around_notch(theme)
+    } else {
+        poni_core::look::of(theme)
+    };
     for (col, (from, to)) in [(0usize, 1usize), (1, 0)].into_iter().enumerate() {
         let (_, g_from, gap_from) = ends[from];
         let (to_mode, g_to, gap_to) = ends[to];
@@ -627,9 +761,20 @@ fn render_morph(gfx: &mut Gfx, theme: Theme, notch: Option<Notch>, path: &Path) 
                 for i in 0..steps {
                     let t = i as f32 / (steps - 1) as f32;
                     let shade = Color::lerp(Color::hex(0x2B4F86), Color::hex(0xF0708A), t);
-                    c.fill_rect(Rect::new(0.0, cell_h * i as f32 / steps as f32, cell_w, cell_h / steps as f32 + 0.5), shade);
+                    c.fill_rect(
+                        Rect::new(
+                            0.0,
+                            cell_h * i as f32 / steps as f32,
+                            cell_w,
+                            cell_h / steps as f32 + 0.5,
+                        ),
+                        shade,
+                    );
                 }
-                c.fill_rect(Rect::new(0.0, 0.0, cell_w, menu_h), Color::rgba(0.96, 0.96, 0.97, 0.78));
+                c.fill_rect(
+                    Rect::new(0.0, 0.0, cell_w, menu_h),
+                    Color::rgba(0.96, 0.96, 0.97, 0.78),
+                );
                 c.unclip();
                 c.reset_transform();
             }
@@ -641,7 +786,15 @@ fn render_morph(gfx: &mut Gfx, theme: Theme, notch: Option<Notch>, path: &Path) 
                 c.clip(Rect::new(0.0, 0.0, cell_w, cell_h));
                 let border = Some(c.look().border);
                 if island.floating() {
-                    notch::draw_pill_body(&mut c, body, geom.r, shoulder, detach, palette::ISLAND, border);
+                    notch::draw_pill_body(
+                        &mut c,
+                        body,
+                        geom.r,
+                        shoulder,
+                        detach,
+                        palette::ISLAND,
+                        border,
+                    );
                     c.push_outline_mask(&notch::pill_outline(body, geom.r, shoulder, detach));
                 } else {
                     c.notch(body, geom.r, shoulder, palette::ISLAND, border);
@@ -649,18 +802,40 @@ fn render_morph(gfx: &mut Gfx, theme: Theme, notch: Option<Notch>, path: &Path) 
                 }
                 // The incoming content as it fades in (the app also fades the old one out).
                 let lay = match to_mode {
-                    Mode::Expanded(_) => Rect::new(body.center().x - g_to.w / 2.0, body.y, g_to.w, g_to.h),
+                    Mode::Expanded(_) => {
+                        Rect::new(body.center().x - g_to.w / 2.0, body.y, g_to.w, g_to.h)
+                    }
                     _ => body,
                 };
                 let (mut input, mut hits) = (Input::default(), Vec::<Hit>::new());
                 let alpha = island.content_alpha();
-                c.with_alpha(alpha, |c| crate::app::draw_content(c, &mut input, &mut hits, &mut st, to_mode, lay, body, None, now, notch));
+                c.with_alpha(alpha, |c| {
+                    crate::app::draw_content(
+                        c, &mut input, &mut hits, &mut st, to_mode, lay, body, None, now, notch,
+                    )
+                });
                 c.pop_shape_mask();
                 if let Some(n) = notch {
-                    c.unthemed(|c| c.fill_rrect(Rect::new(cx - n.w / 2.0, -12.0, n.w, n.h + 12.0), 10.0, Color::black(1.0)));
+                    c.unthemed(|c| {
+                        c.fill_rrect(
+                            Rect::new(cx - n.w / 2.0, -12.0, n.w, n.h + 12.0),
+                            10.0,
+                            Color::black(1.0),
+                        )
+                    });
                 }
-                let label = format!("{} {:.0} ms", if to == 1 { "open" } else { "close" }, f as f32 * 1000.0 / 60.0);
-                c.unthemed(|c| c.text(&label, Rect::new(10.0, cell_h - 22.0, 160.0, 16.0), &crate::gfx::TextStyle::caption().color(Color::white(0.92))));
+                let label = format!(
+                    "{} {:.0} ms",
+                    if to == 1 { "open" } else { "close" },
+                    f as f32 * 1000.0 / 60.0
+                );
+                c.unthemed(|c| {
+                    c.text(
+                        &label,
+                        Rect::new(10.0, cell_h - 22.0, 160.0, 16.0),
+                        &crate::gfx::TextStyle::caption().color(Color::white(0.92)),
+                    )
+                });
                 c.unclip();
                 c.reset_transform();
             }
@@ -678,7 +853,15 @@ fn render_morph(gfx: &mut Gfx, theme: Theme, notch: Option<Notch>, path: &Path) 
 fn render_peek(gfx: &mut Gfx, theme: Theme, n: Notch, path: &Path) -> Result<(), String> {
     /// The pointer from the island's top centre (DIPs) at each time
     /// (seconds), in a straight line from one to the next.
-    const WAY: [(f64, f32, f32); 7] = [(0.0, 250.0, 118.0), (0.6, 170.0, 70.0), (1.2, -60.0, 95.0), (1.5, -130.0, 105.0), (2.4, -235.0, 80.0), (3.0, -215.0, 14.0), (3.6, -40.0, 118.0)];
+    const WAY: [(f64, f32, f32); 7] = [
+        (0.0, 250.0, 118.0),
+        (0.6, 170.0, 70.0),
+        (1.2, -60.0, 95.0),
+        (1.5, -130.0, 105.0),
+        (2.4, -235.0, 80.0),
+        (3.0, -215.0, 14.0),
+        (3.6, -40.0, 118.0),
+    ];
     const FPS: f64 = 15.0;
     const CELL: (f32, f32) = (560.0, 140.0);
     let mut st = base_state(theme);
@@ -686,11 +869,18 @@ fn render_peek(gfx: &mut Gfx, theme: Theme, n: Notch, path: &Path) -> Result<(),
     let mode = Mode::Idle;
     let g = notch::geom(&mode, &st, n, activities::geom(&mode, &st));
     let frames = (WAY[WAY.len() - 1].0 * FPS).round() as usize + 1;
-    let (w_px, h_px) = ((CELL.0 * SCALE).ceil() as usize, (frames as f32 * CELL.1 * SCALE).ceil() as usize);
+    let (w_px, h_px) = (
+        (CELL.0 * SCALE).ceil() as usize,
+        (frames as f32 * CELL.1 * SCALE).ceil() as usize,
+    );
     let bmp = Bitmap::new(w_px, h_px, SCALE).ok_or("no bitmap context")?;
     let look = poni_core::look::around_notch(theme);
     let at = |t: f64| {
-        let i = WAY.iter().rposition(|w| w.0 <= t).unwrap_or(0).min(WAY.len() - 2);
+        let i = WAY
+            .iter()
+            .rposition(|w| w.0 <= t)
+            .unwrap_or(0)
+            .min(WAY.len() - 2);
         let (a, b) = (WAY[i], WAY[i + 1]);
         let k = ((t - a.0) / (b.0 - a.0)).clamp(0.0, 1.0) as f32;
         Point::new(a.1 + (b.1 - a.1) * k, a.2 + (b.2 - a.2) * k)
@@ -714,9 +904,20 @@ fn render_peek(gfx: &mut Gfx, theme: Theme, n: Notch, path: &Path) -> Result<(),
             for i in 0..steps {
                 let k = i as f32 / (steps - 1) as f32;
                 let shade = Color::lerp(Color::hex(0x2B4F86), Color::hex(0xF0708A), k);
-                c.fill_rect(Rect::new(0.0, CELL.1 * i as f32 / steps as f32, CELL.0, CELL.1 / steps as f32 + 0.5), shade);
+                c.fill_rect(
+                    Rect::new(
+                        0.0,
+                        CELL.1 * i as f32 / steps as f32,
+                        CELL.0,
+                        CELL.1 / steps as f32 + 0.5,
+                    ),
+                    shade,
+                );
             }
-            c.fill_rect(Rect::new(0.0, 0.0, CELL.0, n.h), Color::rgba(0.96, 0.96, 0.97, 0.78));
+            c.fill_rect(
+                Rect::new(0.0, 0.0, CELL.0, n.h),
+                Color::rgba(0.96, 0.96, 0.97, 0.78),
+            );
             c.unclip();
             c.reset_transform();
         }
@@ -734,9 +935,24 @@ fn render_peek(gfx: &mut Gfx, theme: Theme, n: Notch, path: &Path) -> Result<(),
             }
             let (mut input, mut hits) = (Input::default(), Vec::<Hit>::new());
             let now = st.now;
-            crate::app::draw_content(&mut c, &mut input, &mut hits, &mut st, mode, body, body, None, now, Some(n));
+            crate::app::draw_content(
+                &mut c,
+                &mut input,
+                &mut hits,
+                &mut st,
+                mode,
+                body,
+                body,
+                None,
+                now,
+                Some(n),
+            );
             c.unthemed(|c| {
-                c.fill_rrect(Rect::new(cx - n.w / 2.0, -12.0, n.w, n.h + 12.0), 10.0, Color::black(1.0));
+                c.fill_rrect(
+                    Rect::new(cx - n.w / 2.0, -12.0, n.w, n.h + 12.0),
+                    10.0,
+                    Color::black(1.0),
+                );
                 pointer_arrow(c, Point::new(cx + p.x, p.y));
             });
             c.unclip();
@@ -750,24 +966,83 @@ fn render_peek(gfx: &mut Gfx, theme: Theme, n: Notch, path: &Path) -> Result<(),
 /// The Mac's arrow pointer, its tip at `tip`: black, outlined in white.
 fn pointer_arrow(c: &mut crate::gfx::Canvas, tip: Point) {
     use poni_core::svgpath::Seg;
-    const ARROW: [(f32, f32); 7] = [(0.0, 0.0), (0.0, 16.0), (4.0, 12.3), (6.9, 18.6), (9.6, 17.4), (6.8, 11.3), (12.0, 11.3)];
-    let mut segs: Vec<Seg> = ARROW.iter().enumerate().map(|(i, (dx, dy))| if i == 0 { Seg::MoveTo(tip.x + dx, tip.y + dy) } else { Seg::LineTo(tip.x + dx, tip.y + dy) }).collect();
+    const ARROW: [(f32, f32); 7] = [
+        (0.0, 0.0),
+        (0.0, 16.0),
+        (4.0, 12.3),
+        (6.9, 18.6),
+        (9.6, 17.4),
+        (6.8, 11.3),
+        (12.0, 11.3),
+    ];
+    let mut segs: Vec<Seg> = ARROW
+        .iter()
+        .enumerate()
+        .map(|(i, (dx, dy))| {
+            if i == 0 {
+                Seg::MoveTo(tip.x + dx, tip.y + dy)
+            } else {
+                Seg::LineTo(tip.x + dx, tip.y + dy)
+            }
+        })
+        .collect();
     segs.push(Seg::Close);
-    c.path(&segs, Some(Color::white(1.0)), Some((Color::white(1.0), 2.4)));
+    c.path(
+        &segs,
+        Some(Color::white(1.0)),
+        Some((Color::white(1.0), 2.4)),
+    );
     c.path(&segs, Some(Color::black(1.0)), None);
 }
 
 fn base_state(theme: Theme) -> AppState {
-    let settings = Settings { theme, focus_sound: false, shelf_sound: false, codex_sound: false, show_media_activity: true, lyrics: true, ..Default::default() };
+    let settings = Settings {
+        theme,
+        focus_sound: false,
+        shelf_sound: false,
+        codex_sound: false,
+        show_media_activity: true,
+        lyrics: true,
+        ..Default::default()
+    };
     let mut st = AppState::new(settings, Store::default());
     st.now = NOW_MONO;
     st.unix = NOW_UNIX;
-    st.local = LocalDateTime { year: 2026, month: 10, day: 24, hour: 9, minute: 41, second: 0 };
-    st.accent = if theme == Theme::Oyen { crate::oyen::ORANGE } else { palette::BLUE };
-    st.volume = VolumeState { level: 0.64, muted: false, known: true, adjustable: true, can_mute: true };
-    st.power = PowerState { has_battery: true, percent: 76, charging: false, on_ac: false, saver: false };
+    st.local = LocalDateTime {
+        year: 2026,
+        month: 10,
+        day: 24,
+        hour: 9,
+        minute: 41,
+        second: 0,
+    };
+    st.accent = if theme == Theme::Oyen {
+        crate::oyen::ORANGE
+    } else {
+        palette::BLUE
+    };
+    st.volume = VolumeState {
+        level: 0.64,
+        muted: false,
+        known: true,
+        adjustable: true,
+        can_mute: true,
+    };
+    st.power = PowerState {
+        has_battery: true,
+        percent: 76,
+        charging: false,
+        on_ac: false,
+        saver: false,
+    };
     // 既有今天场景使用离线天气，核对温度与图标，不发起网络请求。
-    st.weather.snapshot = Some(crate::state::WeatherSnapshot { place: "杭州".into(), temperature_c: 21.0, code: 2, is_day: true, updated_unix: NOW_UNIX });
+    st.weather.snapshot = Some(crate::state::WeatherSnapshot {
+        place: "杭州".into(),
+        temperature_c: 21.0,
+        code: 2,
+        is_day: true,
+        updated_unix: NOW_UNIX,
+    });
     seed(&mut st);
     st
 }
@@ -790,9 +1065,18 @@ fn sample_bluetooth(st: &mut AppState, scene: BluetoothScene) {
             kind: DeviceKind::Audio,
             battery: None,
             components: vec![
-                BatteryComponent { label: "左耳".into(), percent: 82 },
-                BatteryComponent { label: "右耳".into(), percent: 9 },
-                BatteryComponent { label: "充电盒".into(), percent: 66 },
+                BatteryComponent {
+                    label: "左耳".into(),
+                    percent: 82,
+                },
+                BatteryComponent {
+                    label: "右耳".into(),
+                    percent: 9,
+                },
+                BatteryComponent {
+                    label: "充电盒".into(),
+                    percent: 66,
+                },
             ],
         },
         BluetoothDevice {
@@ -857,8 +1141,20 @@ fn sample_bluetooth(st: &mut AppState, scene: BluetoothScene) {
         }
         BluetoothScene::Scrolled => {
             st.bluetooth.devices.extend([
-                BluetoothDevice { id: "render-gamepad".into(), name: "无线游戏手柄 · 客厅".into(), kind: DeviceKind::Gamepad, battery: None, components: Vec::new() },
-                BluetoothDevice { id: "render-other".into(), name: "会议室 Bluetooth 输入设备（长名称展示）".into(), kind: DeviceKind::Other, battery: Some(4), components: Vec::new() },
+                BluetoothDevice {
+                    id: "render-gamepad".into(),
+                    name: "无线游戏手柄 · 客厅".into(),
+                    kind: DeviceKind::Gamepad,
+                    battery: None,
+                    components: Vec::new(),
+                },
+                BluetoothDevice {
+                    id: "render-other".into(),
+                    name: "会议室 Bluetooth 输入设备（长名称展示）".into(),
+                    kind: DeviceKind::Other,
+                    battery: Some(4),
+                    components: Vec::new(),
+                },
             ]);
             st.bluetooth.scroll = 2.0 * 56.0;
         }
@@ -873,18 +1169,29 @@ fn sample_bluetooth(st: &mut AppState, scene: BluetoothScene) {
 
 /// A later version than this build, with its DMG, for the Update sheet.
 fn fake_release() -> poni_core::update::Release {
-    let mut parts: Vec<u64> = crate::version::VERSION.split('.').filter_map(|p| p.parse().ok()).collect();
+    let mut parts: Vec<u64> = crate::version::VERSION
+        .split('.')
+        .filter_map(|p| p.parse().ok())
+        .collect();
     if let Some(last) = parts.last_mut() {
         *last += 1;
     }
-    let version = parts.iter().map(u64::to_string).collect::<Vec<_>>().join(".");
+    let version = parts
+        .iter()
+        .map(u64::to_string)
+        .collect::<Vec<_>>()
+        .join(".");
     let repo = "https://github.com/lucacadalora/oyenza-studio/releases";
     poni_core::update::Release {
         date: "2026-10-27".into(),
         headline: "Updates install themselves on a Mac".into(),
         notes: format!("{repo}/tag/v{version}"),
         windows: None,
-        mac: Some(poni_core::update::Download { url: format!("{repo}/download/v{version}/Oyenza-Studio-{version}-mac.dmg"), size: 4_300_000, sha256: "0".repeat(64) }),
+        mac: Some(poni_core::update::Download {
+            url: format!("{repo}/download/v{version}/Oyenza-Studio-{version}-mac.dmg"),
+            size: 4_300_000,
+            sha256: "0".repeat(64),
+        }),
         version,
     }
 }
@@ -896,18 +1203,33 @@ pub(crate) fn fake_oyenza(st: &AppState, connecting: bool) -> OyenzaState {
     let iso = |t: i64| {
         let (y, m, d) = poni_core::datetime::civil_from_days(t.div_euclid(86_400));
         let s = t.rem_euclid(86_400);
-        format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", s / 3600, s % 3600 / 60, s % 60)
+        format!(
+            "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+            s / 3600,
+            s % 3600 / 60,
+            s % 60
+        )
     };
-    let midnight = st.unix - (st.local.hour as i64 * 3600 + st.local.minute as i64 * 60 + st.local.second as i64);
+    let midnight = st.unix
+        - (st.local.hour as i64 * 3600 + st.local.minute as i64 * 60 + st.local.second as i64);
     let at = |days_ago: i64, h: i64, m: i64| iso(midnight - days_ago * 86_400 + h * 3600 + m * 60);
-    let txn = |id: &str, kind: &str, title: &str, text: &str, wallet: (&str, &str), at: String, auto: bool| Txn {
+    let txn = |id: &str,
+               kind: &str,
+               title: &str,
+               text: &str,
+               wallet: (&str, &str),
+               at: String,
+               auto: bool| Txn {
         id: id.into(),
         kind: kind.into(),
         title: title.into(),
         amount: 1.0,
         text: text.into(),
         category: None,
-        wallet: Some(WalletRef { name: wallet.0.into(), color: wallet.1.into() }),
+        wallet: Some(WalletRef {
+            name: wallet.0.into(),
+            color: wallet.1.into(),
+        }),
         to_wallet: None,
         at,
         auto,
@@ -922,9 +1244,33 @@ pub(crate) fn fake_oyenza(st: &AppState, connecting: bool) -> OyenzaState {
         in_text: "Rp 1.250.000".into(),
         out_text: "Rp 63.000".into(),
         rows: vec![
-            txn("t3", "income", "Gaji Oktober", "Rp 1.250.000", bca, at(0, 9, 38), true),
-            txn("t2", "expense", "Kopi susu", "Rp 25.000", gopay, at(0, 8, 51), false),
-            txn("t1", "expense", "Grab ke kantor", "Rp 38.000", ovo, at(0, 8, 2), false),
+            txn(
+                "t3",
+                "income",
+                "Gaji Oktober",
+                "Rp 1.250.000",
+                bca,
+                at(0, 9, 38),
+                true,
+            ),
+            txn(
+                "t2",
+                "expense",
+                "Kopi susu",
+                "Rp 25.000",
+                gopay,
+                at(0, 8, 51),
+                false,
+            ),
+            txn(
+                "t1",
+                "expense",
+                "Grab ke kantor",
+                "Rp 38.000",
+                ovo,
+                at(0, 8, 2),
+                false,
+            ),
         ],
     };
     let yesterday = Day {
@@ -934,10 +1280,45 @@ pub(crate) fn fake_oyenza(st: &AppState, connecting: bool) -> OyenzaState {
         out: 390_000.0,
         in_text: "Rp 0".into(),
         out_text: "Rp 390.000".into(),
-        rows: vec![txn("y2", "expense", "Makan siang", "Rp 40.000", gopay, at(1, 12, 40), false), txn("y1", "expense", "Listrik PLN", "Rp 350.000", bca, at(1, 10, 2), true)],
+        rows: vec![
+            txn(
+                "y2",
+                "expense",
+                "Makan siang",
+                "Rp 40.000",
+                gopay,
+                at(1, 12, 40),
+                false,
+            ),
+            txn(
+                "y1",
+                "expense",
+                "Listrik PLN",
+                "Rp 350.000",
+                bca,
+                at(1, 10, 2),
+                true,
+            ),
+        ],
     };
-    let empty = |n: i64| Day { date: day(-n), count: 0, in_sum: 0.0, out: 0.0, in_text: "Rp 0".into(), out_text: "Rp 0".into(), rows: Vec::new() };
-    let days = vec![today, yesterday, empty(2), empty(3), empty(4), empty(5), empty(6)];
+    let empty = |n: i64| Day {
+        date: day(-n),
+        count: 0,
+        in_sum: 0.0,
+        out: 0.0,
+        in_text: "Rp 0".into(),
+        out_text: "Rp 0".into(),
+        rows: Vec::new(),
+    };
+    let days = vec![
+        today,
+        yesterday,
+        empty(2),
+        empty(3),
+        empty(4),
+        empty(5),
+        empty(6),
+    ];
     // Everything was on the page a while ago except today's newest, which just landed.
     let mut seen = Seen::default();
     let mut before = days.clone();
@@ -945,16 +1326,36 @@ pub(crate) fn fake_oyenza(st: &AppState, connecting: bool) -> OyenzaState {
     seen.note(&before, st.now - 120.0);
     seen.note(&days, st.now - 12.0);
     let link = if connecting {
-        OyenzaLink::Connecting { code: "KPJX-TMNQ".into(), url: "https://oyenza.app/connect?code=KPJX-TMNQ".into(), until: st.now + 581.0 }
+        OyenzaLink::Connecting {
+            code: "KPJX-TMNQ".into(),
+            url: "https://oyenza.app/connect?code=KPJX-TMNQ".into(),
+            until: st.now + 581.0,
+        }
     } else {
-        OyenzaLink::Connected { account: "a\u{2022}\u{2022}\u{2022}@example.com".into() }
+        OyenzaLink::Connected {
+            account: "a\u{2022}\u{2022}\u{2022}@example.com".into(),
+        }
     };
-    let bill = |kind: &str, name: &str, due: String, text: Option<&str>| Bill { kind: kind.into(), name: name.into(), due, amount: text.map(|_| 1.0), text: text.map(Into::into) };
+    let bill = |kind: &str, name: &str, due: String, text: Option<&str>| Bill {
+        kind: kind.into(),
+        name: name.into(),
+        due,
+        amount: text.map(|_| 1.0),
+        text: text.map(Into::into),
+    };
     OyenzaState {
         link,
-        activity: Some(Activity { cursor: "42".into(), today: day(0), days }),
+        activity: Some(Activity {
+            cursor: "42".into(),
+            today: day(0),
+            days,
+        }),
         seen,
-        bills: vec![bill("subscription", "Spotify", day(1), Some("Rp 54.990")), bill("card", "Kartu Kredit BCA", day(1), None), bill("subscription", "Netflix", day(5), Some("Rp 54.000"))],
+        bills: vec![
+            bill("subscription", "Spotify", day(1), Some("Rp 54.990")),
+            bill("card", "Kartu Kredit BCA", day(1), None),
+            bill("subscription", "Netflix", day(5), Some("Rp 54.000")),
+        ],
         bills_today: st.day_key(),
         updated_unix: Some(st.unix - 8),
         ..OyenzaState::default()
@@ -965,11 +1366,20 @@ fn seed(st: &mut AppState) {
     let unix = st.unix;
     let day_start = st.day_start_unix();
     let day = poni_core::datetime::days_from_civil(st.local.year, st.local.month, st.local.day);
-    let done = st.store.tasks.add("Water the balcony plants", unix - 5 * 3600, day);
-    st.store.tasks.add("Sketch the onboarding screens", unix - 2 * 86_400, day - 2);
-    st.store.tasks.add("Book the ferry for Saturday", unix - 2 * 3600, day);
+    let done = st
+        .store
+        .tasks
+        .add("Water the balcony plants", unix - 5 * 3600, day);
+    st.store
+        .tasks
+        .add("Sketch the onboarding screens", unix - 2 * 86_400, day - 2);
+    st.store
+        .tasks
+        .add("Book the ferry for Saturday", unix - 2 * 3600, day);
     if let Some(id) = done {
-        st.store.tasks.toggle(id, (unix - 1800).max(day_start + 60), day);
+        st.store
+            .tasks
+            .toggle(id, (unix - 1800).max(day_start + 60), day);
     }
     st.store.focus_sessions.insert(st.day_key(), 2);
 }
@@ -993,7 +1403,12 @@ fn media(st: &mut AppState) {
         can_seek: true,
         track_key: MediaSession::make_track_key(TITLE, ARTIST, ALBUM),
     });
-    st.lyrics = LyricsState { track_key: MediaSession::make_track_key(TITLE, ARTIST, ALBUM), status: LyricsStatus::Found, lyrics: Some(parse_lrc(LYRICS_LRC)), ..Default::default() };
+    st.lyrics = LyricsState {
+        track_key: MediaSession::make_track_key(TITLE, ARTIST, ALBUM),
+        status: LyricsStatus::Found,
+        lyrics: Some(parse_lrc(LYRICS_LRC)),
+        ..Default::default()
+    };
 }
 
 /// 仅在内存中填入虚构邮件，列表、预览和设置共用同一组模型。
@@ -1102,11 +1517,20 @@ fn sample_mail(st: &mut AppState) {
         let unread = messages.iter().filter(|message| message.unread).count() as u32;
         st.mail.messages.insert(account_id.into(), messages);
         st.mail.unread_counts.insert(account_id.into(), unread);
-        st.mail.statuses.insert(account_id.into(), MailConnection::Ready { unread });
+        st.mail
+            .statuses
+            .insert(account_id.into(), MailConnection::Ready { unread });
     }
 }
 
-fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>, width: Option<f32>, path: &Path) -> Result<(), String> {
+fn render_scene(
+    gfx: &mut Gfx,
+    scene: Scene,
+    theme: Theme,
+    notch: Option<Notch>,
+    width: Option<f32>,
+    path: &Path,
+) -> Result<(), String> {
     // Diorama's glass ball rests where this picture's time has it, whatever
     // the picture before it showed.
     crate::pill::diorama::settle();
@@ -1120,7 +1544,9 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
         Scene::IdleEyes => {
             st.settings.idle_style = IdleStyle::Eyes;
             if let Some(n) = notch {
-                st.ui.peek.point(Point::new(240.0, 320.0), NOW_MONO - 10.0, n.w / 2.0);
+                st.ui
+                    .peek
+                    .point(Point::new(240.0, 320.0), NOW_MONO - 10.0, n.w / 2.0);
             }
             Mode::Idle
         }
@@ -1128,14 +1554,17 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
             st.settings.idle_style = IdleStyle::Eyes;
             hovering = true;
             if let Some(n) = notch {
-                st.ui.peek.point(Point::new(20.0, n.h / 2.0), NOW_MONO - 0.5, n.w / 2.0);
+                st.ui
+                    .peek
+                    .point(Point::new(20.0, n.h / 2.0), NOW_MONO - 0.5, n.w / 2.0);
             }
             Mode::Idle
         }
         Scene::Timer => {
             media(&mut st);
             st.pomodoro.phase = Phase::Focus;
-            st.pomodoro.start(NOW_MONO + 1104.5 - st.pomodoro.current_duration());
+            st.pomodoro
+                .start(NOW_MONO + 1104.5 - st.pomodoro.current_duration());
             Mode::Activity(activities::Activity::MediaTimer)
         }
         Scene::Media => {
@@ -1144,25 +1573,55 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
         }
         Scene::FocusNotice => {
             st.pomodoro.phase = Phase::ShortBreak;
-            st.notify(Icon::Coffee, palette::GREEN, "专注完成", "休息 5 分钟吧", 30.0, None);
+            st.notify(
+                Icon::Coffee,
+                palette::GREEN,
+                "专注完成",
+                "休息 5 分钟吧",
+                30.0,
+                None,
+            );
             st.set_notice_inline(crate::state::InlineAction::StartFocus);
             Mode::Notice
         }
         Scene::VolumeHud => {
-            st.hud = Some(Hud { kind: HudKind::Volume { level: 0.64, muted: false }, until: NOW_MONO + 30.0 });
+            st.hud = Some(Hud {
+                kind: HudKind::Volume {
+                    level: 0.64,
+                    muted: false,
+                },
+                until: NOW_MONO + 30.0,
+            });
             st.ui.hud_level = 0.64;
             Mode::Hud(activities::HudTag::Volume)
         }
         Scene::ChargingHud => {
-            st.hud = Some(Hud { kind: HudKind::Charging { percent: 76, plugged: true }, until: NOW_MONO + 30.0 });
+            st.hud = Some(Hud {
+                kind: HudKind::Charging {
+                    percent: 76,
+                    plugged: true,
+                },
+                until: NOW_MONO + 30.0,
+            });
             Mode::Hud(activities::HudTag::Charging)
         }
         Scene::LowBatteryHud => {
-            st.hud = Some(Hud { kind: HudKind::LowBattery { percent: 19 }, until: NOW_MONO + 30.0 });
+            st.hud = Some(Hud {
+                kind: HudKind::LowBattery { percent: 19 },
+                until: NOW_MONO + 30.0,
+            });
             Mode::Hud(activities::HudTag::LowBattery)
         }
         Scene::HeadphonesHud => {
-            st.hud = Some(Hud { kind: HudKind::Bluetooth { name: "AirPods Pro".into(), connected: true, battery: None, audio: true }, until: NOW_MONO + 30.0 });
+            st.hud = Some(Hud {
+                kind: HudKind::Bluetooth {
+                    name: "AirPods Pro".into(),
+                    connected: true,
+                    battery: None,
+                    audio: true,
+                },
+                until: NOW_MONO + 30.0,
+            });
             Mode::Hud(activities::HudTag::Bluetooth)
         }
         Scene::ShelfItems => {
@@ -1177,9 +1636,15 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
             let px = (crate::services::imaging::THUMB_DIP * SCALE).round() as u32;
             for (k, p) in [&folder, &notes, &sketch].into_iter().enumerate() {
                 let path = p.to_string_lossy().into_owned();
-                st.store.shelf.add_paths(&[path.as_str()], NOW_UNIX - 3600 + k as i64 * 600);
+                st.store
+                    .shelf
+                    .add_paths(&[path.as_str()], NOW_UNIX - 3600 + k as i64 * 600);
                 let tile = crate::services::thumbs::make(&path, px);
-                println!("render: shelf tile for {}: {}", p.display(), if tile.is_some() { "drawn" } else { "missing" });
+                println!(
+                    "render: shelf tile for {}: {}",
+                    p.display(),
+                    if tile.is_some() { "drawn" } else { "missing" }
+                );
                 st.shelf_thumbs.insert(path, tile);
             }
             st.page = PageKind::Shelf;
@@ -1193,7 +1658,8 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
             }
             if p == PageKind::Focus {
                 st.pomodoro.phase = Phase::Focus;
-                st.pomodoro.start(NOW_MONO + 1104.5 - st.pomodoro.current_duration());
+                st.pomodoro
+                    .start(NOW_MONO + 1104.5 - st.pomodoro.current_duration());
             }
             st.page = p;
             Mode::Expanded(p)
@@ -1210,8 +1676,13 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
             }
             if scene == Scene::MailAccountMenu {
                 st.mail.account_filter_open = true;
-                st.mail.statuses.insert("demo-mail-gmail".into(), MailConnection::Syncing);
-                st.mail.statuses.insert("demo-mail-aruba".into(), MailConnection::Error("示例连接失败".into()));
+                st.mail
+                    .statuses
+                    .insert("demo-mail-gmail".into(), MailConnection::Syncing);
+                st.mail.statuses.insert(
+                    "demo-mail-aruba".into(),
+                    MailConnection::Error("示例连接失败".into()),
+                );
                 st.mail.unread_counts.insert("demo-mail-qq".into(), 2);
                 st.mail.unread_counts.insert("demo-mail-gmail".into(), 7);
                 st.mail.unread_counts.insert("demo-mail-aruba".into(), 12);
@@ -1237,7 +1708,12 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
             Mode::Expanded(PageKind::Mail)
         }
         Scene::UpdateSheet | Scene::UpdateReady => {
-            st.update = crate::state::UpdateView { offer: Some(fake_release()), sheet: true, ready: scene == Scene::UpdateReady, ..Default::default() };
+            st.update = crate::state::UpdateView {
+                offer: Some(fake_release()),
+                sheet: true,
+                ready: scene == Scene::UpdateReady,
+                ..Default::default()
+            };
             st.page = PageKind::Settings;
             Mode::Expanded(PageKind::Settings)
         }
@@ -1249,7 +1725,8 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
                 st.oyenza = fake_oyenza(&st, false);
                 let today = st.day_key();
                 let now_min = st.local.hour as i32 * 60 + st.local.minute as i32;
-                st.ui.today_pick = (scene == Scene::TodayPicked).then(|| day_num(&today).unwrap_or(0) + 10);
+                st.ui.today_pick =
+                    (scene == Scene::TodayPicked).then(|| day_num(&today).unwrap_or(0) + 10);
                 st.oyenza.agenda = Some(sample(&today, now_min));
                 st.oyenza.agenda_state = crate::state::AgendaState::Ready;
                 st.oyenza.agenda_unix = Some(st.unix - 120);
@@ -1293,8 +1770,16 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
                         received_unix: NOW_UNIX - index as i64 * 120,
                         confirmed: false,
                         unread: true,
-                        draft: if kind == Kind::Question { "仅保留未完成待办的日期标记。".into() } else { String::new() },
-                        status: if kind == Kind::Question { ReplyState::Waiting } else { ReplyState::ReadOnly },
+                        draft: if kind == Kind::Question {
+                            "仅保留未完成待办的日期标记。".into()
+                        } else {
+                            String::new()
+                        },
+                        status: if kind == Kind::Question {
+                            ReplyState::Waiting
+                        } else {
+                            ReplyState::ReadOnly
+                        },
                     });
                 }
                 if matches!(scene, Scene::CodexWaiting | Scene::CodexExpired) {
@@ -1309,12 +1794,20 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
         }
         Scene::Bluetooth(scene) => {
             sample_bluetooth(&mut st, scene);
-            let page = if scene == BluetoothScene::NavigationCodex { PageKind::Codex } else { PageKind::Bluetooth };
+            let page = if scene == BluetoothScene::NavigationCodex {
+                PageKind::Codex
+            } else {
+                PageKind::Bluetooth
+            };
             st.page = page;
             Mode::Expanded(page)
         }
         Scene::SaveFailed | Scene::QuitSaveFailed | Scene::SaveProtected => {
-            st.save_errors.settings = Some(if scene == Scene::SaveProtected { crate::persistence::SaveError::Protected } else { crate::persistence::SaveError::Write });
+            st.save_errors.settings = Some(if scene == Scene::SaveProtected {
+                crate::persistence::SaveError::Protected
+            } else {
+                crate::persistence::SaveError::Write
+            });
             st.save_errors.store = Some(crate::persistence::SaveError::Write);
             st.save_errors.quit_blocked = scene == Scene::QuitSaveFailed;
             st.page = PageKind::Settings;
@@ -1331,7 +1824,14 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
         }
         Scene::OyenzaNotice => {
             st.oyenza = fake_oyenza(&st, false);
-            st.notify(Icon::MoneyIn, palette::GREEN, "Money in \u{b7} BCA", "Amount and sender hidden", 30.0, Some(NoticeAction::OpenPage(PageKind::Oyenza)));
+            st.notify(
+                Icon::MoneyIn,
+                palette::GREEN,
+                "Money in \u{b7} BCA",
+                "Amount and sender hidden",
+                30.0,
+                Some(NoticeAction::OpenPage(PageKind::Oyenza)),
+            );
             st.set_notice_inline(InlineAction::ShowAmount);
             Mode::Notice
         }
@@ -1402,9 +1902,19 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
         if let Some(n) = notch {
             g = notch::geom(&mode, st, n, g);
         }
-        let gap = if crate::pill::on(theme) { notch.map_or(Some(crate::pill::TOP_GAP), |n| notch::pill_gap(&mode, st, n)) } else { None };
+        let gap = if crate::pill::on(theme) {
+            notch.map_or(Some(crate::pill::TOP_GAP), |n| {
+                notch::pill_gap(&mode, st, n)
+            })
+        } else {
+            None
+        };
         if hovering {
-            g = if gap.is_some() { crate::pill::motion::hover_lift(g) } else { crate::island::Geom::new(g.w + 12.0, g.h + 4.0, g.r + 2.0) };
+            g = if gap.is_some() {
+                crate::pill::motion::hover_lift(g)
+            } else {
+                crate::island::Geom::new(g.w + 12.0, g.h + 4.0, g.r + 2.0)
+            };
         }
         (g, gap)
     };
@@ -1425,9 +1935,19 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
     island.snap(g);
 
     let menu_h = notch.map_or(MENU_BAR, |n| n.h);
-    let w_dip = (st.settings.expanded_width + 2.0 * MARGIN_X).max(g.w + 2.0 * (SHOULDER + MARGIN_X));
-    let h_dip = (island.top() + g.h).max(menu_h) + MARGIN_BOTTOM + if matches!(mode, Mode::Expanded(_)) { 0.0 } else { 60.0 };
-    let (w_px, h_px) = ((w_dip * SCALE).ceil() as usize, (h_dip * SCALE).ceil() as usize);
+    let w_dip =
+        (st.settings.expanded_width + 2.0 * MARGIN_X).max(g.w + 2.0 * (SHOULDER + MARGIN_X));
+    let h_dip = (island.top() + g.h).max(menu_h)
+        + MARGIN_BOTTOM
+        + if matches!(mode, Mode::Expanded(_)) {
+            0.0
+        } else {
+            60.0
+        };
+    let (w_px, h_px) = (
+        (w_dip * SCALE).ceil() as usize,
+        (h_dip * SCALE).ceil() as usize,
+    );
     let bmp = Bitmap::new(w_px, h_px, SCALE).ok_or("no bitmap context")?;
     let cx = w_dip / 2.0;
     let body = island.body_rect_at(cx);
@@ -1443,12 +1963,19 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
             let y = h_dip * i as f32 / steps as f32;
             c.fill_rect(Rect::new(0.0, y, w_dip, h_dip / steps as f32 + 0.5), col);
         }
-        c.fill_rect(Rect::new(0.0, 0.0, w_dip, menu_h), Color::rgba(0.96, 0.96, 0.97, 0.78));
+        c.fill_rect(
+            Rect::new(0.0, 0.0, w_dip, menu_h),
+            Color::rgba(0.96, 0.96, 0.97, 0.78),
+        );
     }
 
     // The island, drawn by the app's own content code (around a notch in
     // the look that meets its black).
-    let look = if notch.is_some() { poni_core::look::around_notch(theme) } else { poni_core::look::of(theme) };
+    let look = if notch.is_some() {
+        poni_core::look::around_notch(theme)
+    } else {
+        poni_core::look::of(theme)
+    };
     gfx.set_look(look);
     {
         let mut c = gfx.canvas(bmp.ctx());
@@ -1469,7 +1996,9 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
             input.mouse = Some(Point::new(body.center().x + 20.0, body.center().y));
         }
         let mut hits: Vec<Hit> = Vec::new();
-        crate::app::draw_content(&mut c, &mut input, &mut hits, &mut st, mode, body, body, None, NOW_MONO, notch);
+        crate::app::draw_content(
+            &mut c, &mut input, &mut hits, &mut st, mode, body, body, None, NOW_MONO, notch,
+        );
         if matches!(scene, Scene::Bluetooth(_)) {
             // 展示同时记录实际命中矩形，便于核对窄导航及禁用按钮；不执行系统操作。
             let row = pages::tabs(&st);
@@ -1480,14 +2009,21 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
                 st.page.key(), st.settings.expanded_width, row.len(), st.bluetooth.devices.len(), st.bluetooth.active, st.bluetooth.loading, st.bluetooth.stale, st.bluetooth.scroll,
                 rect(last_tab_id), rect(crate::ui::wid(pages::GEAR_ID)), rect(crate::ui::wid("bluetooth.refresh")), rect(crate::ui::wid("bluetooth.settings")),
             );
-            std::fs::write(path.with_extension("layout.txt"), layout).map_err(|error| error.to_string())?;
+            std::fs::write(path.with_extension("layout.txt"), layout)
+                .map_err(|error| error.to_string())?;
         }
     }
 
     // The camera notch hides its part of the island on a real MacBook.
     if let Some(n) = notch {
         let mut c = gfx.canvas(bmp.ctx());
-        c.unthemed(|c| c.fill_rrect(Rect::new(cx - n.w / 2.0, -12.0, n.w, n.h + 12.0), 10.0, Color::black(1.0)));
+        c.unthemed(|c| {
+            c.fill_rrect(
+                Rect::new(cx - n.w / 2.0, -12.0, n.w, n.h + 12.0),
+                10.0,
+                Color::black(1.0),
+            )
+        });
     }
 
     let px = bmp.pixels();
@@ -1499,16 +2035,33 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
 /// One frame of `mode` at `st.now`, drawn offscreen and thrown away, for the
 /// state the drawing leaves behind (see `render_scene`).
 #[allow(clippy::too_many_arguments)]
-fn warm_up(gfx: &mut Gfx, st: &mut AppState, mode: Mode, notch: Option<Notch>, g: crate::island::Geom, gap: Option<f32>, hovering: bool) -> Result<(), String> {
+fn warm_up(
+    gfx: &mut Gfx,
+    st: &mut AppState,
+    mode: Mode,
+    notch: Option<Notch>,
+    g: crate::island::Geom,
+    gap: Option<f32>,
+    hovering: bool,
+) -> Result<(), String> {
     let mut island = Island::new(g);
     island.set_floating(gap);
     island.snap(g);
     let w = (st.settings.expanded_width + 2.0 * MARGIN_X).max(g.w + 2.0 * (SHOULDER + MARGIN_X));
     let h = island.top() + g.h + MARGIN_BOTTOM;
-    let bmp = Bitmap::new((w * SCALE).ceil() as usize, (h * SCALE).ceil() as usize, SCALE).ok_or("no bitmap context")?;
+    let bmp = Bitmap::new(
+        (w * SCALE).ceil() as usize,
+        (h * SCALE).ceil() as usize,
+        SCALE,
+    )
+    .ok_or("no bitmap context")?;
     let body = island.body_rect_at(w / 2.0);
     let theme = st.settings.theme;
-    gfx.set_look(if notch.is_some() { poni_core::look::around_notch(theme) } else { poni_core::look::of(theme) });
+    gfx.set_look(if notch.is_some() {
+        poni_core::look::around_notch(theme)
+    } else {
+        poni_core::look::of(theme)
+    });
     let mut c = gfx.canvas(bmp.ctx());
     let mut input = Input::default();
     if hovering {
@@ -1516,7 +2069,9 @@ fn warm_up(gfx: &mut Gfx, st: &mut AppState, mode: Mode, notch: Option<Notch>, g
     }
     let mut hits: Vec<Hit> = Vec::new();
     let now = st.now;
-    crate::app::draw_content(&mut c, &mut input, &mut hits, st, mode, body, body, None, now, notch);
+    crate::app::draw_content(
+        &mut c, &mut input, &mut hits, st, mode, body, body, None, now, notch,
+    );
     Ok(())
 }
 
@@ -1534,8 +2089,12 @@ fn app_icon(path: &str) -> Option<crate::gfx::Image> {
             .entry(path.to_string())
             .or_insert_with(|| {
                 let px = pages::system::icon_px(SCALE);
-                let icon = crate::services::thumbs::app_icon(path, px).map(|i| pages::system::shrink_icon(&i, px));
-                println!("render: app icon for {path}: {}", if icon.is_some() { "drawn" } else { "missing" });
+                let icon = crate::services::thumbs::app_icon(path, px)
+                    .map(|i| pages::system::shrink_icon(&i, px));
+                println!(
+                    "render: app icon for {path}: {}",
+                    if icon.is_some() { "drawn" } else { "missing" }
+                );
                 icon
             })
             .clone()
@@ -1544,19 +2103,70 @@ fn app_icon(path: &str) -> Option<crate::gfx::Image> {
 
 /// Apps of the sample minute: name, bundle, CPU share, memory, disk bytes/s.
 const SAMPLE_APPS: [(&str, &str, f32, u64, f64); 8] = [
-    ("Safari", "/Applications/Safari.app", 0.091, 2_150 << 20, 1.2e6),
-    ("Music", "/System/Applications/Music.app", 0.042, 412 << 20, 4.1e5),
-    ("Mail", "/System/Applications/Mail.app", 0.018, 280 << 20, 8.2e5),
-    ("Finder", "/System/Library/CoreServices/Finder.app", 0.013, 96 << 20, 4.0e4),
-    ("Messages", "/System/Applications/Messages.app", 0.009, 210 << 20, 1.2e4),
+    (
+        "Safari",
+        "/Applications/Safari.app",
+        0.091,
+        2_150 << 20,
+        1.2e6,
+    ),
+    (
+        "Music",
+        "/System/Applications/Music.app",
+        0.042,
+        412 << 20,
+        4.1e5,
+    ),
+    (
+        "Mail",
+        "/System/Applications/Mail.app",
+        0.018,
+        280 << 20,
+        8.2e5,
+    ),
+    (
+        "Finder",
+        "/System/Library/CoreServices/Finder.app",
+        0.013,
+        96 << 20,
+        4.0e4,
+    ),
+    (
+        "Messages",
+        "/System/Applications/Messages.app",
+        0.009,
+        210 << 20,
+        1.2e4,
+    ),
     ("Xcode", "/Applications/Xcode.app", 0.008, 940 << 20, 9.6e4),
-    ("Photos", "/System/Applications/Photos.app", 0.004, 520 << 20, 3.1e6),
-    ("Terminal", "/System/Applications/Utilities/Terminal.app", 0.002, 88 << 20, 3.0e3),
+    (
+        "Photos",
+        "/System/Applications/Photos.app",
+        0.004,
+        520 << 20,
+        3.1e6,
+    ),
+    (
+        "Terminal",
+        "/System/Applications/Utilities/Terminal.app",
+        0.002,
+        88 << 20,
+        3.0e3,
+    ),
 ];
 
 fn sample_app(i: usize) -> AppUse {
     let (name, path, cpu, memory, io) = SAMPLE_APPS[i];
-    AppUse { image: path.to_lowercase(), name: name.into(), path: Some(path.into()), pid: 400 + i as u64, cpu, memory, io, processes: if i == 0 { 9 } else { 1 } }
+    AppUse {
+        image: path.to_lowercase(),
+        name: name.into(),
+        path: Some(path.into()),
+        pid: 400 + i as u64,
+        cpu,
+        memory,
+        io,
+        processes: if i == 0 { 9 } else { 1 },
+    }
 }
 
 /// The System page's sample minute (all made up): a MacBook Air with an M2,
@@ -1568,44 +2178,127 @@ fn sample_system(desktop: bool) -> Monitor {
     for i in 0..HISTORY_LEN {
         let t = i as f32;
         let last = i + 1 == HISTORY_LEN;
-        let spike = if (38..45).contains(&i) { 0.22 * ((t - 38.0) / 6.0 * std::f32::consts::PI).sin() } else { 0.0 };
-        let cpu = if last { 0.23 } else { (0.19 + 0.05 * (t / 4.3).sin() + 0.03 * (t / 1.7 + 1.1).sin() + spike).clamp(0.03, 0.95) };
-        let gpu = if last { 0.31 } else { (0.24 + 0.08 * (t / 5.1 + 0.4).sin() + 0.04 * (t / 2.3).sin() + if (18..30).contains(&i) { 0.3 } else { 0.0 }).clamp(0.02, 0.98) };
-        let burst = |at: usize, len: usize, peak: f64| if (at..at + len).contains(&i) { peak * (((i - at) as f64 + 0.5) / len as f64 * std::f64::consts::PI).sin() } else { 0.0 };
-        let read = if last { 1.2 * MIB } else { 0.15 * MIB + burst(12, 6, 6.5 * MIB) + burst(41, 4, 2.8 * MIB) };
-        let write = if last { 0.33 * MIB } else { 0.05 * MIB + burst(20, 9, 1.9 * MIB) };
-        let down = if last { 1.2 * MIB } else { 0.08 * MIB + burst(5, 14, 3.4 * MIB) + burst(46, 10, 1.6 * MIB) };
-        let up = if last { 0.082 * MIB } else { 0.02 * MIB + burst(25, 8, 0.6 * MIB) };
+        let spike = if (38..45).contains(&i) {
+            0.22 * ((t - 38.0) / 6.0 * std::f32::consts::PI).sin()
+        } else {
+            0.0
+        };
+        let cpu = if last {
+            0.23
+        } else {
+            (0.19 + 0.05 * (t / 4.3).sin() + 0.03 * (t / 1.7 + 1.1).sin() + spike).clamp(0.03, 0.95)
+        };
+        let gpu = if last {
+            0.31
+        } else {
+            (0.24
+                + 0.08 * (t / 5.1 + 0.4).sin()
+                + 0.04 * (t / 2.3).sin()
+                + if (18..30).contains(&i) { 0.3 } else { 0.0 })
+            .clamp(0.02, 0.98)
+        };
+        let burst = |at: usize, len: usize, peak: f64| {
+            if (at..at + len).contains(&i) {
+                peak * (((i - at) as f64 + 0.5) / len as f64 * std::f64::consts::PI).sin()
+            } else {
+                0.0
+            }
+        };
+        let read = if last {
+            1.2 * MIB
+        } else {
+            0.15 * MIB + burst(12, 6, 6.5 * MIB) + burst(41, 4, 2.8 * MIB)
+        };
+        let write = if last {
+            0.33 * MIB
+        } else {
+            0.05 * MIB + burst(20, 9, 1.9 * MIB)
+        };
+        let down = if last {
+            1.2 * MIB
+        } else {
+            0.08 * MIB + burst(5, 14, 3.4 * MIB) + burst(46, 10, 1.6 * MIB)
+        };
+        let up = if last {
+            0.082 * MIB
+        } else {
+            0.02 * MIB + burst(25, 8, 0.6 * MIB)
+        };
         let mut r = sample_reading(cpu, gpu, (read, write), (down, up), t);
         if desktop {
             // What the office Mac Studio's SMC read at rest (7.8-8.2 W), rising with the graphics.
-            let w = if last { 8.1 } else { 7.4 + 24.0 * (gpu - 0.2).max(0.0) + 3.0 * cpu };
+            let w = if last {
+                8.1
+            } else {
+                7.4 + 24.0 * (gpu - 0.2).max(0.0) + 3.0 * cpu
+            };
             r.battery = None;
-            r.power = Some(PowerReading { total_w: w, cpu_w: None, gpu_w: None, rest_w: w, psu: None });
+            r.power = Some(PowerReading {
+                total_w: w,
+                cpu_w: None,
+                gpu_w: None,
+                rest_w: w,
+                psu: None,
+            });
         }
         m.push(r);
     }
     m
 }
 
-fn sample_reading(cpu: f32, gpu: f32, (read, write): (f64, f64), (down, up): (f64, f64), t: f32) -> Reading {
+fn sample_reading(
+    cpu: f32,
+    gpu: f32,
+    (read, write): (f64, f64),
+    (down, up): (f64, f64),
+    t: f32,
+) -> Reading {
     const GIB: u64 = 1 << 30;
     let total = 16 * GIB;
     let cores = (0..8)
         .map(|k| {
             let p = k >= 4;
             let wave = 0.5 + 0.5 * (t / 3.0 + k as f32 * 1.7).sin();
-            let load = if p { cpu * (0.6 + 1.1 * wave) } else { cpu * (0.3 + 0.5 * wave) };
-            CoreLoad { load: load.clamp(0.02, 1.0), kind: if p { CoreKind::Performance } else { CoreKind::Efficiency } }
+            let load = if p {
+                cpu * (0.6 + 1.1 * wave)
+            } else {
+                cpu * (0.3 + 0.5 * wave)
+            };
+            CoreLoad {
+                load: load.clamp(0.02, 1.0),
+                kind: if p {
+                    CoreKind::Performance
+                } else {
+                    CoreKind::Efficiency
+                },
+            }
         })
         .collect();
-    let (app, wired, compressed, cached) = (66 * GIB / 10, 21 * GIB / 10, 9 * GIB / 10, 42 * GIB / 10);
+    let (app, wired, compressed, cached) =
+        (66 * GIB / 10, 21 * GIB / 10, 9 * GIB / 10, 42 * GIB / 10);
     let used = app + wired + compressed;
     let pressure = level_pressure(PressureLevel::Normal, 0.41);
     let apps = |order: [usize; 8]| order.iter().map(|&i| sample_app(i)).collect::<Vec<_>>();
     Reading {
-        cpu: Some(CpuReading { load: cpu, user: cpu * 0.62, kernel: cpu * 0.38, cores, logical: 8, uptime_s: 3 * 86_400 + 4 * 3600 + 12 * 60, ..CpuReading::default() }),
-        gpu: Some(GpuReading { name: "Apple M2".into(), util: gpu, engine_3d: gpu * 0.94, tiler: gpu * 0.41, mem_used: 13 * GIB / 10, mem_total: total, integrated: true, ..GpuReading::default() }),
+        cpu: Some(CpuReading {
+            load: cpu,
+            user: cpu * 0.62,
+            kernel: cpu * 0.38,
+            cores,
+            logical: 8,
+            uptime_s: 3 * 86_400 + 4 * 3600 + 12 * 60,
+            ..CpuReading::default()
+        }),
+        gpu: Some(GpuReading {
+            name: "Apple M2".into(),
+            util: gpu,
+            engine_3d: gpu * 0.94,
+            tiler: gpu * 0.41,
+            mem_used: 13 * GIB / 10,
+            mem_total: total,
+            integrated: true,
+            ..GpuReading::default()
+        }),
         memory: Some(MemoryReading {
             total,
             used,
@@ -1619,10 +2312,26 @@ fn sample_reading(cpu: f32, gpu: f32, (read, write): (f64, f64), (down, up): (f6
             page_total: GIB,
         }),
         drives: vec![
-            Drive { root: "Macintosh HD".into(), label: String::new(), total: 460 * GIB, free: 212 * GIB, system: true },
-            Drive { root: "Backup".into(), label: String::new(), total: 931 * GIB, free: 640 * GIB, system: false },
+            Drive {
+                root: "Macintosh HD".into(),
+                label: String::new(),
+                total: 460 * GIB,
+                free: 212 * GIB,
+                system: true,
+            },
+            Drive {
+                root: "Backup".into(),
+                label: String::new(),
+                total: 931 * GIB,
+                free: 640 * GIB,
+                system: false,
+            },
         ],
-        disk: Some(DiskActivity { read_bps: read, write_bps: write, active: None }),
+        disk: Some(DiskActivity {
+            read_bps: read,
+            write_bps: write,
+            active: None,
+        }),
         network: Some(NetReading {
             online: true,
             adapter: "Wi-Fi".into(),
@@ -1682,16 +2391,26 @@ pub(crate) fn make_art(size: u32) -> Vec<u8> {
 }
 
 fn rgb(hex: u32) -> [f32; 3] {
-    [((hex >> 16) & 0xff) as f32 / 255.0, ((hex >> 8) & 0xff) as f32 / 255.0, (hex & 0xff) as f32 / 255.0]
+    [
+        ((hex >> 16) & 0xff) as f32 / 255.0,
+        ((hex >> 8) & 0xff) as f32 / 255.0,
+        (hex & 0xff) as f32 / 255.0,
+    ]
 }
 
 fn mix(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
     let t = t.clamp(0.0, 1.0);
-    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    ]
 }
 
 fn in_triangle(p: (f32, f32), a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> bool {
-    let edge = |p0: (f32, f32), p1: (f32, f32)| (p1.0 - p0.0) * (p.1 - p0.1) - (p1.1 - p0.1) * (p.0 - p0.0);
+    let edge = |p0: (f32, f32), p1: (f32, f32)| {
+        (p1.0 - p0.0) * (p.1 - p0.1) - (p1.1 - p0.1) * (p.0 - p0.0)
+    };
     let (d1, d2, d3) = (edge(a, b), edge(b, c), edge(c, a));
     let neg = d1 < 0.0 || d2 < 0.0 || d3 < 0.0;
     let pos = d1 > 0.0 || d2 > 0.0 || d3 > 0.0;
@@ -1701,7 +2420,15 @@ fn in_triangle(p: (f32, f32), a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> bo
 fn art_sample(u: f32, v: f32) -> [f32; 3] {
     const HORIZON: f32 = 0.64;
     let (sun_x, sun_y, sun_r) = (0.66, HORIZON - 0.03, 0.15);
-    let mut c = if v < HORIZON { mix(rgb(0xFFB37A), rgb(0xE0607E), v / HORIZON) } else { mix(rgb(0x2F6F8F), rgb(0x13233F), (v - HORIZON) / (1.0 - HORIZON)) };
+    let mut c = if v < HORIZON {
+        mix(rgb(0xFFB37A), rgb(0xE0607E), v / HORIZON)
+    } else {
+        mix(
+            rgb(0x2F6F8F),
+            rgb(0x13233F),
+            (v - HORIZON) / (1.0 - HORIZON),
+        )
+    };
     let d = ((u - sun_x).powi(2) + (v - sun_y).powi(2)).sqrt();
     if v < HORIZON && d < sun_r {
         c = mix(c, rgb(0xFFE3A3), 0.92);
@@ -1723,7 +2450,11 @@ fn art_sample(u: f32, v: f32) -> [f32; 3] {
         c = mix(paper, rgb(0xD8D0C2), ((v - 0.70) / 0.08) * 0.5);
     }
     if sail {
-        c = if u > 0.34 { mix(paper, rgb(0xD9D2C4), 0.55) } else { paper };
+        c = if u > 0.34 {
+            mix(paper, rgb(0xD9D2C4), 0.55)
+        } else {
+            paper
+        };
     }
     c
 }

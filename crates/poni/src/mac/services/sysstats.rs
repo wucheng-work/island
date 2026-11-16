@@ -44,7 +44,13 @@ struct Timeval {
 extern "C" {
     fn mach_host_self() -> u32;
     fn host_statistics64(host: u32, flavor: i32, info: *mut i32, count: *mut u32) -> i32;
-    fn sysctlbyname(name: *const c_char, oldp: *mut c_void, oldlenp: *mut usize, newp: *mut c_void, newlen: usize) -> i32;
+    fn sysctlbyname(
+        name: *const c_char,
+        oldp: *mut c_void,
+        oldlenp: *mut usize,
+        newp: *mut c_void,
+        newlen: usize,
+    ) -> i32;
 }
 
 /// Physical memory the way Activity Monitor splits it, in bytes.
@@ -71,14 +77,29 @@ pub(super) fn memory_split() -> Option<MemSplit> {
 fn vm_stats() -> Option<VmStatistics64> {
     let mut vm = VmStatistics64::default();
     let mut count = (std::mem::size_of::<VmStatistics64>() / 4) as u32;
-    let r = unsafe { host_statistics64(mach_host_self(), HOST_VM_INFO64, &mut vm as *mut VmStatistics64 as *mut i32, &mut count) };
+    let r = unsafe {
+        host_statistics64(
+            mach_host_self(),
+            HOST_VM_INFO64,
+            &mut vm as *mut VmStatistics64 as *mut i32,
+            &mut count,
+        )
+    };
     (r == 0).then_some(vm)
 }
 
 pub(super) fn sysctl_u64(name: &CStr) -> Option<u64> {
     let mut v: u64 = 0;
     let mut len = std::mem::size_of::<u64>();
-    let r = unsafe { sysctlbyname(name.as_ptr(), &mut v as *mut u64 as *mut c_void, &mut len, std::ptr::null_mut(), 0) };
+    let r = unsafe {
+        sysctlbyname(
+            name.as_ptr(),
+            &mut v as *mut u64 as *mut c_void,
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
     match (r, len) {
         (0, 8) => Some(v),
         (0, 4) => Some(v & 0xffff_ffff),
@@ -87,9 +108,20 @@ pub(super) fn sysctl_u64(name: &CStr) -> Option<u64> {
 }
 
 pub(super) fn uptime_s() -> Option<u64> {
-    let mut tv = Timeval { tv_sec: 0, tv_usec: 0 };
+    let mut tv = Timeval {
+        tv_sec: 0,
+        tv_usec: 0,
+    };
     let mut len = std::mem::size_of::<Timeval>();
-    let r = unsafe { sysctlbyname(c"kern.boottime".as_ptr(), &mut tv as *mut Timeval as *mut c_void, &mut len, std::ptr::null_mut(), 0) };
+    let r = unsafe {
+        sysctlbyname(
+            c"kern.boottime".as_ptr(),
+            &mut tv as *mut Timeval as *mut c_void,
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
     if r != 0 || tv.tv_sec <= 0 {
         return None;
     }

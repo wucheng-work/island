@@ -25,8 +25,9 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyClass;
 use objc2::{sel, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSAutoresizingMaskOptions, NSColor, NSGlassEffectView, NSView,
-    NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindowOrderingMode, NSWorkspace,
+    NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSAutoresizingMaskOptions,
+    NSColor, NSGlassEffectView, NSView, NSVisualEffectBlendingMode, NSVisualEffectMaterial,
+    NSVisualEffectState, NSVisualEffectView, NSWindowOrderingMode, NSWorkspace,
 };
 use objc2_foundation::{NSObjectProtocol, NSPoint, NSRect, NSSize};
 use poni_core::geom::{Color, Rect};
@@ -95,7 +96,15 @@ pub fn shape(body: Rect, radius: f32, notch: Option<Notch>, hidden: bool) -> Opt
 /// where it meets a notch, fading into the glass (the view under the window,
 /// or with `stand_in` a smoked fill for offscreen renders). Hidden or all
 /// brow, the island is simply black.
-pub fn draw_body(c: &mut Canvas, body: Rect, radius: f32, shoulder: f32, notch: Option<Notch>, hidden: bool, stand_in: bool) {
+pub fn draw_body(
+    c: &mut Canvas,
+    body: Rect,
+    radius: f32,
+    shoulder: f32,
+    notch: Option<Notch>,
+    hidden: bool,
+    stand_in: bool,
+) {
     let brow = brow(notch);
     let black = Color::black(1.0);
     c.unthemed(|c| {
@@ -107,14 +116,22 @@ pub fn draw_body(c: &mut Canvas, body: Rect, radius: f32, shoulder: f32, notch: 
         if stand_in {
             c.notch(body, radius, 0.0, STAND_IN, None);
         } else {
-            let smoke = SMALL_SMOKE * ((SMOKE_NONE_H - body.h) / (SMOKE_NONE_H - SMOKE_FULL_H)).clamp(0.0, 1.0);
+            let smoke = SMALL_SMOKE
+                * ((SMOKE_NONE_H - body.h) / (SMOKE_NONE_H - SMOKE_FULL_H)).clamp(0.0, 1.0);
             if smoke > 0.0 {
                 c.notch(body, radius, 0.0, Color::black(smoke), None);
             }
         }
         if brow > 0.0 {
             let top = body.y + brow;
-            c.fill_path_fade(&notch_segments(body, radius, shoulder), black, top, top + BROW_FADE, 1.0, 0.0);
+            c.fill_path_fade(
+                &notch_segments(body, radius, shoulder),
+                black,
+                top,
+                top + BROW_FADE,
+                1.0,
+                0.0,
+            );
         }
     });
 }
@@ -123,7 +140,9 @@ pub fn draw_body(c: &mut Canvas, body: Rect, radius: f32, shoulder: f32, notch: 
 /// DIPs, y down from the window's top, and its corner radius), or hide it.
 /// Called before the island repaints, never from inside its drawing.
 pub fn show(shape: Option<(Rect, f32)>) {
-    let Some(mtm) = MainThreadMarker::new() else { return };
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
     GLASS.with(|cell| {
         let mut slot = cell.borrow_mut();
         let Some((body, radius)) = shape else {
@@ -137,11 +156,16 @@ pub fn show(shape: Option<(Rect, f32)>) {
             *slot = make(mtm);
         }
         let Some(g) = slot.as_mut() else { return };
-        let Some(win_h) = window::with_window(|w| w.frame.size.height) else { return };
+        let Some(win_h) = window::with_window(|w| w.frame.size.height) else {
+            return;
+        };
         // The top corners reach above the window, where nothing shows: the
         // glass meets the top of the screen square, its bottom rounded.
         let r = radius as f64;
-        let frame = NSRect::new(NSPoint::new(body.x as f64, win_h - body.bottom() as f64), NSSize::new(body.w as f64, body.h as f64 + r));
+        let frame = NSRect::new(
+            NSPoint::new(body.x as f64, win_h - body.bottom() as f64),
+            NSSize::new(body.w as f64, body.h as f64 + r),
+        );
         if frame != g.frame {
             g.view().setFrame(frame);
             g.frame = frame;
@@ -190,14 +214,28 @@ fn make(mtm: MainThreadMarker) -> Option<GlassView> {
         v.setWantsLayer(true);
         Material::Blur(v)
     };
-    let g = GlassView { material, frame: zero, radius: -1.0, shown: false };
+    let g = GlassView {
+        material,
+        frame: zero,
+        radius: -1.0,
+        shown: false,
+    };
     g.view().setHidden(true);
     // Pinned to the window's top when the window grows (the island hangs from it).
-    g.view().setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinYMargin);
+    g.view()
+        .setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinYMargin);
     root.addSubview_positioned_relativeTo(g.view(), NSWindowOrderingMode::Below, Some(&**island));
     // Under Reduce Transparency macOS draws glass and blur flat: say so in the log.
     let flat = NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceTransparency();
-    pinfo!("glass: {}{}", g.name(), if flat { ", drawn flat (Reduce Transparency is on)" } else { "" });
+    pinfo!(
+        "glass: {}{}",
+        g.name(),
+        if flat {
+            ", drawn flat (Reduce Transparency is on)"
+        } else {
+            ""
+        }
+    );
     Some(g)
 }
 

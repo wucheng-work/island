@@ -1,7 +1,7 @@
 //! 邮件服务、原生账户表单与岛内页面之间的数据契约。
 
-use poni_core::mail::MailAccount;
 use poni_core::geom::{palette, Color};
+use poni_core::mail::MailAccount;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -148,7 +148,16 @@ impl PartialEq for MailCredentialInput {
         match (self, other) {
             (Self::Keep, Self::Keep) => true,
             (Self::Password(a), Self::Password(b)) => a == b,
-            (Self::Google { client_id: a, client_secret: b }, Self::Google { client_id: c, client_secret: d }) => a == c && b == d,
+            (
+                Self::Google {
+                    client_id: a,
+                    client_secret: b,
+                },
+                Self::Google {
+                    client_id: c,
+                    client_secret: d,
+                },
+            ) => a == c && b == d,
             _ => false,
         }
     }
@@ -159,12 +168,18 @@ pub enum MailAction {
     EditAccount(Option<String>),
     CloseEditor,
     ConfirmRemove(String),
-    Save { account: MailAccount, credentials: MailCredentialInput },
+    Save {
+        account: MailAccount,
+        credentials: MailCredentialInput,
+    },
     Remove(String),
     #[cfg(target_os = "macos")]
     Authorize(String),
     Refresh(Option<String>),
-    Preview { account_id: String, message_id: String },
+    Preview {
+        account_id: String,
+        message_id: String,
+    },
     ClosePreview,
     #[cfg(target_os = "macos")]
     Translate,
@@ -183,14 +198,47 @@ pub enum MailEvent {
     AccountSaved(MailAccount),
     AccountRemoved(String),
     #[cfg(target_os = "macos")]
-    Authorized { account_id: String, revision: u64, result: Result<(), String> },
-    AccountError { account_id: String, revision: Option<u64>, error: String },
-    Status { account_id: String, revision: u64, state: MailConnection },
-    Cached { account_id: String, revision: u64, messages: Vec<MailMessage> },
-    Synced { account_id: String, revision: u64, messages: Vec<MailMessage>, new_ids: Vec<String>, unread: u32 },
-    Preview { account_id: String, revision: u64, message_id: String, result: Result<MailPreview, String> },
+    Authorized {
+        account_id: String,
+        revision: u64,
+        result: Result<(), String>,
+    },
+    AccountError {
+        account_id: String,
+        revision: Option<u64>,
+        error: String,
+    },
+    Status {
+        account_id: String,
+        revision: u64,
+        state: MailConnection,
+    },
+    Cached {
+        account_id: String,
+        revision: u64,
+        messages: Vec<MailMessage>,
+    },
+    Synced {
+        account_id: String,
+        revision: u64,
+        messages: Vec<MailMessage>,
+        new_ids: Vec<String>,
+        unread: u32,
+    },
+    Preview {
+        account_id: String,
+        revision: u64,
+        message_id: String,
+        result: Result<MailPreview, String>,
+    },
     #[cfg(target_os = "macos")]
-    Translated { account_id: String, revision: u64, message_id: String, request_id: u64, result: Result<MailTranslation, String> },
+    Translated {
+        account_id: String,
+        revision: u64,
+        message_id: String,
+        request_id: u64,
+        result: Result<MailTranslation, String>,
+    },
     AuthorizationUrl(String),
 }
 
@@ -231,9 +279,18 @@ pub struct MailState {
 
 impl MailState {
     /// 只汇总已启用账户的服务器未读数，不请求网络或混入岛内提醒数量。
-    pub fn unread_summary(&self, accounts: &[MailAccount], account_id: Option<&str>) -> UnreadSummary {
+    pub fn unread_summary(
+        &self,
+        accounts: &[MailAccount],
+        account_id: Option<&str>,
+    ) -> UnreadSummary {
         if let Some(id) = account_id {
-            return self.unread_counts.get(id).map_or(UnreadSummary::Unknown, |count| UnreadSummary::Exact(u64::from(*count)));
+            return self
+                .unread_counts
+                .get(id)
+                .map_or(UnreadSummary::Unknown, |count| {
+                    UnreadSummary::Exact(u64::from(*count))
+                });
         }
         let mut total = 0_u64;
         let mut known = 0;
@@ -262,18 +319,37 @@ mod tests {
     #[test]
     fn unread_total_distinguishes_unknown_partial_and_complete_counts() {
         let accounts = vec![
-            MailAccount { id: "first".into(), ..MailAccount::default() },
-            MailAccount { id: "second".into(), ..MailAccount::default() },
-            MailAccount { id: "disabled".into(), enabled: false, ..MailAccount::default() },
+            MailAccount {
+                id: "first".into(),
+                ..MailAccount::default()
+            },
+            MailAccount {
+                id: "second".into(),
+                ..MailAccount::default()
+            },
+            MailAccount {
+                id: "disabled".into(),
+                enabled: false,
+                ..MailAccount::default()
+            },
         ];
         let mut state = MailState::default();
         state.unread_counts.insert("disabled".into(), 99);
-        assert_eq!(state.unread_summary(&accounts, None), UnreadSummary::Unknown);
+        assert_eq!(
+            state.unread_summary(&accounts, None),
+            UnreadSummary::Unknown
+        );
         state.unread_counts.insert("first".into(), 7);
-        assert_eq!(state.unread_summary(&accounts, None), UnreadSummary::AtLeast(7));
+        assert_eq!(
+            state.unread_summary(&accounts, None),
+            UnreadSummary::AtLeast(7)
+        );
         assert_eq!(state.unread_summary(&accounts, None).label(), "≥7");
         state.unread_counts.insert("second".into(), 3);
-        assert_eq!(state.unread_summary(&accounts, None), UnreadSummary::Exact(10));
+        assert_eq!(
+            state.unread_summary(&accounts, None),
+            UnreadSummary::Exact(10)
+        );
         assert_eq!(state.unread_summary(&accounts, None).count(), Some(10));
     }
 
@@ -281,21 +357,36 @@ mod tests {
     fn unread_selection_preserves_zero_and_does_not_use_notice_counts() {
         let mut state = MailState::default();
         state.unseen.insert("mailbox".into(), 5);
-        assert_eq!(state.unread_summary(&[], Some("mailbox")), UnreadSummary::Unknown);
+        assert_eq!(
+            state.unread_summary(&[], Some("mailbox")),
+            UnreadSummary::Unknown
+        );
         state.unread_counts.insert("mailbox".into(), 0);
-        assert_eq!(state.unread_summary(&[], Some("mailbox")), UnreadSummary::Exact(0));
+        assert_eq!(
+            state.unread_summary(&[], Some("mailbox")),
+            UnreadSummary::Exact(0)
+        );
         assert_eq!(state.unread_summary(&[], None), UnreadSummary::Exact(0));
     }
 
     #[test]
     fn unread_total_keeps_large_server_counts_without_truncating() {
         let accounts = vec![
-            MailAccount { id: "first".into(), ..MailAccount::default() },
-            MailAccount { id: "second".into(), ..MailAccount::default() },
+            MailAccount {
+                id: "first".into(),
+                ..MailAccount::default()
+            },
+            MailAccount {
+                id: "second".into(),
+                ..MailAccount::default()
+            },
         ];
         let mut state = MailState::default();
         state.unread_counts.insert("first".into(), u32::MAX);
         state.unread_counts.insert("second".into(), 1);
-        assert_eq!(state.unread_summary(&accounts, None), UnreadSummary::Exact(u64::from(u32::MAX) + 1));
+        assert_eq!(
+            state.unread_summary(&accounts, None),
+            UnreadSummary::Exact(u64::from(u32::MAX) + 1)
+        );
     }
 }

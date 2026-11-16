@@ -7,7 +7,9 @@ use poni_core::settings::{IdleStyle, Settings, Theme};
 use windows::core::{Result, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Shell::{Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW};
+use windows::Win32::UI::Shell::{
+    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
+};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 pub struct Tray {
@@ -34,7 +36,9 @@ impl Tray {
                 hIcon: icon,
                 ..Default::default()
             };
-            let tip: Vec<u16> = format!("Island For Windows {}", crate::version::VERSION).encode_utf16().collect();
+            let tip: Vec<u16> = format!("Island For Windows {}", crate::version::VERSION)
+                .encode_utf16()
+                .collect();
             nid.szTip[..tip.len()].copy_from_slice(&tip);
             if !Shell_NotifyIconW(NIM_ADD, &nid).as_bool() {
                 return Err(windows::core::Error::from_win32());
@@ -45,7 +49,12 @@ impl Tray {
 
     pub fn remove(self) {
         unsafe {
-            let nid = NOTIFYICONDATAW { cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32, hWnd: self.hwnd, uID: 1, ..Default::default() };
+            let nid = NOTIFYICONDATAW {
+                cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+                hWnd: self.hwnd,
+                uID: 1,
+                ..Default::default()
+            };
             let _ = Shell_NotifyIconW(NIM_DELETE, &nid);
         }
     }
@@ -106,7 +115,11 @@ pub enum MenuItem {
 }
 
 fn item(label: &str, cmd: MenuCmd, checked: bool) -> MenuItem {
-    MenuItem::Item { label: label.to_string(), cmd, checked }
+    MenuItem::Item {
+        label: label.to_string(),
+        cmd,
+        checked,
+    }
 }
 
 /// An idle look as the menu names it. In the Oyen theme the eyes are Oyen's own.
@@ -122,38 +135,83 @@ fn idle_label(s: IdleStyle, theme: Theme) -> &'static str {
 }
 
 /// 仅提供本项目的手动检查入口，未配置签名公钥时不触发检查。
-pub fn menu_items(s: &Settings, pinned: bool, _oyenza: &OyenzaLink, _update: UpdateLine) -> Vec<MenuItem> {
+pub fn menu_items(
+    s: &Settings,
+    pinned: bool,
+    _oyenza: &OyenzaLink,
+    _update: UpdateLine,
+) -> Vec<MenuItem> {
     // The look the theme draws is the one checked: outside Pill, Status shows the clock.
     let shown = crate::pill::status::shown(s.theme, s.idle_style);
-    let style = |st: IdleStyle| item(idle_label(st, s.theme), MenuCmd::ToggleIdleStyle(st), shown == st);
+    let style = |st: IdleStyle| {
+        item(
+            idle_label(st, s.theme),
+            MenuCmd::ToggleIdleStyle(st),
+            shown == st,
+        )
+    };
     let theme = |label: &str, t: Theme| item(label, MenuCmd::SetTheme(t), s.theme == t);
-    let fullscreen = |label: &str, hide: bool| item(label, MenuCmd::SetHideFullscreen(hide), s.hide_in_fullscreen == hide);
+    let fullscreen = |label: &str, hide: bool| {
+        item(
+            label,
+            MenuCmd::SetHideFullscreen(hide),
+            s.hide_in_fullscreen == hide,
+        )
+    };
     let mut items = vec![
         item("高级设置…", MenuCmd::ShowSettings, false),
         MenuItem::Separator,
         item("保持灵动岛展开", MenuCmd::TogglePinned, pinned),
         MenuItem::Sub {
             label: "主题".into(),
-            items: vec![theme("经典", Theme::Classic), theme("Oyen", Theme::Oyen), theme("玻璃", Theme::Glass), theme("胶囊", Theme::Pill), theme("立体场景", Theme::Diorama)],
+            items: vec![
+                theme("经典", Theme::Classic),
+                theme("Oyen", Theme::Oyen),
+                theme("玻璃", Theme::Glass),
+                theme("胶囊", Theme::Pill),
+                theme("立体场景", Theme::Diorama),
+            ],
         },
         // The status bar is listed only in Pill, as on the Settings page: the
         // other themes would draw the clock for it (Diorama its picture).
-        MenuItem::Sub { label: "待机样式".into(), items: crate::pill::status::looks(s.theme).iter().map(|l| style(*l)).collect() },
+        MenuItem::Sub {
+            label: "待机样式".into(),
+            items: crate::pill::status::looks(s.theme)
+                .iter()
+                .map(|l| style(*l))
+                .collect(),
+        },
         MenuItem::Separator,
         item("同步歌词", MenuCmd::ToggleLyrics, s.lyrics),
         apple_music_menu(),
-        item("微信消息提醒", MenuCmd::ToggleWeChatReminders, s.wechat_reminders),
+        item(
+            "微信消息提醒",
+            MenuCmd::ToggleWeChatReminders,
+            s.wechat_reminders,
+        ),
         MenuItem::Sub {
             label: "全屏应用中".into(),
             items: vec![
                 fullscreen("隐藏", true),
                 fullscreen("保持置顶", false),
                 MenuItem::Separator,
-                item("在游戏上方显示 FPS、GPU 和 CPU", MenuCmd::ToggleGameStats, s.game_stats),
-                item("仅显示几秒（不增加延迟）", MenuCmd::ToggleGamePeek, s.game_peek),
+                item(
+                    "在游戏上方显示 FPS、GPU 和 CPU",
+                    MenuCmd::ToggleGameStats,
+                    s.game_stats,
+                ),
+                item(
+                    "仅显示几秒（不增加延迟）",
+                    MenuCmd::ToggleGamePeek,
+                    s.game_peek,
+                ),
             ],
         },
-        item("登录 Windows 时启动", MenuCmd::ToggleAutostart, crate::autostart::is_enabled()),
+        item(
+            "登录 Windows 时启动",
+            MenuCmd::ToggleAutostart,
+            crate::autostart::is_enabled(),
+        ),
         MenuItem::Separator,
         item("打开设置文件", MenuCmd::OpenSettings, false),
         item("重新加载设置", MenuCmd::ReloadSettings, false),
@@ -161,20 +219,54 @@ pub fn menu_items(s: &Settings, pinned: bool, _oyenza: &OyenzaLink, _update: Upd
         if poni_core::update::enabled() && !crate::autostart::packaged() {
             item("检查更新…", MenuCmd::CheckForUpdates, false)
         } else {
-            MenuItem::Info { label: "在线更新尚未配置".into() }
+            MenuItem::Info {
+                label: "在线更新尚未配置".into(),
+            }
         },
         MenuItem::Separator,
         item("退出 Island For Windows", MenuCmd::Quit, false),
     ];
     // Only once the island was dragged off the middle: the way back, under Keep island open.
     if s.island_x.is_some() {
-        let at = items.iter().position(|i| matches!(i, MenuItem::Item { cmd: MenuCmd::TogglePinned, .. })).map_or(items.len(), |i| i + 1);
-        items.insert(at, item("将灵动岛移回居中位置", MenuCmd::CentreIsland, false));
+        let at = items
+            .iter()
+            .position(|i| {
+                matches!(
+                    i,
+                    MenuItem::Item {
+                        cmd: MenuCmd::TogglePinned,
+                        ..
+                    }
+                )
+            })
+            .map_or(items.len(), |i| i + 1);
+        items.insert(
+            at,
+            item("将灵动岛移回居中位置", MenuCmd::CentreIsland, false),
+        );
     }
     // Only while System is enabled in Settings: its page's history, before WeChat reminders.
     if s.system_on() {
-        let at = items.iter().position(|i| matches!(i, MenuItem::Item { cmd: MenuCmd::ToggleWeChatReminders, .. })).unwrap_or(items.len());
-        items.insert(at, item("保留系统页历史记录", MenuCmd::ToggleSystemHistory, s.system_history));
+        let at = items
+            .iter()
+            .position(|i| {
+                matches!(
+                    i,
+                    MenuItem::Item {
+                        cmd: MenuCmd::ToggleWeChatReminders,
+                        ..
+                    }
+                )
+            })
+            .unwrap_or(items.len());
+        items.insert(
+            at,
+            item(
+                "保留系统页历史记录",
+                MenuCmd::ToggleSystemHistory,
+                s.system_history,
+            ),
+        );
     }
     items
 }
@@ -182,19 +274,33 @@ pub fn menu_items(s: &Settings, pinned: bool, _oyenza: &OyenzaLink, _update: Upd
 /// Opt-in lyrics from Apple Music with the user's own token.
 fn apple_music_menu() -> MenuItem {
     let on = crate::paths::apple_music_token_path().exists();
-    let mut items = vec![item("使用剪贴板中的令牌", MenuCmd::AppleMusicToken, false), item("如何获取令牌", MenuCmd::AppleMusicHelp, false)];
+    let mut items = vec![
+        item("使用剪贴板中的令牌", MenuCmd::AppleMusicToken, false),
+        item("如何获取令牌", MenuCmd::AppleMusicHelp, false),
+    ];
     if on {
         items.push(MenuItem::Separator);
         items.push(item("移除令牌", MenuCmd::AppleMusicForget, false));
     }
-    MenuItem::Sub { label: if on { "Apple Music 歌词：已开启".into() } else { "Apple Music 歌词".into() }, items }
+    MenuItem::Sub {
+        label: if on {
+            "Apple Music 歌词：已开启".into()
+        } else {
+            "Apple Music 歌词".into()
+        },
+        items,
+    }
 }
 
 fn build(menu: HMENU, items: &[MenuItem], cmds: &mut Vec<MenuCmd>) {
     for it in items {
         unsafe {
             match it {
-                MenuItem::Item { label, cmd, checked } => {
+                MenuItem::Item {
+                    label,
+                    cmd,
+                    checked,
+                } => {
                     cmds.push(*cmd);
                     let id = cmds.len();
                     let w: Vec<u16> = label.encode_utf16().chain(Some(0)).collect();
@@ -203,7 +309,12 @@ fn build(menu: HMENU, items: &[MenuItem], cmds: &mut Vec<MenuCmd>) {
                 }
                 MenuItem::Info { label } => {
                     let w: Vec<u16> = label.encode_utf16().chain(Some(0)).collect();
-                    let _ = AppendMenuW(menu, MF_STRING | MF_GRAYED | MF_DISABLED, 0, PCWSTR(w.as_ptr()));
+                    let _ = AppendMenuW(
+                        menu,
+                        MF_STRING | MF_GRAYED | MF_DISABLED,
+                        0,
+                        PCWSTR(w.as_ptr()),
+                    );
                 }
                 MenuItem::Sub { label, items } => {
                     if let Ok(sub) = CreatePopupMenu() {
@@ -230,13 +341,39 @@ pub fn show_menu(owner: HWND, pt: POINT, items: &[MenuItem]) -> Option<MenuCmd> 
         // previous app gets its focus back.
         let prev = GetForegroundWindow();
         let _ = SetForegroundWindow(owner);
-        let chosen = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY, pt.x, pt.y, 0, owner, None);
+        let chosen = TrackPopupMenu(
+            menu,
+            TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY,
+            pt.x,
+            pt.y,
+            0,
+            owner,
+            None,
+        );
         let _ = PostMessageW(owner, WM_NULL, WPARAM(0), LPARAM(0));
         let _ = DestroyMenu(menu);
         let idx = chosen.0 as usize;
-        let cmd = if idx == 0 { None } else { cmds.get(idx - 1).copied() };
-        let launches = matches!(cmd, Some(MenuCmd::ShowSettings | MenuCmd::OpenSettings | MenuCmd::OpenDataFolder | MenuCmd::AppleMusicHelp | MenuCmd::OyenzaOpen));
-        if !launches && !prev.is_invalid() && prev != owner && IsWindow(prev).as_bool() && GetForegroundWindow() == owner {
+        let cmd = if idx == 0 {
+            None
+        } else {
+            cmds.get(idx - 1).copied()
+        };
+        let launches = matches!(
+            cmd,
+            Some(
+                MenuCmd::ShowSettings
+                    | MenuCmd::OpenSettings
+                    | MenuCmd::OpenDataFolder
+                    | MenuCmd::AppleMusicHelp
+                    | MenuCmd::OyenzaOpen
+            )
+        );
+        if !launches
+            && !prev.is_invalid()
+            && prev != owner
+            && IsWindow(prev).as_bool()
+            && GetForegroundWindow() == owner
+        {
             let _ = SetForegroundWindow(prev);
         }
         cmd
@@ -249,13 +386,20 @@ mod tests {
 
     fn fullscreen_choices(s: &Settings) -> Vec<(String, MenuCmd, bool)> {
         let items = menu_items(s, false, &OyenzaLink::Off, UpdateLine::None);
-        let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "全屏应用中")) else {
+        let Some(MenuItem::Sub { items, .. }) = items
+            .into_iter()
+            .find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "全屏应用中"))
+        else {
             panic!("no full-screen submenu");
         };
         items
             .into_iter()
             .filter_map(|i| match i {
-                MenuItem::Item { label, cmd, checked } => Some((label, cmd, checked)),
+                MenuItem::Item {
+                    label,
+                    cmd,
+                    checked,
+                } => Some((label, cmd, checked)),
                 _ => None,
             })
             .collect()
@@ -264,13 +408,25 @@ mod tests {
     #[test]
     fn settings_stays_first_regardless_of_update_state() {
         let s = Settings::default();
-        let first = |update: UpdateLine| match menu_items(&s, false, &OyenzaLink::Off, update).into_iter().next() {
+        let first = |update: UpdateLine| match menu_items(&s, false, &OyenzaLink::Off, update)
+            .into_iter()
+            .next()
+        {
             Some(MenuItem::Item { label, cmd, .. }) => Some((label, cmd)),
             _ => None,
         };
-        assert_eq!(first(UpdateLine::Offer("0.2.5".into())), Some(("高级设置…".to_string(), MenuCmd::ShowSettings)));
-        assert_eq!(first(UpdateLine::None).map(|(_, cmd)| cmd), Some(MenuCmd::ShowSettings));
-        assert_eq!(first(UpdateLine::Check).map(|(_, cmd)| cmd), Some(MenuCmd::ShowSettings));
+        assert_eq!(
+            first(UpdateLine::Offer("0.2.5".into())),
+            Some(("高级设置…".to_string(), MenuCmd::ShowSettings))
+        );
+        assert_eq!(
+            first(UpdateLine::None).map(|(_, cmd)| cmd),
+            Some(MenuCmd::ShowSettings)
+        );
+        assert_eq!(
+            first(UpdateLine::Check).map(|(_, cmd)| cmd),
+            Some(MenuCmd::ShowSettings)
+        );
     }
 
     #[test]
@@ -284,9 +440,16 @@ mod tests {
                 })
                 .collect()
         };
-        for update in [UpdateLine::Check, UpdateLine::Offer("0.2.5".into()), UpdateLine::None] {
+        for update in [
+            UpdateLine::Check,
+            UpdateLine::Offer("0.2.5".into()),
+            UpdateLine::None,
+        ] {
             let items = cmds(update);
-            assert_eq!(items.contains(&MenuCmd::CheckForUpdates), poni_core::update::enabled() && !crate::autostart::packaged());
+            assert_eq!(
+                items.contains(&MenuCmd::CheckForUpdates),
+                poni_core::update::enabled() && !crate::autostart::packaged()
+            );
             assert!(!items.contains(&MenuCmd::Update));
             assert!(!items.contains(&MenuCmd::OyenzaSignIn));
             assert!(!items.contains(&MenuCmd::OyenzaOpen));
@@ -306,27 +469,53 @@ mod tests {
                 .collect()
         };
         assert!(!cmds(&Settings::default()).contains(&MenuCmd::CentreIsland));
-        let moved = cmds(&Settings { island_x: Some(0.8), ..Settings::default() });
-        let pin = moved.iter().position(|c| *c == MenuCmd::TogglePinned).expect("no Keep island open");
+        let moved = cmds(&Settings {
+            island_x: Some(0.8),
+            ..Settings::default()
+        });
+        let pin = moved
+            .iter()
+            .position(|c| *c == MenuCmd::TogglePinned)
+            .expect("no Keep island open");
         assert_eq!(moved.get(pin + 1), Some(&MenuCmd::CentreIsland));
     }
 
     #[test]
     fn system_history_is_in_the_menu_only_while_system_is_on() {
-        let has =
-            |s: &Settings| menu_items(s, false, &OyenzaLink::Off, UpdateLine::None).iter().position(|i| matches!(i, MenuItem::Item { cmd: MenuCmd::ToggleSystemHistory, .. }));
+        let has = |s: &Settings| {
+            menu_items(s, false, &OyenzaLink::Off, UpdateLine::None)
+                .iter()
+                .position(|i| {
+                    matches!(
+                        i,
+                        MenuItem::Item {
+                            cmd: MenuCmd::ToggleSystemHistory,
+                            ..
+                        }
+                    )
+                })
+        };
         let mut s = Settings::default();
         assert_eq!(has(&s), None, "System is off by default");
         s.set_system(true);
         let at = has(&s).expect("no System history item");
         // 系统历史记录仍位于常用开关组内。
         let items = menu_items(&s, false, &OyenzaLink::Off, UpdateLine::None);
-        assert!(matches!(&items[at + 1], MenuItem::Item { cmd: MenuCmd::ToggleWeChatReminders, .. }));
+        assert!(matches!(
+            &items[at + 1],
+            MenuItem::Item {
+                cmd: MenuCmd::ToggleWeChatReminders,
+                ..
+            }
+        ));
     }
 
     fn idle_choices(s: &Settings) -> Vec<(String, bool)> {
         let items = menu_items(s, false, &OyenzaLink::Off, UpdateLine::None);
-        let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "待机样式")) else {
+        let Some(MenuItem::Sub { items, .. }) = items
+            .into_iter()
+            .find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "待机样式"))
+        else {
             panic!("no idle look submenu");
         };
         items
@@ -340,16 +529,30 @@ mod tests {
 
     #[test]
     fn status_bar_is_listed_only_in_the_pill_theme() {
-        let pill = Settings { theme: Theme::Pill, idle_style: IdleStyle::Status, ..Settings::default() };
+        let pill = Settings {
+            theme: Theme::Pill,
+            idle_style: IdleStyle::Status,
+            ..Settings::default()
+        };
         let labels: Vec<String> = idle_choices(&pill).into_iter().map(|c| c.0).collect();
         assert_eq!(labels, ["时钟", "眼睛", "简洁", "悬停时显示", "状态栏"]);
-        assert_eq!(idle_choices(&pill).last(), Some(&("状态栏".to_string(), true)));
+        assert_eq!(
+            idle_choices(&pill).last(),
+            Some(&("状态栏".to_string(), true))
+        );
         // Another theme draws the clock for the status bar: Clock is checked,
         // and Status comes back with Pill.
         for theme in [Theme::Classic, Theme::Oyen, Theme::Glass, Theme::Diorama] {
-            let s = Settings { theme, ..pill.clone() };
+            let s = Settings {
+                theme,
+                ..pill.clone()
+            };
             let choices = idle_choices(&s);
-            assert_eq!(choices.len(), if theme == Theme::Diorama { 3 } else { 4 }, "{theme:?}");
+            assert_eq!(
+                choices.len(),
+                if theme == Theme::Diorama { 3 } else { 4 },
+                "{theme:?}"
+            );
             assert_eq!(choices[0], ("时钟".to_string(), true), "{theme:?}");
             assert!(choices.iter().skip(1).all(|c| !c.1), "{theme:?}");
             assert!(choices.iter().all(|c| c.0 != "状态栏"), "{theme:?}");
@@ -357,10 +560,24 @@ mod tests {
         // Diorama's looks by name: its picture with the time, the picture
         // alone, and nothing until the pointer comes. It has no eyes: a
         // setting left on Eyes shows the picture alone, so Minimal is checked.
-        let diorama = Settings { theme: Theme::Diorama, idle_style: IdleStyle::Minimal, ..Settings::default() };
-        let looks = [("时钟".to_string(), false), ("简洁".to_string(), true), ("悬停时显示".to_string(), false)];
+        let diorama = Settings {
+            theme: Theme::Diorama,
+            idle_style: IdleStyle::Minimal,
+            ..Settings::default()
+        };
+        let looks = [
+            ("时钟".to_string(), false),
+            ("简洁".to_string(), true),
+            ("悬停时显示".to_string(), false),
+        ];
         assert_eq!(idle_choices(&diorama), looks);
-        assert_eq!(idle_choices(&Settings { idle_style: IdleStyle::Eyes, ..diorama }), looks);
+        assert_eq!(
+            idle_choices(&Settings {
+                idle_style: IdleStyle::Eyes,
+                ..diorama
+            }),
+            looks
+        );
     }
 
     /// Where a theme comes in the menu. No `_` arm: a theme added to the
@@ -378,13 +595,20 @@ mod tests {
 
     fn theme_choices(s: &Settings) -> Vec<(String, MenuCmd, bool)> {
         let items = menu_items(s, false, &OyenzaLink::Off, UpdateLine::None);
-        let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "主题")) else {
+        let Some(MenuItem::Sub { items, .. }) = items
+            .into_iter()
+            .find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "主题"))
+        else {
             panic!("no theme submenu");
         };
         items
             .into_iter()
             .filter_map(|i| match i {
-                MenuItem::Item { label, cmd, checked } => Some((label, cmd, checked)),
+                MenuItem::Item {
+                    label,
+                    cmd,
+                    checked,
+                } => Some((label, cmd, checked)),
                 _ => None,
             })
             .collect()
@@ -394,22 +618,51 @@ mod tests {
     fn the_theme_submenu_has_every_theme_and_checks_the_one_in_use() {
         let names = ["经典", "Oyen", "玻璃", "胶囊", "立体场景"];
         let choices = theme_choices(&Settings::default());
-        assert_eq!(choices.iter().map(|c| c.0.as_str()).collect::<Vec<_>>(), names);
+        assert_eq!(
+            choices.iter().map(|c| c.0.as_str()).collect::<Vec<_>>(),
+            names
+        );
         for (i, (label, cmd, _)) in choices.iter().enumerate() {
-            let MenuCmd::SetTheme(theme) = *cmd else { panic!("{label} doesn't set a theme") };
+            let MenuCmd::SetTheme(theme) = *cmd else {
+                panic!("{label} doesn't set a theme")
+            };
             assert_eq!(place(theme), i, "{label}");
             // Picked, it is the one checked.
-            let checked: Vec<bool> = theme_choices(&Settings { theme, ..Settings::default() }).into_iter().map(|c| c.2).collect();
-            assert_eq!(checked, (0..names.len()).map(|j| j == i).collect::<Vec<_>>(), "{label}");
+            let checked: Vec<bool> = theme_choices(&Settings {
+                theme,
+                ..Settings::default()
+            })
+            .into_iter()
+            .map(|c| c.2)
+            .collect();
+            assert_eq!(
+                checked,
+                (0..names.len()).map(|j| j == i).collect::<Vec<_>>(),
+                "{label}"
+            );
         }
     }
 
     #[test]
     fn start_with_windows_follows_the_full_screen_submenu() {
         // Over maximized windows (Step aside) is gone: nothing sits between them.
-        let items = menu_items(&Settings::default(), false, &OyenzaLink::Off, UpdateLine::None);
-        let fs = items.iter().position(|i| matches!(i, MenuItem::Sub { label, .. } if label == "全屏应用中")).expect("full-screen submenu");
-        assert!(matches!(items.get(fs + 1), Some(MenuItem::Item { cmd: MenuCmd::ToggleAutostart, .. })));
+        let items = menu_items(
+            &Settings::default(),
+            false,
+            &OyenzaLink::Off,
+            UpdateLine::None,
+        );
+        let fs = items
+            .iter()
+            .position(|i| matches!(i, MenuItem::Sub { label, .. } if label == "全屏应用中"))
+            .expect("full-screen submenu");
+        assert!(matches!(
+            items.get(fs + 1),
+            Some(MenuItem::Item {
+                cmd: MenuCmd::ToggleAutostart,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -422,9 +675,21 @@ mod tests {
                 choices,
                 vec![
                     ("隐藏".to_string(), MenuCmd::SetHideFullscreen(true), hide),
-                    ("保持置顶".to_string(), MenuCmd::SetHideFullscreen(false), !hide),
-                    ("在游戏上方显示 FPS、GPU 和 CPU".to_string(), MenuCmd::ToggleGameStats, false),
-                    ("仅显示几秒（不增加延迟）".to_string(), MenuCmd::ToggleGamePeek, false),
+                    (
+                        "保持置顶".to_string(),
+                        MenuCmd::SetHideFullscreen(false),
+                        !hide
+                    ),
+                    (
+                        "在游戏上方显示 FPS、GPU 和 CPU".to_string(),
+                        MenuCmd::ToggleGameStats,
+                        false
+                    ),
+                    (
+                        "仅显示几秒（不增加延迟）".to_string(),
+                        MenuCmd::ToggleGamePeek,
+                        false
+                    ),
                 ]
             );
         }

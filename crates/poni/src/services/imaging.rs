@@ -25,23 +25,27 @@ use std::sync::{LazyLock, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime};
 use windows::core::{Interface, Result as WinResult, HRESULT, HSTRING};
 use windows::Win32::Foundation::{
-    E_FAIL, E_INVALIDARG, ERROR_BAD_NETPATH, ERROR_BAD_NET_NAME, ERROR_CONNECTION_REFUSED, ERROR_DEV_NOT_EXIST, ERROR_HOST_UNREACHABLE,
-    ERROR_NETNAME_DELETED, ERROR_NETWORK_BUSY, ERROR_NETWORK_UNREACHABLE, ERROR_NOT_CONNECTED, ERROR_NO_LOGON_SERVERS, ERROR_NO_NETWORK,
-    ERROR_NO_NET_OR_BAD_PATH, ERROR_REM_NOT_LIST, ERROR_SEM_TIMEOUT, ERROR_UNEXP_NET_ERR, GENERIC_WRITE, SIZE, WIN32_ERROR,
+    ERROR_BAD_NETPATH, ERROR_BAD_NET_NAME, ERROR_CONNECTION_REFUSED, ERROR_DEV_NOT_EXIST,
+    ERROR_HOST_UNREACHABLE, ERROR_NETNAME_DELETED, ERROR_NETWORK_BUSY, ERROR_NETWORK_UNREACHABLE,
+    ERROR_NOT_CONNECTED, ERROR_NO_LOGON_SERVERS, ERROR_NO_NETWORK, ERROR_NO_NET_OR_BAD_PATH,
+    ERROR_REM_NOT_LIST, ERROR_SEM_TIMEOUT, ERROR_UNEXP_NET_ERR, E_FAIL, E_INVALIDARG,
+    GENERIC_WRITE, SIZE, WIN32_ERROR,
 };
 use windows::Win32::Graphics::Gdi::{DeleteObject, HBITMAP, HPALETTE};
 use windows::Win32::Graphics::Imaging::*;
 use windows::Win32::System::Com::StructuredStorage::IPropertyBag2;
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
-    COINIT_MULTITHREADED,
+    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT,
+    COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, COINIT_MULTITHREADED,
 };
 use windows::Win32::UI::HiDpi::GetDpiForSystem;
 use windows::Win32::UI::Shell::{
-    IShellItemImageFactory, PathIsNetworkPathW, SHCreateItemFromParsingName, SIIGBF, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY,
-    SIIGBF_THUMBNAILONLY,
+    IShellItemImageFactory, PathIsNetworkPathW, SHCreateItemFromParsingName, SIIGBF,
+    SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY, SIIGBF_THUMBNAILONLY,
 };
-use windows::Win32::UI::WindowsAndMessaging::{DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE};
+use windows::Win32::UI::WindowsAndMessaging::{
+    DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
+};
 
 /// Size (DIPs) at which the Shelf draws a thumbnail tile.
 pub const THUMB_DIP: f32 = 52.0;
@@ -127,11 +131,19 @@ unsafe fn decode_with(factory: &IWICImagingFactory, bytes: &[u8], max_px: u32) -
     // released before this function returns, so the borrow outlives them.
     let stream = factory.CreateStream()?;
     stream.InitializeFromMemory(bytes)?;
-    let decoder = factory.CreateDecoderFromStream(&stream, std::ptr::null(), WICDecodeMetadataCacheOnDemand)?;
+    let decoder = factory.CreateDecoderFromStream(
+        &stream,
+        std::ptr::null(),
+        WICDecodeMetadataCacheOnDemand,
+    )?;
     let frame = decoder.GetFrame(0)?;
     let source: IWICBitmapSource = frame.cast()?;
     let (w, h) = source_size(&source)?;
-    let limit = if max_px == 0 { MAX_DECODE_PX } else { max_px.min(MAX_DECODE_PX) };
+    let limit = if max_px == 0 {
+        MAX_DECODE_PX
+    } else {
+        max_px.min(MAX_DECODE_PX)
+    };
     let (tw, th) = fit_within(w, h, limit);
     let pixels = to_pbgra(factory, &source, (w, h), (tw, th))?;
     Ok(ImageData::new(tw, th, pixels))
@@ -153,7 +165,10 @@ fn fit_within(w: u32, h: u32, max: u32) -> (u32, u32) {
         return (w, h);
     }
     let s = max as f64 / w.max(h) as f64;
-    (((w as f64 * s).round() as u32).clamp(1, max), ((h as f64 * s).round() as u32).clamp(1, max))
+    (
+        ((w as f64 * s).round() as u32).clamp(1, max),
+        ((h as f64 * s).round() as u32).clamp(1, max),
+    )
 }
 
 /// Scale so the shortest side is `px` (cover-fit; never upscales).
@@ -163,7 +178,10 @@ fn cover(w: u32, h: u32, px: u32) -> (u32, u32) {
         return (w, h);
     }
     let s = px as f64 / short as f64;
-    (((w as f64 * s).round() as u32).max(1), ((h as f64 * s).round() as u32).max(1))
+    (
+        ((w as f64 * s).round() as u32).max(1),
+        ((h as f64 * s).round() as u32).max(1),
+    )
 }
 
 /// Formats the scaler can take straight from the decoder (opaque or already
@@ -183,18 +201,37 @@ fn scale_first(fmt: &windows::core::GUID) -> bool {
     .contains(fmt)
 }
 
-unsafe fn convert_pbgra(factory: &IWICImagingFactory, src: &IWICBitmapSource) -> WinResult<IWICBitmapSource> {
+unsafe fn convert_pbgra(
+    factory: &IWICImagingFactory,
+    src: &IWICBitmapSource,
+) -> WinResult<IWICBitmapSource> {
     let conv = factory.CreateFormatConverter()?;
-    conv.Initialize(src, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeMedianCut)?;
+    conv.Initialize(
+        src,
+        &GUID_WICPixelFormat32bppPBGRA,
+        WICBitmapDitherTypeNone,
+        None::<&IWICPalette>,
+        0.0,
+        WICBitmapPaletteTypeMedianCut,
+    )?;
     conv.cast()
 }
 
 /// Scale `src` (`size`) to `target` with Fant and return tightly packed
 /// premultiplied BGRA rows.
-unsafe fn to_pbgra(factory: &IWICImagingFactory, src: &IWICBitmapSource, size: (u32, u32), target: (u32, u32)) -> WinResult<Vec<u8>> {
+unsafe fn to_pbgra(
+    factory: &IWICImagingFactory,
+    src: &IWICBitmapSource,
+    size: (u32, u32),
+    target: (u32, u32),
+) -> WinResult<Vec<u8>> {
     let (tw, th) = target;
-    let stride = tw.checked_mul(4).ok_or(windows::core::Error::from(E_INVALIDARG))?;
-    let len = stride.checked_mul(th).ok_or(windows::core::Error::from(E_INVALIDARG))?;
+    let stride = tw
+        .checked_mul(4)
+        .ok_or(windows::core::Error::from(E_INVALIDARG))?;
+    let len = stride
+        .checked_mul(th)
+        .ok_or(windows::core::Error::from(E_INVALIDARG))?;
     let mut cur = src.clone();
     if !scale_first(&cur.GetPixelFormat()?) {
         cur = convert_pbgra(factory, &cur)?;
@@ -217,23 +254,56 @@ unsafe fn to_pbgra(factory: &IWICImagingFactory, src: &IWICBitmapSource, size: (
 /// Write premultiplied BGRA pixels (`width * 4` stride) as a PNG file.
 /// Used by the self-test for screenshots.
 #[allow(dead_code)]
-pub fn save_png(path: &std::path::Path, width: u32, height: u32, bgra: &[u8]) -> Result<(), String> {
+pub fn save_png(
+    path: &std::path::Path,
+    width: u32,
+    height: u32,
+    bgra: &[u8],
+) -> Result<(), String> {
     let stride = width.checked_mul(4).ok_or("image too wide")?;
     let needed = (stride as u64) * (height as u64);
     if width == 0 || height == 0 || (bgra.len() as u64) < needed || needed > u32::MAX as u64 {
-        return Err(format!("bad image buffer ({width}x{height}, {} bytes)", bgra.len()));
+        return Err(format!(
+            "bad image buffer ({width}x{height}, {} bytes)",
+            bgra.len()
+        ));
     }
     let _com = ComInit::new(COINIT_MULTITHREADED);
     let factory = wic_factory().map_err(|e| format!("WIC unavailable: {e}"))?;
-    unsafe { write_png(&factory, path, width, height, stride, &bgra[..needed as usize]) }.map_err(|e| format!("saving {} failed: {e}", path.display()))
+    unsafe {
+        write_png(
+            &factory,
+            path,
+            width,
+            height,
+            stride,
+            &bgra[..needed as usize],
+        )
+    }
+    .map_err(|e| format!("saving {} failed: {e}", path.display()))
 }
 
 #[allow(dead_code)]
-unsafe fn write_png(factory: &IWICImagingFactory, path: &std::path::Path, w: u32, h: u32, stride: u32, px: &[u8]) -> WinResult<()> {
-    let bitmap = factory.CreateBitmapFromMemory(w, h, &GUID_WICPixelFormat32bppPBGRA, stride, px)?;
+unsafe fn write_png(
+    factory: &IWICImagingFactory,
+    path: &std::path::Path,
+    w: u32,
+    h: u32,
+    stride: u32,
+    px: &[u8],
+) -> WinResult<()> {
+    let bitmap =
+        factory.CreateBitmapFromMemory(w, h, &GUID_WICPixelFormat32bppPBGRA, stride, px)?;
     // PNG stores straight alpha: convert explicitly rather than relying on WriteSource.
     let conv = factory.CreateFormatConverter()?;
-    conv.Initialize(&bitmap, &GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeMedianCut)?;
+    conv.Initialize(
+        &bitmap,
+        &GUID_WICPixelFormat32bppBGRA,
+        WICBitmapDitherTypeNone,
+        None::<&IWICPalette>,
+        0.0,
+        WICBitmapPaletteTypeMedianCut,
+    )?;
     let stream = factory.CreateStream()?;
     stream.InitializeFromFilename(&HSTRING::from(path.as_os_str()), GENERIC_WRITE.0)?;
     let encoder = factory.CreateEncoder(&GUID_ContainerFormatPng, std::ptr::null())?;
@@ -261,7 +331,8 @@ pub enum PathKind {
     Missing,
 }
 
-static STATUS: LazyLock<Mutex<HashMap<String, PathKind>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static STATUS: LazyLock<Mutex<HashMap<String, PathKind>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn status_key(path: &str) -> String {
     path.trim().to_lowercase()
@@ -321,9 +392,18 @@ impl Backoff {
                 self.entries.clear();
             }
         }
-        let strikes = self.entries.get(key).map_or(1, |s| s.strikes.saturating_add(1));
+        let strikes = self
+            .entries
+            .get(key)
+            .map_or(1, |s| s.strikes.saturating_add(1));
         let delay = backoff_delay(strikes);
-        self.entries.insert(key.to_string(), Strike { until: now.checked_add(delay).unwrap_or(now), strikes });
+        self.entries.insert(
+            key.to_string(),
+            Strike {
+                until: now.checked_add(delay).unwrap_or(now),
+                strikes,
+            },
+        );
         delay
     }
 
@@ -333,14 +413,17 @@ impl Backoff {
 
     /// Forget entries expired for a while (their strike count no longer matters).
     fn prune(&mut self, now: Instant) {
-        self.entries.retain(|_, s| s.until.checked_add(NET_BACKOFF_MAX).is_none_or(|t| now < t));
+        self.entries
+            .retain(|_, s| s.until.checked_add(NET_BACKOFF_MAX).is_none_or(|t| now < t));
     }
 }
 
 /// Back-off after `strikes` failures in a row: 60 s, 120 s, 240 s, … up to 10 min.
 fn backoff_delay(strikes: u32) -> Duration {
     let doublings = strikes.saturating_sub(1).min(16);
-    NET_BACKOFF.saturating_mul(1u32 << doublings).min(NET_BACKOFF_MAX)
+    NET_BACKOFF
+        .saturating_mul(1u32 << doublings)
+        .min(NET_BACKOFF_MAX)
 }
 
 static BACKOFF: LazyLock<Mutex<Backoff>> = LazyLock::new(|| Mutex::new(Backoff::default()));
@@ -366,15 +449,21 @@ fn net_root(path: &str) -> Option<String> {
         if server.is_empty() || share.is_empty() {
             return None;
         }
-        return Some(format!(r"\\{}\{}", server.to_lowercase(), share.to_lowercase()));
+        return Some(format!(
+            r"\\{}\{}",
+            server.to_lowercase(),
+            share.to_lowercase()
+        ));
     }
     let b = rest.as_bytes();
-    (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':').then(|| format!("{}:", b[0].to_ascii_lowercase() as char))
+    (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':')
+        .then(|| format!("{}:", b[0].to_ascii_lowercase() as char))
 }
 
 fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
     let head = s.get(..prefix.len())?;
-    head.eq_ignore_ascii_case(prefix).then(|| &s[prefix.len()..])
+    head.eq_ignore_ascii_case(prefix)
+        .then(|| &s[prefix.len()..])
 }
 
 /// [`net_root`] when `path` is on the network: UNC paths always, drive
@@ -385,7 +474,9 @@ fn network_root(path: &str) -> Option<String> {
         return Some(root);
     }
     let drive = HSTRING::from(format!(r"{root}\"));
-    unsafe { PathIsNetworkPathW(&drive) }.as_bool().then_some(root)
+    unsafe { PathIsNetworkPathW(&drive) }
+        .as_bool()
+        .then_some(root)
 }
 
 /// Win32 errors that mean the server or share is unreachable, not just one file.
@@ -497,7 +588,10 @@ pub fn load_thumb_async(path: String, sink: EventSink) {
     if !lock(&PENDING).insert(path.clone()) {
         return;
     }
-    let mut job = ThumbJob { path, sink: Some(sink) };
+    let mut job = ThumbJob {
+        path,
+        sink: Some(sink),
+    };
     if net_blocked(&job.path) {
         // A recent network failure: answer without touching the share.
         set_status_if_unknown(&status_key(&job.path), PathKind::Missing);
@@ -513,7 +607,10 @@ pub fn load_thumb_async(path: String, sink: EventSink) {
         }
     }
     let (tx, rx) = mpsc::channel();
-    match std::thread::Builder::new().name("poni-thumbs".into()).spawn(move || thumb_worker(rx)) {
+    match std::thread::Builder::new()
+        .name("poni-thumbs".into())
+        .spawn(move || thumb_worker(rx))
+    {
         Ok(_) => {
             // Cannot fail while the new worker holds `rx`; if it does, the
             // job handed back is dropped here, which answers it.
@@ -577,7 +674,12 @@ impl ThumbWorker {
         let dpi = unsafe { GetDpiForSystem() };
         let dpi = if dpi == 0 { 96 } else { dpi };
         let px = ((THUMB_DIP * dpi as f32 / 96.0).round() as u32).clamp(32, 256);
-        Self { factory: None, cache: HashMap::new(), tick: 0, px }
+        Self {
+            factory: None,
+            cache: HashMap::new(),
+            tick: 0,
+            px,
+        }
     }
 
     fn factory(&mut self) -> WinResult<IWICImagingFactory> {
@@ -599,13 +701,25 @@ impl ThumbWorker {
                 set_status(&key, PathKind::Missing);
                 self.cache.remove(&key);
                 if let Some(root) = &net {
-                    note_net_failure(&key, root, e.raw_os_error().map(|c| c as u32), started.elapsed());
+                    note_net_failure(
+                        &key,
+                        root,
+                        e.raw_os_error().map(|c| c as u32),
+                        started.elapsed(),
+                    );
                 }
                 return None;
             }
         };
         let is_dir = meta.is_dir();
-        set_status(&key, if is_dir { PathKind::Folder } else { PathKind::File });
+        set_status(
+            &key,
+            if is_dir {
+                PathKind::Folder
+            } else {
+                PathKind::File
+            },
+        );
 
         self.tick += 1;
         let stamp = (meta.modified().ok(), meta.len());
@@ -625,15 +739,30 @@ impl ThumbWorker {
                     note_net_success(&key, root);
                 }
                 if self.cache.len() >= THUMB_CACHE && !self.cache.contains_key(&key) {
-                    if let Some(oldest) = self.cache.iter().min_by_key(|(_, c)| c.used).map(|(k, _)| k.clone()) {
+                    if let Some(oldest) = self
+                        .cache
+                        .iter()
+                        .min_by_key(|(_, c)| c.used)
+                        .map(|(k, _)| k.clone())
+                    {
                         self.cache.remove(&oldest);
                     }
                 }
-                self.cache.insert(key, Cached { stamp, image: image.clone(), used: self.tick });
+                self.cache.insert(
+                    key,
+                    Cached {
+                        stamp,
+                        image: image.clone(),
+                        used: self.tick,
+                    },
+                );
                 Some(image)
             }
             Err(e) => {
-                crate::pinfo!("no thumbnail for {}: {e}", poni_core::shelf::display_name(path));
+                crate::pinfo!(
+                    "no thumbnail for {}: {e}",
+                    poni_core::shelf::display_name(path)
+                );
                 if let Some(root) = &net {
                     note_net_failure(&key, root, win32_code(e.code()), started.elapsed());
                 }
@@ -661,12 +790,20 @@ impl ThumbWorker {
         };
         // Declared before the WIC objects so it is deleted after them.
         let hbmp = OwnedBitmap(hbmp);
-        let bitmap = factory.CreateBitmapFromHBITMAP(hbmp.0, HPALETTE::default(), WICBitmapUsePremultipliedAlpha)?;
+        let bitmap = factory.CreateBitmapFromHBITMAP(
+            hbmp.0,
+            HPALETTE::default(),
+            WICBitmapUsePremultipliedAlpha,
+        )?;
         let source: IWICBitmapSource = bitmap.cast()?;
         let (w, h) = source_size(&source)?;
         let px = self.px;
         let icon_px = ((px as f32 * ICON_FRACTION).round() as u32).max(16);
-        let target = if is_icon { fit_within(w, h, icon_px) } else { cover(w, h, px) };
+        let target = if is_icon {
+            fit_within(w, h, icon_px)
+        } else {
+            cover(w, h, px)
+        };
         let mut pixels = to_pbgra(&factory, &source, (w, h), target)?;
         // Some providers hand back 32-bit DIBs whose alpha channel is all
         // zero (meaning "no alpha"); treat those as opaque.
@@ -678,7 +815,11 @@ impl ThumbWorker {
         let (tw, th) = target;
         if is_icon {
             let (cw, ch) = (px.max(tw), px.max(th));
-            return Ok(ImageData::new(cw, ch, center_on_canvas(&pixels, tw, th, cw, ch)));
+            return Ok(ImageData::new(
+                cw,
+                ch,
+                center_on_canvas(&pixels, tw, th, cw, ch),
+            ));
         }
         Ok(ImageData::new(tw, th, pixels))
     }
@@ -720,11 +861,26 @@ mod tests {
 
     #[test]
     fn network_roots() {
-        assert_eq!(net_root(r"\\Server\Share\dir\f.txt").as_deref(), Some(r"\\server\share"));
-        assert_eq!(net_root(r"\\server\share").as_deref(), Some(r"\\server\share"));
-        assert_eq!(net_root(r"\\server\share\").as_deref(), Some(r"\\server\share"));
-        assert_eq!(net_root("//server/share/x").as_deref(), Some(r"\\server\share"));
-        assert_eq!(net_root(r"\\?\UNC\Server\Share\x").as_deref(), Some(r"\\server\share"));
+        assert_eq!(
+            net_root(r"\\Server\Share\dir\f.txt").as_deref(),
+            Some(r"\\server\share")
+        );
+        assert_eq!(
+            net_root(r"\\server\share").as_deref(),
+            Some(r"\\server\share")
+        );
+        assert_eq!(
+            net_root(r"\\server\share\").as_deref(),
+            Some(r"\\server\share")
+        );
+        assert_eq!(
+            net_root("//server/share/x").as_deref(),
+            Some(r"\\server\share")
+        );
+        assert_eq!(
+            net_root(r"\\?\UNC\Server\Share\x").as_deref(),
+            Some(r"\\server\share")
+        );
         assert_eq!(net_root(r"Z:\photos\a.jpg").as_deref(), Some("z:"));
         assert_eq!(net_root(r"\\?\Z:\photos").as_deref(), Some("z:"));
         assert_eq!(net_root(r"\\server"), None);

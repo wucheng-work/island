@@ -107,7 +107,9 @@ pub fn width(clock: Option<Clock>, badge: Option<Badge>) -> f32 {
     let mid = match clock {
         None => scene::MID_BARE,
         Some(c) => {
-            let written = scene::CLOCK_W + if c.h24 { 0 } else { scene::MERIDIEM_W } + if badge.is_some() { scene::BADGE_W } else { 0 };
+            let written = scene::CLOCK_W
+                + if c.h24 { 0 } else { scene::MERIDIEM_W }
+                + if badge.is_some() { scene::BADGE_W } else { 0 };
             written + 2 * scene::MID_PAD
         }
     };
@@ -142,7 +144,11 @@ pub struct Picture {
 type Rgbf = [f32; 3];
 
 fn mix(a: Rgbf, b: Rgbf, t: f32) -> Rgbf {
-    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    ]
 }
 
 fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
@@ -151,7 +157,11 @@ fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
 }
 
 const fn rgbf(h: u32) -> Rgbf {
-    [(h >> 16 & 255) as f32, (h >> 8 & 255) as f32, (h & 255) as f32]
+    [
+        (h >> 16 & 255) as f32,
+        (h >> 8 & 255) as f32,
+        (h & 255) as f32,
+    ]
 }
 
 /// The frame by day (cream) and by night (indigo): its face, where the
@@ -181,13 +191,21 @@ impl Ball {
         // Magnified evenly over the middle, squeezed toward the rim.
         let k = (1.0 + (BALL_MAG * BALL_RIM - 1.0) * t2 * t2) / BALL_MAG;
         let at = |k: f32| (self.cx + dx * k, self.cy + dy * k);
-        Some([at(k * (1.0 - BALL_FRINGE * t2)), at(k), at(k * (1.0 + BALL_FRINGE * t2))])
+        Some([
+            at(k * (1.0 - BALL_FRINGE * t2)),
+            at(k),
+            at(k * (1.0 + BALL_FRINGE * t2)),
+        ])
     }
 }
 
 /// Paint the pill for `m` in `v`.
 pub fn render(m: &Moment, v: &View) -> Picture {
-    let s = if v.scale.is_finite() { v.scale.clamp(0.5, 8.0) } else { 1.0 };
+    let s = if v.scale.is_finite() {
+        v.scale.clamp(0.5, 8.0)
+    } else {
+        1.0
+    };
     // Sizes a pill can have; anything else is cut to them rather than
     // painted (or allocated) as asked.
     let aw = (v.rest_w.round() as i32).clamp(8, 400);
@@ -204,7 +222,11 @@ pub fn render(m: &Moment, v: &View) -> Picture {
     let r_out = bw.min(bh) / 2.0;
     let frame = BEZEL + ox.min(oy).max(0.0);
     let ball_r = ah as f32 / 2.0 - BEZEL - BALL_GAP;
-    let ball = Ball { cx: ah as f32 / 2.0 + m.lens.clamp(0.0, 1.0) * (aw - ah) as f32, cy: ah as f32 / 2.0, r: ball_r };
+    let ball = Ball {
+        cx: ah as f32 / 2.0 + m.lens.clamp(0.0, 1.0) * (aw - ah) as f32,
+        cy: ah as f32 / 2.0,
+        r: ball_r,
+    };
     let whole = (s - s.round()).abs() < 1e-3;
 
     let face = mix(FRAME_DAY[0], FRAME_NIGHT[0], dark);
@@ -220,7 +242,11 @@ pub fn render(m: &Moment, v: &View) -> Picture {
             let (dx, dy) = (x - ax, y - bh / 2.0);
             let dist = (dx * dx + dy * dy).sqrt();
             let depth = r_out - dist;
-            let (nx, ny) = if dist > 1e-3 { (dx / dist, dy / dist) } else { (0.0, -1.0) };
+            let (nx, ny) = if dist > 1e-3 {
+                (dx / dist, dy / dist)
+            } else {
+                (0.0, -1.0)
+            };
             let toward = nx * LIGHT.0 + ny * LIGHT.1;
             let inner = depth - frame;
             let pane = (inner * s + 0.5).clamp(0.0, 1.0);
@@ -230,7 +256,11 @@ pub fn render(m: &Moment, v: &View) -> Picture {
                 // The frame: a rounded rim, lit where it faces the light.
                 let t = (depth / frame).clamp(0.0, 1.0);
                 let lam = (std::f32::consts::PI * t).cos() * toward;
-                let mut f = if lam > 0.0 { mix(face, lit, lam) } else { mix(face, unlit, -lam) };
+                let mut f = if lam > 0.0 {
+                    mix(face, lit, lam)
+                } else {
+                    mix(face, unlit, -lam)
+                };
                 // A firmer line where it ends, so cream holds on a white window.
                 f = mix(f, unlit, 0.4 * (1.0 - smoothstep(0.0, 0.9, depth)));
                 c = f;
@@ -256,7 +286,8 @@ pub fn render(m: &Moment, v: &View) -> Picture {
                         match ball.through(fx, fy).filter(|_| near_ball) {
                             Some(at) => {
                                 for (ch, (ax, ay)) in at.into_iter().enumerate() {
-                                    sum[ch] += art.get(ax.floor() as i32, ay.floor() as i32)[ch] as u32;
+                                    sum[ch] +=
+                                        art.get(ax.floor() as i32, ay.floor() as i32)[ch] as u32;
                                 }
                             }
                             None => {
@@ -273,30 +304,50 @@ pub fn render(m: &Moment, v: &View) -> Picture {
 
                 // The frame's shadow on the pane, deepest under its lit side.
                 if inner < 7.0 {
-                    p = mix(p, SHADE, 0.5 * (-inner.max(0.0) / 1.6).exp() * (0.58 + 0.42 * toward));
+                    p = mix(
+                        p,
+                        SHADE,
+                        0.5 * (-inner.max(0.0) / 1.6).exp() * (0.58 + 0.42 * toward),
+                    );
                 }
                 if near_ball {
                     let glass = ((ball.r - bd) * s + 0.5).clamp(0.0, 1.0);
                     let t = (bd / ball.r).min(1.0);
-                    let facing = if bd > 1e-3 { (bx * LIGHT.0 + by * LIGHT.1) / bd } else { 0.0 };
+                    let facing = if bd > 1e-3 {
+                        (bx * LIGHT.0 + by * LIGHT.1) / bd
+                    } else {
+                        0.0
+                    };
                     let bright = 1.0 - 0.35 * dark;
                     // Darker toward its rim; a crescent of light along the
                     // rim on the lit side; a soft window of light above
                     // the middle; a little light coming back opposite.
                     let rim = 0.42 * smoothstep(0.84, 1.0, t);
-                    let arc = 0.8 * smoothstep(0.78, 0.92, t) * (1.0 - smoothstep(0.92, 1.0, t)) * smoothstep(0.3, 0.95, facing);
-                    let hd = ((bx + 0.36 * ball.r).powi(2) + (by + 0.44 * ball.r).powi(2)).sqrt() / (0.36 * ball.r);
+                    let arc = 0.8
+                        * smoothstep(0.78, 0.92, t)
+                        * (1.0 - smoothstep(0.92, 1.0, t))
+                        * smoothstep(0.3, 0.95, facing);
+                    let hd = ((bx + 0.36 * ball.r).powi(2) + (by + 0.44 * ball.r).powi(2)).sqrt()
+                        / (0.36 * ball.r);
                     let spot = 0.4 * (1.0 - hd * hd).max(0.0).powi(2);
                     let back = 0.2 * smoothstep(0.72, 0.96, t) * smoothstep(0.45, 1.0, -facing);
                     let mut g = mix(p, SHADE, rim);
                     g = mix(g, [255.0; 3], ((arc + spot) * bright + back * 0.6).min(1.0));
                     // Outside it, its shadow on the pane, down and to the right.
                     let sd = ((bx - 1.0).powi(2) + (by - 2.2).powi(2)).sqrt();
-                    let out = mix(p, SHADE, 0.3 * (1.0 - smoothstep(ball.r - 1.5, ball.r + 3.0, sd)));
+                    let out = mix(
+                        p,
+                        SHADE,
+                        0.3 * (1.0 - smoothstep(ball.r - 1.5, ball.r + 3.0, sd)),
+                    );
                     p = mix(out, g, glass);
                 } else if bd < ball.r + 5.0 {
                     let sd = ((bx - 1.0).powi(2) + (by - 2.2).powi(2)).sqrt();
-                    p = mix(p, SHADE, 0.3 * (1.0 - smoothstep(ball.r - 1.5, ball.r + 3.0, sd)));
+                    p = mix(
+                        p,
+                        SHADE,
+                        0.3 * (1.0 - smoothstep(ball.r - 1.5, ball.r + 3.0, sd)),
+                    );
                 }
                 c = mix(c, p, pane);
             }
@@ -307,7 +358,11 @@ pub fn render(m: &Moment, v: &View) -> Picture {
             bgra[o + 3] = 255;
         }
     }
-    Picture { w: pw as u32, h: ph as u32, bgra }
+    Picture {
+        w: pw as u32,
+        h: ph as u32,
+        bgra,
+    }
 }
 
 #[cfg(test)]
@@ -315,24 +370,50 @@ mod tests {
     use super::*;
 
     fn moment(minute: f32) -> Moment {
-        let mut m = Moment { minute, sunrise: 360.0, sunset: 1080.0, day: 9800, lens: 0.0, clock: Some(Clock { hour: (minute / 60.0) as u8, minute: (minute % 60.0) as u8, h24: true }), badge: None };
+        let mut m = Moment {
+            minute,
+            sunrise: 360.0,
+            sunset: 1080.0,
+            day: 9800,
+            lens: 0.0,
+            clock: Some(Clock {
+                hour: (minute / 60.0) as u8,
+                minute: (minute % 60.0) as u8,
+                h24: true,
+            }),
+            badge: None,
+        };
         m.lens = m.rest_lens();
         m
     }
 
     fn view(m: &Moment, scale: f32) -> View {
         let w = width(m.clock, m.badge);
-        View { w, h: H, rest_w: w, rest_h: H, scale }
+        View {
+            w,
+            h: H,
+            rest_w: w,
+            rest_h: H,
+            scale,
+        }
     }
 
     fn luma(p: &Picture) -> f32 {
         let n = (p.w * p.h) as f32;
-        p.bgra.chunks(4).map(|c| 0.11 * c[0] as f32 + 0.59 * c[1] as f32 + 0.3 * c[2] as f32).sum::<f32>() / n
+        p.bgra
+            .chunks(4)
+            .map(|c| 0.11 * c[0] as f32 + 0.59 * c[1] as f32 + 0.3 * c[2] as f32)
+            .sum::<f32>()
+            / n
     }
 
     #[test]
     fn the_pill_is_as_wide_as_what_it_shows() {
-        let h24 = Clock { hour: 13, minute: 27, h24: true };
+        let h24 = Clock {
+            hour: 13,
+            minute: 27,
+            h24: true,
+        };
         let h12 = Clock { h24: false, ..h24 };
         assert_eq!(width(None, None), 80.0);
         assert_eq!(width(Some(h24), None), 100.0);
@@ -340,7 +421,11 @@ mod tests {
         assert_eq!(width(Some(h24), Some(Badge::Charging)), 112.0);
         assert_eq!(width(Some(h12), Some(Badge::Low(12))), 124.0);
         // Even, so the centred pill lands on whole pixels at 100 %.
-        for w in [width(None, None), width(Some(h24), None), width(Some(h12), Some(Badge::Charging))] {
+        for w in [
+            width(None, None),
+            width(Some(h24), None),
+            width(Some(h12), Some(Badge::Charging)),
+        ] {
             assert_eq!(w % 2.0, 0.0);
         }
     }
@@ -360,12 +445,23 @@ mod tests {
         let m = moment(600.0);
         for scale in [1.0, 1.25, 1.5, 1.75, 2.0, 3.0] {
             let p = render(&m, &view(&m, scale));
-            assert_eq!((p.w, p.h), ((100.0 * scale).round() as u32, (38.0 * scale).round() as u32), "{scale}");
+            assert_eq!(
+                (p.w, p.h),
+                (
+                    (100.0 * scale).round() as u32,
+                    (38.0 * scale).round() as u32
+                ),
+                "{scale}"
+            );
             assert_eq!(p.bgra.len(), (p.w * p.h * 4) as usize);
             assert!(p.bgra.chunks(4).all(|c| c[3] == 255), "{scale}: opaque");
         }
         // Under the pointer the body is larger and so is the picture.
-        let lifted = View { w: 106.0, h: 44.0, ..view(&m, 2.0) };
+        let lifted = View {
+            w: 106.0,
+            h: 44.0,
+            ..view(&m, 2.0)
+        };
         let p = render(&m, &lifted);
         assert_eq!((p.w, p.h), (212, 88));
     }
@@ -375,7 +471,10 @@ mod tests {
         let m = moment(1100.0);
         assert_eq!(render(&m, &view(&m, 1.5)), render(&m, &view(&m, 1.5)));
         // A minute later something has moved.
-        assert_ne!(render(&m, &view(&m, 1.0)), render(&moment(1101.0), &view(&m, 1.0)));
+        assert_ne!(
+            render(&m, &view(&m, 1.0)),
+            render(&moment(1101.0), &view(&m, 1.0))
+        );
     }
 
     #[test]
@@ -384,7 +483,8 @@ mod tests {
             let m = moment(minute);
             luma(&render(&m, &view(&m, 1.0)))
         };
-        let (noon, gold, night, small_hours) = (shot(720.0), shot(1070.0), shot(1320.0), shot(180.0));
+        let (noon, gold, night, small_hours) =
+            (shot(720.0), shot(1070.0), shot(1320.0), shot(180.0));
         assert!(noon > 150.0, "noon {noon}");
         assert!(gold < noon && gold > night, "gold {gold}");
         assert!(night < 60.0, "night {night}");
@@ -405,7 +505,15 @@ mod tests {
         for ay in 14..24u32 {
             for ax in 44..60u32 {
                 let c = at(ax * 2, ay * 2);
-                assert_eq!([at(ax * 2 + 1, ay * 2), at(ax * 2, ay * 2 + 1), at(ax * 2 + 1, ay * 2 + 1)], [c, c, c], "art pixel {ax},{ay}");
+                assert_eq!(
+                    [
+                        at(ax * 2 + 1, ay * 2),
+                        at(ax * 2, ay * 2 + 1),
+                        at(ax * 2 + 1, ay * 2 + 1)
+                    ],
+                    [c, c, c],
+                    "art pixel {ax},{ay}"
+                );
             }
         }
     }
@@ -413,16 +521,49 @@ mod tests {
     #[test]
     fn the_clock_stays_clear_of_the_ball() {
         for (clock, badge) in [
-            (Clock { hour: 23, minute: 59, h24: true }, None),
-            (Clock { hour: 12, minute: 59, h24: false }, None),
-            (Clock { hour: 12, minute: 59, h24: false }, Some(Badge::Low(9))),
+            (
+                Clock {
+                    hour: 23,
+                    minute: 59,
+                    h24: true,
+                },
+                None,
+            ),
+            (
+                Clock {
+                    hour: 12,
+                    minute: 59,
+                    h24: false,
+                },
+                None,
+            ),
+            (
+                Clock {
+                    hour: 12,
+                    minute: 59,
+                    h24: false,
+                },
+                Some(Badge::Low(9)),
+            ),
         ] {
             let w = width(Some(clock), badge) as i32;
-            let written = scene::CLOCK_W + if clock.h24 { 0 } else { scene::MERIDIEM_W } + if badge.is_some() { scene::BADGE_W } else { 0 };
-            let (x0, x1) = ((scene::HOUSE_ZONE + w - scene::TREE_ZONE - written) / 2 - 1, (scene::HOUSE_ZONE + w - scene::TREE_ZONE + written) / 2 + 1);
+            let written = scene::CLOCK_W
+                + if clock.h24 { 0 } else { scene::MERIDIEM_W }
+                + if badge.is_some() { scene::BADGE_W } else { 0 };
+            let (x0, x1) = (
+                (scene::HOUSE_ZONE + w - scene::TREE_ZONE - written) / 2 - 1,
+                (scene::HOUSE_ZONE + w - scene::TREE_ZONE + written) / 2 + 1,
+            );
             let r = H / 2.0 - BEZEL - BALL_GAP;
-            assert!(x0 as f32 >= H / 2.0 + r, "{clock:?}: starts at {x0}, the ball ends at {}", H / 2.0 + r);
-            assert!(x1 as f32 <= w as f32 - H / 2.0 - r, "{clock:?}: ends at {x1}");
+            assert!(
+                x0 as f32 >= H / 2.0 + r,
+                "{clock:?}: starts at {x0}, the ball ends at {}",
+                H / 2.0 + r
+            );
+            assert!(
+                x1 as f32 <= w as f32 - H / 2.0 - r,
+                "{clock:?}: ends at {x1}"
+            );
         }
     }
 
@@ -430,18 +571,54 @@ mod tests {
     fn odd_views_do_not_panic() {
         let m = moment(720.0);
         for v in [
-            View { w: 0.0, h: 0.0, rest_w: 0.0, rest_h: 0.0, scale: 1.0 },
-            View { w: 40.0, h: 12.0, rest_w: 100.0, rest_h: 38.0, scale: 1.0 },
-            View { w: 100.0, h: 38.0, rest_w: 100.0, rest_h: 38.0, scale: f32::NAN },
-            View { w: 300.0, h: 200.0, rest_w: 100.0, rest_h: 38.0, scale: 0.1 },
-            View { w: 1.0e9, h: f32::INFINITY, rest_w: 1.0e9, rest_h: 1.0e9, scale: 1.0e9 },
+            View {
+                w: 0.0,
+                h: 0.0,
+                rest_w: 0.0,
+                rest_h: 0.0,
+                scale: 1.0,
+            },
+            View {
+                w: 40.0,
+                h: 12.0,
+                rest_w: 100.0,
+                rest_h: 38.0,
+                scale: 1.0,
+            },
+            View {
+                w: 100.0,
+                h: 38.0,
+                rest_w: 100.0,
+                rest_h: 38.0,
+                scale: f32::NAN,
+            },
+            View {
+                w: 300.0,
+                h: 200.0,
+                rest_w: 100.0,
+                rest_h: 38.0,
+                scale: 0.1,
+            },
+            View {
+                w: 1.0e9,
+                h: f32::INFINITY,
+                rest_w: 1.0e9,
+                rest_h: 1.0e9,
+                scale: 1.0e9,
+            },
         ] {
             let p = render(&m, &v);
             assert_eq!(p.bgra.len(), (p.w * p.h * 4) as usize);
             // Never more than a pill at the largest scale.
             assert!(p.w <= 464 * 8 && p.h <= 164 * 8, "{} x {}", p.w, p.h);
         }
-        let odd = Moment { sunrise: 900.0, sunset: 300.0, lens: 7.0, minute: -5.0, ..m };
+        let odd = Moment {
+            sunrise: 900.0,
+            sunset: 300.0,
+            lens: 7.0,
+            minute: -5.0,
+            ..m
+        };
         render(&odd, &view(&m, 1.0));
     }
 }

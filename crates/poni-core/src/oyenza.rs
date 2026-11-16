@@ -16,7 +16,9 @@
 //! The HTTP and the sealed key live in the Windows crate
 //! (`services/oyenza.rs`).
 
-use crate::datetime::{days_from_civil, civil_from_days, weekday_from_days, LocalDateTime, MONTH_SHORT, WEEKDAY_SHORT};
+use crate::datetime::{
+    civil_from_days, days_from_civil, weekday_from_days, LocalDateTime, MONTH_SHORT, WEEKDAY_SHORT,
+};
 use crate::urlenc::with_query;
 use serde::{Deserialize, Serialize};
 
@@ -94,16 +96,25 @@ pub fn disconnect_url() -> String {
 /// Money in and out that arrived by itself since `since` (`kinds=all`: 0.1.9
 /// asked without it and heard money in alone).
 pub fn money_url(since: Option<&str>, tz: &str) -> String {
-    with_query(&format!("{API}/island/money"), &[("since", since.unwrap_or("")), ("tz", tz), ("kinds", "all")])
+    with_query(
+        &format!("{API}/island/money"),
+        &[("since", since.unwrap_or("")), ("tz", tz), ("kinds", "all")],
+    )
 }
 
 /// The last 7 days of transactions; with `since`, only whether anything changed.
 pub fn activity_url(tz: &str, since: Option<&str>) -> String {
-    with_query(&format!("{API}/island/activity"), &[("tz", tz), ("days", "7"), ("since", since.unwrap_or(""))])
+    with_query(
+        &format!("{API}/island/activity"),
+        &[("tz", tz), ("days", "7"), ("since", since.unwrap_or(""))],
+    )
 }
 
 pub fn bills_url(tz: &str) -> String {
-    with_query(&format!("{API}/island/bills"), &[("tz", tz), ("days", &BILLS_DAYS.to_string())])
+    with_query(
+        &format!("{API}/island/bills"),
+        &[("tz", tz), ("days", &BILLS_DAYS.to_string())],
+    )
 }
 
 pub fn note_url() -> String {
@@ -117,11 +128,16 @@ pub fn undo_url(id: &str) -> String {
 /// `platform`: [`PLATFORM`], so oyenza.app shows a Mac as one (a server from
 /// before 0.2.7's leaves it out and stores every PC as Windows).
 pub fn start_body(pc_name: &str, version: &str, platform: &str) -> String {
-    serde_json::json!({ "app": APP, "name": pc_name, "version": version, "platform": platform }).to_string()
+    serde_json::json!({ "app": APP, "name": pc_name, "version": version, "platform": platform })
+        .to_string()
 }
 
 /// The system this app runs on, as the sign-in names it.
-pub const PLATFORM: &str = if cfg!(target_os = "macos") { "macos" } else { "windows" };
+pub const PLATFORM: &str = if cfg!(target_os = "macos") {
+    "macos"
+} else {
+    "windows"
+};
 
 pub fn token_body(device_code: &str) -> String {
     serde_json::json!({ "deviceCode": device_code }).to_string()
@@ -132,12 +148,22 @@ pub fn note_body(text: &str, tz: &str) -> String {
 }
 
 /// What oyenza.app lists a computer as when the system gives no name.
-const UNNAMED: &str = if cfg!(target_os = "macos") { "Mac" } else { "Windows PC" };
+const UNNAMED: &str = if cfg!(target_os = "macos") {
+    "Mac"
+} else {
+    "Windows PC"
+};
 
 /// The PC's name as oyenza.app will list it: one printable line, 40 characters
 /// at most ([`UNNAMED`] when the system gives none).
 pub fn pc_name(raw: &str) -> String {
-    let clean: String = raw.chars().filter(|c| !c.is_control()).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ");
+    let clean: String = raw
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     let cut: String = clean.chars().take(40).collect();
     if cut.trim().is_empty() {
         UNNAMED.into()
@@ -226,7 +252,12 @@ pub fn parse_claim(status: u16, body: &str) -> Option<Claim> {
         return match (ok.status.as_str(), ok.key, ok.device) {
             ("waiting", _, _) => Some(Claim::Waiting),
             ("connected", Some(key), Some(d)) => {
-                let link = Link { key, account: ok.account, device_id: d.id, device_name: d.name };
+                let link = Link {
+                    key,
+                    account: ok.account,
+                    device_id: d.id,
+                    device_name: d.name,
+                };
                 parse_link(&link_json(&link)).map(Claim::Connected)
             }
             _ => None,
@@ -378,7 +409,10 @@ impl Activity {
 #[derive(Clone, Debug, PartialEq)]
 pub enum ActivityAnswer {
     /// Nothing changed in the space since the cursor.
-    Unchanged { cursor: String, today: String },
+    Unchanged {
+        cursor: String,
+        today: String,
+    },
     Full(Activity),
 }
 
@@ -395,8 +429,15 @@ pub fn parse_activity(body: &str) -> Option<ActivityAnswer> {
     }
     let a: A = serde_json::from_str(body).ok()?;
     match (a.changed, a.days) {
-        (Some(false), _) => Some(ActivityAnswer::Unchanged { cursor: a.cursor, today: a.today }),
-        (_, Some(days)) => Some(ActivityAnswer::Full(Activity { cursor: a.cursor, today: a.today, days })),
+        (Some(false), _) => Some(ActivityAnswer::Unchanged {
+            cursor: a.cursor,
+            today: a.today,
+        }),
+        (_, Some(days)) => Some(ActivityAnswer::Full(Activity {
+            cursor: a.cursor,
+            today: a.today,
+            days,
+        })),
         _ => None,
     }
 }
@@ -450,7 +491,10 @@ pub fn parse_saved(body: &str) -> Option<Vec<Saved>> {
     struct S {
         saved: Vec<Saved>,
     }
-    serde_json::from_str::<S>(body).ok().map(|s| s.saved).filter(|v| !v.is_empty())
+    serde_json::from_str::<S>(body)
+        .ok()
+        .map(|s| s.saved)
+        .filter(|v| !v.is_empty())
 }
 
 // ---------------------------------------------------------------- cadence
@@ -468,7 +512,9 @@ pub fn money_every_s(on_ac: bool, saver: bool) -> u64 {
 /// shorter than the server's `Retry-After`.
 pub fn backoff_s(fails: u32, retry_after_s: Option<u64>) -> u64 {
     let doubling = 60u64.saturating_mul(1u64 << fails.saturating_sub(1).min(10));
-    doubling.min(MAX_BACKOFF_S).max(retry_after_s.unwrap_or(0).min(MAX_BACKOFF_S))
+    doubling
+        .min(MAX_BACKOFF_S)
+        .max(retry_after_s.unwrap_or(0).min(MAX_BACKOFF_S))
 }
 
 // ---------------------------------------------------------------- words
@@ -496,24 +542,66 @@ pub fn money_notice(arrived: &[Arrival]) -> Option<MoneyNotice> {
     let last = arrived.last()?;
     let outs = arrived.iter().filter(|a| a.is_out()).count();
     if arrived.len() == 1 {
-        let (word, hidden, flow) = if last.is_out() { ("Money out", "Amount and payee hidden", Flow::Out) } else { ("Money in", "Amount and sender hidden", Flow::In) };
-        let title = match last.wallet.as_ref().map(|w| w.name.trim()).filter(|n| !n.is_empty()) {
+        let (word, hidden, flow) = if last.is_out() {
+            ("Money out", "Amount and payee hidden", Flow::Out)
+        } else {
+            ("Money in", "Amount and sender hidden", Flow::In)
+        };
+        let title = match last
+            .wallet
+            .as_ref()
+            .map(|w| w.name.trim())
+            .filter(|n| !n.is_empty())
+        {
             Some(w) => format!("{word} · {w}"),
             None => word.to_string(),
         };
-        let shown = if last.title.trim().is_empty() { last.text.clone() } else { format!("{} · {}", last.text, last.title.trim()) };
-        return Some(MoneyNotice { title, shown, hidden: hidden.into(), flow: Some(flow) });
+        let shown = if last.title.trim().is_empty() {
+            last.text.clone()
+        } else {
+            format!("{} · {}", last.text, last.title.trim())
+        };
+        return Some(MoneyNotice {
+            title,
+            shown,
+            hidden: hidden.into(),
+            flow: Some(flow),
+        });
     }
     let n = arrived.len();
     if outs == 0 || outs == n {
         let sums: Vec<&str> = arrived.iter().map(|a| a.text.as_str()).collect();
-        let (title, hidden, flow) =
-            if outs == 0 { (format!("Money in · {n} new"), "Amounts and senders hidden", Flow::In) } else { (format!("Money out · {n} new"), "Amounts and payees hidden", Flow::Out) };
-        return Some(MoneyNotice { title, shown: sums.join(" · "), hidden: hidden.into(), flow: Some(flow) });
+        let (title, hidden, flow) = if outs == 0 {
+            (
+                format!("Money in · {n} new"),
+                "Amounts and senders hidden",
+                Flow::In,
+            )
+        } else {
+            (
+                format!("Money out · {n} new"),
+                "Amounts and payees hidden",
+                Flow::Out,
+            )
+        };
+        return Some(MoneyNotice {
+            title,
+            shown: sums.join(" · "),
+            hidden: hidden.into(),
+            flow: Some(flow),
+        });
     }
     // Both ways at once: each sum with its direction.
-    let sums: Vec<String> = arrived.iter().map(|a| format!("{}{}", if a.is_out() { MINUS } else { "+" }, a.text)).collect();
-    Some(MoneyNotice { title: format!("Oyenza · {n} new"), shown: sums.join(" · "), hidden: "Amounts hidden".into(), flow: None })
+    let sums: Vec<String> = arrived
+        .iter()
+        .map(|a| format!("{}{}", if a.is_out() { MINUS } else { "+" }, a.text))
+        .collect();
+    Some(MoneyNotice {
+        title: format!("Oyenza · {n} new"),
+        shown: sums.join(" · "),
+        hidden: "Amounts hidden".into(),
+        flow: None,
+    })
 }
 
 /// The minus sign, a dash's width like "+".
@@ -540,9 +628,20 @@ pub fn strip(today: &str) -> Vec<(DayPick, String)> {
     let t = day_number(today);
     let mut out: Vec<(DayPick, String)> = (2..=6u8)
         .rev()
-        .map(|n| (DayPick::Past(n), t.map(|d| WEEKDAY_SHORT[weekday_from_days(d - n as i64) as usize].to_string()).unwrap_or_default()))
+        .map(|n| {
+            (
+                DayPick::Past(n),
+                t.map(|d| WEEKDAY_SHORT[weekday_from_days(d - n as i64) as usize].to_string())
+                    .unwrap_or_default(),
+            )
+        })
         .collect();
-    out.extend([(DayPick::Past(1), "Yesterday".into()), (DayPick::Today, "Today".into()), (DayPick::Tomorrow, "Tomorrow".into()), (DayPick::Later, "Later".into())]);
+    out.extend([
+        (DayPick::Past(1), "Yesterday".into()),
+        (DayPick::Today, "Today".into()),
+        (DayPick::Tomorrow, "Tomorrow".into()),
+        (DayPick::Later, "Later".into()),
+    ]);
     out
 }
 
@@ -563,8 +662,18 @@ pub fn day_heading(pick: DayPick, today: &str, count: usize) -> String {
     let name = match pick {
         DayPick::Today => "TODAY".to_string(),
         DayPick::Past(1) => "YESTERDAY".to_string(),
-        DayPick::Past(_) => pick_date(pick, today).and_then(|d| short_date(&d)).unwrap_or_default().to_uppercase(),
-        DayPick::Tomorrow => return format!("TOMORROW · {}", short_date(&next_day(today)).unwrap_or_default().to_uppercase()),
+        DayPick::Past(_) => pick_date(pick, today)
+            .and_then(|d| short_date(&d))
+            .unwrap_or_default()
+            .to_uppercase(),
+        DayPick::Tomorrow => {
+            return format!(
+                "TOMORROW · {}",
+                short_date(&next_day(today))
+                    .unwrap_or_default()
+                    .to_uppercase()
+            )
+        }
         DayPick::Later => return "LATER · THE NEXT 30 DAYS".into(),
     };
     match count {
@@ -611,7 +720,11 @@ pub fn txn_title(t: &Txn) -> String {
     if !title.is_empty() {
         return title.to_string();
     }
-    let category = t.category.as_deref().map(str::trim).filter(|c| !c.is_empty());
+    let category = t
+        .category
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty());
     match (t.flow(), wallet_name(&t.wallet), wallet_name(&t.to_wallet)) {
         (Flow::Move, Some(a), Some(b)) => format!("{a} to {b}"),
         (Flow::Move, _, _) => "Transfer".into(),
@@ -625,20 +738,31 @@ pub fn txn_title(t: &Txn) -> String {
 /// arrow: not every font the island falls back to has one.
 pub fn txn_detail(t: &Txn, time: &str) -> String {
     let place = match t.flow() {
-        Flow::Move if !t.title.trim().is_empty() => match (wallet_name(&t.wallet), wallet_name(&t.to_wallet)) {
-            (Some(a), Some(b)) => format!("{a} to {b}"),
-            _ => "Own transfer".into(),
-        },
+        Flow::Move if !t.title.trim().is_empty() => {
+            match (wallet_name(&t.wallet), wallet_name(&t.to_wallet)) {
+                (Some(a), Some(b)) => format!("{a} to {b}"),
+                _ => "Own transfer".into(),
+            }
+        }
         Flow::Move => "Own transfer".into(),
         _ => wallet_name(&t.wallet).unwrap_or("").to_string(),
     };
-    [place.as_str(), time].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join(" · ")
+    [place.as_str(), time]
+        .iter()
+        .filter(|s| !s.is_empty())
+        .copied()
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 /// A row's sum with its direction: "+Rp 1.250.000", "−Rp 25.000", a transfer
 /// plain; hidden, "+Rp •••".
 pub fn signed_sum(t: &Txn, show: bool) -> String {
-    let text = if show { t.text.clone() } else { masked(&t.text) };
+    let text = if show {
+        t.text.clone()
+    } else {
+        masked(&t.text)
+    };
     match t.flow() {
         Flow::In => format!("+{text}"),
         Flow::Out => format!("{MINUS}{text}"),
@@ -671,7 +795,10 @@ pub struct Seen {
 
 impl Seen {
     pub fn note(&mut self, days: &[Day], now: f64) {
-        let ids: Vec<&str> = days.iter().flat_map(|d| d.rows.iter().map(|t| t.id.as_str())).collect();
+        let ids: Vec<&str> = days
+            .iter()
+            .flat_map(|d| d.rows.iter().map(|t| t.id.as_str()))
+            .collect();
         let when = if self.primed { now } else { f64::NEG_INFINITY };
         for id in &ids {
             if !self.at.iter().any(|(s, _)| s == id) {
@@ -684,18 +811,27 @@ impl Seen {
 
     /// 1 just after it landed, down to 0 over [`GLOW_S`].
     pub fn glow(&self, id: &str, now: f64) -> f32 {
-        self.at.iter().find(|(s, _)| s == id).map_or(0.0, |(_, t)| (1.0 - (now - t) / GLOW_S).clamp(0.0, 1.0) as f32)
+        self.at.iter().find(|(s, _)| s == id).map_or(0.0, |(_, t)| {
+            (1.0 - (now - t) / GLOW_S).clamp(0.0, 1.0) as f32
+        })
     }
 
     /// Something on `day` is still glowing (for the strip's dot), and until when.
     pub fn glowing_until(&self, day: &Day, now: f64) -> Option<f64> {
-        day.rows.iter().filter_map(|t| self.at.iter().find(|(s, _)| s == &t.id)).map(|(_, at)| at + GLOW_S).filter(|&u| u > now).reduce(f64::max)
+        day.rows
+            .iter()
+            .filter_map(|t| self.at.iter().find(|(s, _)| s == &t.id))
+            .map(|(_, at)| at + GLOW_S)
+            .filter(|&u| u > now)
+            .reduce(f64::max)
     }
 }
 
 /// "Today", "Tomorrow", or "Mon 26 Oct" for a YYYY-MM-DD day seen from `today`.
 pub fn due_label(due: &str, today: &str) -> String {
-    let (Some(d), Some(t)) = (day_number(due), day_number(today)) else { return due.to_string() };
+    let (Some(d), Some(t)) = (day_number(due), day_number(today)) else {
+        return due.to_string();
+    };
     match d - t {
         0 => "Today".into(),
         1 => "Tomorrow".into(),
@@ -707,7 +843,12 @@ pub fn due_label(due: &str, today: &str) -> String {
 pub fn short_date(day: &str) -> Option<String> {
     let d = day_number(day)?;
     let (_, m, dom) = civil_from_days(d);
-    Some(format!("{} {} {}", WEEKDAY_SHORT[weekday_from_days(d) as usize], dom, MONTH_SHORT[(m.clamp(1, 12) - 1) as usize]))
+    Some(format!(
+        "{} {} {}",
+        WEEKDAY_SHORT[weekday_from_days(d) as usize],
+        dom,
+        MONTH_SHORT[(m.clamp(1, 12) - 1) as usize]
+    ))
 }
 
 fn day_number(day: &str) -> Option<i64> {
@@ -735,7 +876,11 @@ pub fn next_day(today: &str) -> String {
 /// The bill notice's title: "Spotify renews tomorrow", "Kartu Kredit BCA due today".
 pub fn bill_title(b: &Bill, today: &str) -> String {
     let when = due_label(&b.due, today);
-    let when = if when == "Today" || when == "Tomorrow" { when.to_lowercase() } else { format!("on {when}") };
+    let when = if when == "Today" || when == "Tomorrow" {
+        when.to_lowercase()
+    } else {
+        format!("on {when}")
+    };
     if b.is_card() {
         format!("{} due {when}", b.name)
     } else {
@@ -756,7 +901,10 @@ pub fn bill_subtitles(b: &Bill) -> (String, Option<String>) {
 /// (`noticed` holds [`notice_key`]s).
 pub fn bills_to_remind<'a>(bills: &'a [Bill], today: &str, noticed: &[String]) -> Vec<&'a Bill> {
     let tomorrow = next_day(today);
-    bills.iter().filter(|b| (b.due == today || b.due == tomorrow) && !noticed.contains(&notice_key(b))).collect()
+    bills
+        .iter()
+        .filter(|b| (b.due == today || b.due == tomorrow) && !noticed.contains(&notice_key(b)))
+        .collect()
 }
 
 /// One reminder per bill and due date.
@@ -777,7 +925,9 @@ pub fn prune_noticed(noticed: &mut Vec<String>, today: &str) {
 /// The saved row: "Kopi · Rp 25.000 · Coffee · GoPay"; two or more show the
 /// first and how many more.
 pub fn saved_line(saved: &[Saved]) -> String {
-    let Some(first) = saved.first() else { return String::new() };
+    let Some(first) = saved.first() else {
+        return String::new();
+    };
     let mut parts = vec![first.title.trim().to_string(), first.text.clone()];
     if saved.len() == 1 {
         if let Some(c) = first.category.as_deref().filter(|c| !c.trim().is_empty()) {
@@ -794,9 +944,14 @@ pub fn saved_line(saved: &[Saved]) -> String {
 /// A typed note has an amount the server can read: a digit, or the Jakarta
 /// words for one ("goceng" is 5.000), as Oyenza's own parser reads them.
 pub fn has_amount(text: &str) -> bool {
-    const WORDS: [&str; 7] = ["cepek", "gopek", "seceng", "noceng", "goceng", "ceban", "goban"];
+    const WORDS: [&str; 7] = [
+        "cepek", "gopek", "seceng", "noceng", "goceng", "ceban", "goban",
+    ];
     text.chars().any(|c| c.is_ascii_digit())
-        || text.to_lowercase().split(|c: char| !c.is_alphanumeric()).any(|w| WORDS.contains(&w))
+        || text
+            .to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .any(|w| WORDS.contains(&w))
 }
 
 /// What the island says when a note couldn't be saved (the text stays in the field).
@@ -842,24 +997,53 @@ pub fn hex_color(s: &str) -> Option<(u8, u8, u8)> {
 /// `offset_minutes` east of UTC.
 pub fn local_clock(iso: &str, offset_minutes: i32) -> Option<LocalDateTime> {
     let b = iso.as_bytes();
-    if b.len() < 20 || b[4] != b'-' || b[7] != b'-' || b[10] != b'T' || b[13] != b':' || b[16] != b':' || !iso.ends_with('Z') {
+    if b.len() < 20
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || b[10] != b'T'
+        || b[13] != b':'
+        || b[16] != b':'
+        || !iso.ends_with('Z')
+    {
         return None;
     }
     let num = |r: std::ops::Range<usize>| iso.get(r).and_then(|v| v.parse::<i64>().ok());
-    let (y, mo, d, h, mi, sec) = (num(0..4)?, num(5..7)?, num(8..10)?, num(11..13)?, num(14..16)?, num(17..19)?);
+    let (y, mo, d, h, mi, sec) = (
+        num(0..4)?,
+        num(5..7)?,
+        num(8..10)?,
+        num(11..13)?,
+        num(14..16)?,
+        num(17..19)?,
+    );
     if !(1..=12).contains(&mo) || !(1..=31).contains(&d) || h > 23 || mi > 59 || sec > 60 {
         return None;
     }
-    let t = days_from_civil(y as i32, mo as u8, d as u8) * 86_400 + h * 3600 + mi * 60 + sec + offset_minutes as i64 * 60;
+    let t = days_from_civil(y as i32, mo as u8, d as u8) * 86_400
+        + h * 3600
+        + mi * 60
+        + sec
+        + offset_minutes as i64 * 60;
     let (ly, lm, ld) = civil_from_days(t.div_euclid(86_400));
     let rest = t.rem_euclid(86_400);
-    Some(LocalDateTime { year: ly, month: lm, day: ld, hour: (rest / 3600) as u8, minute: (rest % 3600 / 60) as u8, second: (rest % 60) as u8 })
+    Some(LocalDateTime {
+        year: ly,
+        month: lm,
+        day: ld,
+        hour: (rest / 3600) as u8,
+        minute: (rest % 3600 / 60) as u8,
+        second: (rest % 60) as u8,
+    })
 }
 
 /// The arrivals not shown as a notice yet, now remembered as shown (the last 50). The server sends each arrival to a
 /// PC once; this keeps a notice from ever repeating, whatever the server does.
 pub fn unseen(shown: &mut Vec<String>, arrived: &[Arrival]) -> Vec<Arrival> {
-    let fresh: Vec<Arrival> = arrived.iter().filter(|a| !shown.contains(&a.id)).cloned().collect();
+    let fresh: Vec<Arrival> = arrived
+        .iter()
+        .filter(|a| !shown.contains(&a.id))
+        .cloned()
+        .collect();
     shown.extend(fresh.iter().map(|a| a.id.clone()));
     if shown.len() > 50 {
         let cut = shown.len() - 50;
@@ -867,7 +1051,6 @@ pub fn unseen(shown: &mut Vec<String>, arrived: &[Arrival]) -> Vec<Arrival> {
     }
     fresh
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -882,27 +1065,66 @@ mod tests {
             currency: "IDR".into(),
             text: text.into(),
             title: title.into(),
-            wallet: wallet.map(|w| WalletRef { name: w.into(), color: "#0060AF".into() }),
+            wallet: wallet.map(|w| WalletRef {
+                name: w.into(),
+                color: "#0060AF".into(),
+            }),
             at: String::new(),
         }
     }
 
     fn bill(kind: &str, name: &str, due: &str, text: Option<&str>) -> Bill {
-        Bill { kind: kind.into(), name: name.into(), due: due.into(), amount: text.map(|_| 1.0), text: text.map(Into::into) }
+        Bill {
+            kind: kind.into(),
+            name: name.into(),
+            due: due.into(),
+            amount: text.map(|_| 1.0),
+            text: text.map(Into::into),
+        }
     }
 
     #[test]
     fn urls_and_bodies() {
-        assert_eq!(money_url(None, "+07:00"), "https://api.oyenza.app/island/money?tz=%2B07%3A00&kinds=all");
-        assert_eq!(money_url(Some("123"), "+07:00"), "https://api.oyenza.app/island/money?since=123&tz=%2B07%3A00&kinds=all");
-        assert_eq!(activity_url("+07:00", None), "https://api.oyenza.app/island/activity?tz=%2B07%3A00&days=7");
-        assert_eq!(activity_url("+07:00", Some("9")), "https://api.oyenza.app/island/activity?tz=%2B07%3A00&days=7&since=9");
-        assert_eq!(bills_url("-03:30"), "https://api.oyenza.app/island/bills?tz=-03%3A30&days=35");
-        assert_eq!(undo_url("abc 1/2"), "https://api.oyenza.app/island/note/abc%201%2F2");
-        let b: serde_json::Value = serde_json::from_str(&start_body("DESKTOP-7Q2K", "0.1.5", "windows")).unwrap();
-        assert_eq!(b, serde_json::json!({ "app": "poni", "name": "DESKTOP-7Q2K", "version": "0.1.5", "platform": "windows" }));
-        assert_eq!(PLATFORM, if cfg!(target_os = "macos") { "macos" } else { "windows" });
-        let n: serde_json::Value = serde_json::from_str(&note_body("kopi \"25rb\"", "+07:00")).unwrap();
+        assert_eq!(
+            money_url(None, "+07:00"),
+            "https://api.oyenza.app/island/money?tz=%2B07%3A00&kinds=all"
+        );
+        assert_eq!(
+            money_url(Some("123"), "+07:00"),
+            "https://api.oyenza.app/island/money?since=123&tz=%2B07%3A00&kinds=all"
+        );
+        assert_eq!(
+            activity_url("+07:00", None),
+            "https://api.oyenza.app/island/activity?tz=%2B07%3A00&days=7"
+        );
+        assert_eq!(
+            activity_url("+07:00", Some("9")),
+            "https://api.oyenza.app/island/activity?tz=%2B07%3A00&days=7&since=9"
+        );
+        assert_eq!(
+            bills_url("-03:30"),
+            "https://api.oyenza.app/island/bills?tz=-03%3A30&days=35"
+        );
+        assert_eq!(
+            undo_url("abc 1/2"),
+            "https://api.oyenza.app/island/note/abc%201%2F2"
+        );
+        let b: serde_json::Value =
+            serde_json::from_str(&start_body("DESKTOP-7Q2K", "0.1.5", "windows")).unwrap();
+        assert_eq!(
+            b,
+            serde_json::json!({ "app": "poni", "name": "DESKTOP-7Q2K", "version": "0.1.5", "platform": "windows" })
+        );
+        assert_eq!(
+            PLATFORM,
+            if cfg!(target_os = "macos") {
+                "macos"
+            } else {
+                "windows"
+            }
+        );
+        let n: serde_json::Value =
+            serde_json::from_str(&note_body("kopi \"25rb\"", "+07:00")).unwrap();
         assert_eq!(n["text"], "kopi \"25rb\"");
         assert_eq!(pc_name("  DESKTOP-7Q2K\u{0}\n "), "DESKTOP-7Q2K");
         assert_eq!(pc_name(""), UNNAMED);
@@ -914,32 +1136,74 @@ mod tests {
         assert_eq!(tz_param(420), "+07:00");
         assert_eq!(tz_param(-210), "-03:30");
         assert_eq!(tz_param(0), "+00:00");
-        let local = LocalDateTime { year: 2026, month: 10, day: 24, hour: 14, minute: 38, second: 20 };
+        let local = LocalDateTime {
+            year: 2026,
+            month: 10,
+            day: 24,
+            hour: 14,
+            minute: 38,
+            second: 20,
+        };
         // 2026-10-24 07:38:20 UTC
         let unix = days_from_civil(2026, 10, 24) * 86_400 + 7 * 3600 + 38 * 60 + 20;
         assert_eq!(offset_minutes(&local, unix), 420);
         // A second off either way still rounds to the zone.
         assert_eq!(offset_minutes(&local, unix + 1), 420);
-        let india = LocalDateTime { hour: 13, minute: 8, ..local };
+        let india = LocalDateTime {
+            hour: 13,
+            minute: 8,
+            ..local
+        };
         assert_eq!(offset_minutes(&india, unix), 330);
     }
 
     #[test]
     fn claims() {
-        assert_eq!(parse_claim(200, r#"{"status":"waiting"}"#), Some(Claim::Waiting));
+        assert_eq!(
+            parse_claim(200, r#"{"status":"waiting"}"#),
+            Some(Claim::Waiting)
+        );
         let key = format!("oyzd_{}", "A".repeat(43));
-        let body = format!(r#"{{"status":"connected","key":"{key}","device":{{"id":"d1","name":"DESKTOP-7Q2K"}},"account":"a•••@example.com"}}"#);
+        let body = format!(
+            r#"{{"status":"connected","key":"{key}","device":{{"id":"d1","name":"DESKTOP-7Q2K"}},"account":"a•••@example.com"}}"#
+        );
         assert_eq!(
             parse_claim(200, &body),
-            Some(Claim::Connected(Link { key, account: "a•••@example.com".into(), device_id: "d1".into(), device_name: "DESKTOP-7Q2K".into() }))
+            Some(Claim::Connected(Link {
+                key,
+                account: "a•••@example.com".into(),
+                device_id: "d1".into(),
+                device_name: "DESKTOP-7Q2K".into()
+            }))
         );
-        assert_eq!(parse_claim(200, r#"{"status":"connected","key":"nope","device":{"id":"d","name":"x"}}"#), None);
-        assert_eq!(parse_claim(429, r#"{"error":"slow_down"}"#), Some(Claim::SlowDown));
-        assert_eq!(parse_claim(410, r#"{"error":"expired"}"#), Some(Claim::Expired));
-        assert_eq!(parse_claim(403, r#"{"error":"denied"}"#), Some(Claim::Denied));
-        assert_eq!(parse_claim(404, r#"{"error":"invalid_code"}"#), Some(Claim::Invalid));
+        assert_eq!(
+            parse_claim(
+                200,
+                r#"{"status":"connected","key":"nope","device":{"id":"d","name":"x"}}"#
+            ),
+            None
+        );
+        assert_eq!(
+            parse_claim(429, r#"{"error":"slow_down"}"#),
+            Some(Claim::SlowDown)
+        );
+        assert_eq!(
+            parse_claim(410, r#"{"error":"expired"}"#),
+            Some(Claim::Expired)
+        );
+        assert_eq!(
+            parse_claim(403, r#"{"error":"denied"}"#),
+            Some(Claim::Denied)
+        );
+        assert_eq!(
+            parse_claim(404, r#"{"error":"invalid_code"}"#),
+            Some(Claim::Invalid)
+        );
         assert_eq!(parse_claim(500, "oops"), None);
-        assert_eq!(parse_link(r#"{"key":"oyzc_x","account":"","device_id":"","device_name":""}"#), None);
+        assert_eq!(
+            parse_link(r#"{"key":"oyzc_x","account":"","device_id":"","device_name":""}"#),
+            None
+        );
     }
 
     #[test]
@@ -960,7 +1224,10 @@ mod tests {
         let s = parse_saved(r#"{"saved":[{"id":"x","type":"expense","title":"Kopi","amount":25000,"currency":"IDR","text":"Rp 25.000","category":null,"wallet":"GoPay"}]}"#).unwrap();
         assert_eq!(s[0].category, None);
         assert_eq!(parse_saved(r#"{"saved":[]}"#), None);
-        assert_eq!(error_code(r#"{"error":"no_wallet"}"#).as_deref(), Some("no_wallet"));
+        assert_eq!(
+            error_code(r#"{"error":"no_wallet"}"#).as_deref(),
+            Some("no_wallet")
+        );
         assert_eq!(error_code("<html>"), None);
     }
 
@@ -969,7 +1236,10 @@ mod tests {
         assert_eq!(money_every_s(true, false), 60);
         assert_eq!(money_every_s(false, false), 180);
         assert_eq!(money_every_s(true, true), 180);
-        assert_eq!((1..=6).map(|n| backoff_s(n, None)).collect::<Vec<_>>(), [60, 120, 240, 480, 900, 900]);
+        assert_eq!(
+            (1..=6).map(|n| backoff_s(n, None)).collect::<Vec<_>>(),
+            [60, 120, 240, 480, 900, 900]
+        );
         assert_eq!(backoff_s(1, Some(300)), 300);
         assert_eq!(backoff_s(1, Some(99_999)), 900);
         assert_eq!(backoff_s(40, None), 900);
@@ -986,12 +1256,34 @@ mod tests {
 
     #[test]
     fn money_notices() {
-        let one = money_notice(&[arrival("a", "Rp 1.250.000", "Gaji Oktober", Some("BCA"))]).unwrap();
-        assert_eq!((one.title.as_str(), one.shown.as_str(), one.hidden.as_str()), ("Money in · BCA", "Rp 1.250.000 · Gaji Oktober", "Amount and sender hidden"));
+        let one =
+            money_notice(&[arrival("a", "Rp 1.250.000", "Gaji Oktober", Some("BCA"))]).unwrap();
+        assert_eq!(
+            (one.title.as_str(), one.shown.as_str(), one.hidden.as_str()),
+            (
+                "Money in · BCA",
+                "Rp 1.250.000 · Gaji Oktober",
+                "Amount and sender hidden"
+            )
+        );
         let bare = money_notice(&[arrival("a", "Rp 50.000", " ", None)]).unwrap();
-        assert_eq!((bare.title.as_str(), bare.shown.as_str()), ("Money in", "Rp 50.000"));
-        let two = money_notice(&[arrival("a", "Rp 1.250.000", "Gaji", Some("BCA")), arrival("b", "Rp 50.000", "Uang masuk", Some("GoPay"))]).unwrap();
-        assert_eq!((two.title.as_str(), two.shown.as_str(), two.hidden.as_str()), ("Money in · 2 new", "Rp 1.250.000 · Rp 50.000", "Amounts and senders hidden"));
+        assert_eq!(
+            (bare.title.as_str(), bare.shown.as_str()),
+            ("Money in", "Rp 50.000")
+        );
+        let two = money_notice(&[
+            arrival("a", "Rp 1.250.000", "Gaji", Some("BCA")),
+            arrival("b", "Rp 50.000", "Uang masuk", Some("GoPay")),
+        ])
+        .unwrap();
+        assert_eq!(
+            (two.title.as_str(), two.shown.as_str(), two.hidden.as_str()),
+            (
+                "Money in · 2 new",
+                "Rp 1.250.000 · Rp 50.000",
+                "Amounts and senders hidden"
+            )
+        );
         assert!(money_notice(&[]).is_none());
     }
 
@@ -1010,24 +1302,54 @@ mod tests {
         assert_eq!(bill_title(&spotify, today), "Spotify renews tomorrow");
         assert_eq!(bill_title(&card, today), "Kartu Kredit BCA due today");
         assert_eq!(bill_title(&later, today), "Cloud renews on Thu 29 Oct");
-        assert_eq!(bill_subtitles(&spotify), ("Rp 54.990".to_string(), Some("Amount hidden".to_string())));
-        assert_eq!(bill_subtitles(&card), ("Open Oyenza for the amount".to_string(), None));
+        assert_eq!(
+            bill_subtitles(&spotify),
+            ("Rp 54.990".to_string(), Some("Amount hidden".to_string()))
+        );
+        assert_eq!(
+            bill_subtitles(&card),
+            ("Open Oyenza for the amount".to_string(), None)
+        );
 
         let all = vec![spotify.clone(), card.clone(), later.clone()];
-        let due: Vec<&str> = bills_to_remind(&all, today, &[]).iter().map(|b| b.name.as_str()).collect();
+        let due: Vec<&str> = bills_to_remind(&all, today, &[])
+            .iter()
+            .map(|b| b.name.as_str())
+            .collect();
         assert_eq!(due, ["Spotify", "Kartu Kredit BCA"]);
         let noticed = vec![notice_key(&spotify)];
         assert_eq!(bills_to_remind(&all, today, &noticed).len(), 1);
-        let mut keys = vec![notice_key(&card), "2026-10-20|card|Old".into(), notice_key(&spotify)];
+        let mut keys = vec![
+            notice_key(&card),
+            "2026-10-20|card|Old".into(),
+            notice_key(&spotify),
+        ];
         prune_noticed(&mut keys, today);
         assert_eq!(keys, [notice_key(&card), notice_key(&spotify)]);
     }
 
     #[test]
     fn saved_rows_and_notes() {
-        let kopi = Saved { id: "1".into(), title: "Kopi".into(), amount: 25000.0, text: "Rp 25.000".into(), category: Some("Coffee".into()), wallet: "GoPay".into() };
-        assert_eq!(saved_line(std::slice::from_ref(&kopi)), "Kopi · Rp 25.000 · Coffee · GoPay");
-        let parkir = Saved { id: "2".into(), title: "Parkir".into(), amount: 5000.0, text: "Rp 5.000".into(), category: None, wallet: "Bank".into() };
+        let kopi = Saved {
+            id: "1".into(),
+            title: "Kopi".into(),
+            amount: 25000.0,
+            text: "Rp 25.000".into(),
+            category: Some("Coffee".into()),
+            wallet: "GoPay".into(),
+        };
+        assert_eq!(
+            saved_line(std::slice::from_ref(&kopi)),
+            "Kopi · Rp 25.000 · Coffee · GoPay"
+        );
+        let parkir = Saved {
+            id: "2".into(),
+            title: "Parkir".into(),
+            amount: 5000.0,
+            text: "Rp 5.000".into(),
+            category: None,
+            wallet: "Bank".into(),
+        };
         assert_eq!(saved_line(&[kopi, parkir]), "Kopi · Rp 25.000, and 1 more");
         assert_eq!(saved_line(&[]), "");
         assert!(has_amount("kopi 25rb"));
@@ -1035,7 +1357,10 @@ mod tests {
         assert!(!has_amount("kopi enak"));
         assert!(!has_amount("gocengan")); // only the whole word
         assert_eq!(note_error_text("no_wallet"), "Add a wallet in Oyenza first");
-        assert_eq!(note_error_text("whatever"), "Couldn't save it. Your text is still here");
+        assert_eq!(
+            note_error_text("whatever"),
+            "Couldn't save it. Your text is still here"
+        );
         assert_eq!(connect_failure_text("expired").0, "Sign-in code expired");
         assert_eq!(code_time_left(581.2), "9:42");
         assert_eq!(code_time_left(-3.0), "0:00");
@@ -1047,11 +1372,17 @@ mod tests {
     #[test]
     fn server_times_in_local_time() {
         let t = local_clock("2026-10-24T02:12:00.000Z", 420).unwrap();
-        assert_eq!((t.year, t.month, t.day, t.hour, t.minute), (2026, 10, 24, 9, 12));
+        assert_eq!(
+            (t.year, t.month, t.day, t.hour, t.minute),
+            (2026, 10, 24, 9, 12)
+        );
         let late = local_clock("2026-10-24T20:30:00Z", 420).unwrap();
         assert_eq!((late.day, late.hour, late.minute), (25, 3, 30));
         let west = local_clock("2026-01-01T01:00:00.5Z", -300).unwrap();
-        assert_eq!((west.year, west.month, west.day, west.hour), (2025, 12, 31, 20));
+        assert_eq!(
+            (west.year, west.month, west.day, west.hour),
+            (2025, 12, 31, 20)
+        );
         assert_eq!(local_clock("2026-10-24 02:12:00", 420), None);
         assert_eq!(local_clock("", 0), None);
     }
@@ -1061,8 +1392,17 @@ mod tests {
         let mut shown = Vec::new();
         let first = unseen(&mut shown, &[arrival("a", "Rp 1", "", None)]);
         assert_eq!(first.len(), 1);
-        let again = unseen(&mut shown, &[arrival("a", "Rp 1", "", None), arrival("b", "Rp 2", "", None)]);
-        assert_eq!(again.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), ["b"]);
+        let again = unseen(
+            &mut shown,
+            &[
+                arrival("a", "Rp 1", "", None),
+                arrival("b", "Rp 2", "", None),
+            ],
+        );
+        assert_eq!(
+            again.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
+            ["b"]
+        );
         for i in 0..60 {
             unseen(&mut shown, &[arrival(&format!("n{i}"), "Rp 1", "", None)]);
         }
@@ -1071,7 +1411,10 @@ mod tests {
     }
 
     fn spent(id: &str, text: &str, title: &str, wallet: Option<&str>) -> Arrival {
-        Arrival { kind: "expense".into(), ..arrival(id, text, title, wallet) }
+        Arrival {
+            kind: "expense".into(),
+            ..arrival(id, text, title, wallet)
+        }
     }
 
     fn txn(id: &str, kind: &str, title: &str, text: &str) -> Txn {
@@ -1082,7 +1425,10 @@ mod tests {
             amount: 1.0,
             text: text.into(),
             category: None,
-            wallet: Some(WalletRef { name: "BCA".into(), color: String::new() }),
+            wallet: Some(WalletRef {
+                name: "BCA".into(),
+                color: String::new(),
+            }),
             to_wallet: None,
             at: String::new(),
             auto: false,
@@ -1090,18 +1436,68 @@ mod tests {
     }
 
     fn day(date: &str, ids: &[&str]) -> Day {
-        Day { date: date.into(), count: ids.len(), in_sum: 0.0, out: 0.0, in_text: String::new(), out_text: String::new(), rows: ids.iter().map(|i| txn(i, "expense", "x", "Rp 1")).collect() }
+        Day {
+            date: date.into(),
+            count: ids.len(),
+            in_sum: 0.0,
+            out: 0.0,
+            in_text: String::new(),
+            out_text: String::new(),
+            rows: ids.iter().map(|i| txn(i, "expense", "x", "Rp 1")).collect(),
+        }
     }
 
     #[test]
     fn money_out_notices() {
         let one = money_notice(&[spent("a", "Rp 89.000", "Tokopedia", Some("BCA"))]).unwrap();
-        assert_eq!((one.title.as_str(), one.shown.as_str(), one.hidden.as_str(), one.flow), ("Money out · BCA", "Rp 89.000 · Tokopedia", "Amount and payee hidden", Some(Flow::Out)));
-        let two = money_notice(&[spent("a", "Rp 89.000", "", None), spent("b", "Rp 25.000", "", None)]).unwrap();
-        assert_eq!((two.title.as_str(), two.hidden.as_str()), ("Money out · 2 new", "Amounts and payees hidden"));
-        let both = money_notice(&[arrival("a", "Rp 1.250.000", "Gaji", Some("BCA")), spent("b", "Rp 89.000", "", None)]).unwrap();
-        assert_eq!((both.title.as_str(), both.shown.as_str(), both.hidden.as_str(), both.flow), ("Oyenza · 2 new", "+Rp 1.250.000 · \u{2212}Rp 89.000", "Amounts hidden", None));
-        assert_eq!(money_notice(&[arrival("a", "Rp 1", "", None)]).unwrap().flow, Some(Flow::In));
+        assert_eq!(
+            (
+                one.title.as_str(),
+                one.shown.as_str(),
+                one.hidden.as_str(),
+                one.flow
+            ),
+            (
+                "Money out · BCA",
+                "Rp 89.000 · Tokopedia",
+                "Amount and payee hidden",
+                Some(Flow::Out)
+            )
+        );
+        let two = money_notice(&[
+            spent("a", "Rp 89.000", "", None),
+            spent("b", "Rp 25.000", "", None),
+        ])
+        .unwrap();
+        assert_eq!(
+            (two.title.as_str(), two.hidden.as_str()),
+            ("Money out · 2 new", "Amounts and payees hidden")
+        );
+        let both = money_notice(&[
+            arrival("a", "Rp 1.250.000", "Gaji", Some("BCA")),
+            spent("b", "Rp 89.000", "", None),
+        ])
+        .unwrap();
+        assert_eq!(
+            (
+                both.title.as_str(),
+                both.shown.as_str(),
+                both.hidden.as_str(),
+                both.flow
+            ),
+            (
+                "Oyenza · 2 new",
+                "+Rp 1.250.000 · \u{2212}Rp 89.000",
+                "Amounts hidden",
+                None
+            )
+        );
+        assert_eq!(
+            money_notice(&[arrival("a", "Rp 1", "", None)])
+                .unwrap()
+                .flow,
+            Some(Flow::In)
+        );
     }
 
     #[test]
@@ -1113,15 +1509,32 @@ mod tests {
               {"date":"2026-10-23","count":0,"in":0,"out":0,"inText":"Rp 0","outText":"Rp 0","rows":[]}]}"##,
         )
         .unwrap();
-        let ActivityAnswer::Full(a) = full else { panic!("a full answer") };
-        assert_eq!((a.cursor.as_str(), a.today.as_str(), a.days.len()), ("77", "2026-10-24", 2));
+        let ActivityAnswer::Full(a) = full else {
+            panic!("a full answer")
+        };
+        assert_eq!(
+            (a.cursor.as_str(), a.today.as_str(), a.days.len()),
+            ("77", "2026-10-24", 2)
+        );
         let d = a.day("2026-10-24").unwrap();
-        assert_eq!((d.count, d.in_sum, d.out_text.as_str()), (2, 1_250_000.0, "Rp 25.000"));
-        assert_eq!((d.rows[0].flow(), d.rows[0].auto, d.rows[1].flow()), (Flow::In, true, Flow::Move));
-        assert_eq!(d.rows[1].to_wallet.as_ref().map(|w| w.name.as_str()), Some("GoPay"));
+        assert_eq!(
+            (d.count, d.in_sum, d.out_text.as_str()),
+            (2, 1_250_000.0, "Rp 25.000")
+        );
+        assert_eq!(
+            (d.rows[0].flow(), d.rows[0].auto, d.rows[1].flow()),
+            (Flow::In, true, Flow::Move)
+        );
+        assert_eq!(
+            d.rows[1].to_wallet.as_ref().map(|w| w.name.as_str()),
+            Some("GoPay")
+        );
         assert_eq!(
             parse_activity(r#"{"cursor":"77","today":"2026-10-24","changed":false}"#),
-            Some(ActivityAnswer::Unchanged { cursor: "77".into(), today: "2026-10-24".into() })
+            Some(ActivityAnswer::Unchanged {
+                cursor: "77".into(),
+                today: "2026-10-24".into()
+            })
         );
         assert_eq!(parse_activity(r#"{"cursor":"77"}"#), None);
         assert_eq!(parse_activity("<html>"), None);
@@ -1131,19 +1544,56 @@ mod tests {
     fn the_strip_and_its_headings() {
         let today = "2026-10-24"; // a Saturday
         let labels: Vec<String> = strip(today).into_iter().map(|(_, l)| l).collect();
-        assert_eq!(labels, ["Sun", "Mon", "Tue", "Wed", "Thu", "Yesterday", "Today", "Tomorrow", "Later"]);
+        assert_eq!(
+            labels,
+            [
+                "Sun",
+                "Mon",
+                "Tue",
+                "Wed",
+                "Thu",
+                "Yesterday",
+                "Today",
+                "Tomorrow",
+                "Later"
+            ]
+        );
         assert_eq!(strip(today)[0].0, DayPick::Past(6));
-        assert_eq!(pick_date(DayPick::Past(6), today).as_deref(), Some("2026-10-18"));
-        assert_eq!(pick_date(DayPick::Today, "2026-03-01").as_deref(), Some("2026-03-01"));
-        assert_eq!(pick_date(DayPick::Past(1), "2026-03-01").as_deref(), Some("2026-02-28"));
+        assert_eq!(
+            pick_date(DayPick::Past(6), today).as_deref(),
+            Some("2026-10-18")
+        );
+        assert_eq!(
+            pick_date(DayPick::Today, "2026-03-01").as_deref(),
+            Some("2026-03-01")
+        );
+        assert_eq!(
+            pick_date(DayPick::Past(1), "2026-03-01").as_deref(),
+            Some("2026-02-28")
+        );
         assert_eq!(pick_date(DayPick::Tomorrow, today), None);
-        assert_eq!(day_heading(DayPick::Today, today, 5), "TODAY · 5 TRANSACTIONS");
-        assert_eq!(day_heading(DayPick::Past(1), today, 1), "YESTERDAY · 1 TRANSACTION");
+        assert_eq!(
+            day_heading(DayPick::Today, today, 5),
+            "TODAY · 5 TRANSACTIONS"
+        );
+        assert_eq!(
+            day_heading(DayPick::Past(1), today, 1),
+            "YESTERDAY · 1 TRANSACTION"
+        );
         assert_eq!(day_heading(DayPick::Past(2), today, 0), "THU 22 OCT");
-        assert_eq!(day_heading(DayPick::Tomorrow, today, 3), "TOMORROW · SUN 25 OCT");
-        assert_eq!(day_heading(DayPick::Later, today, 3), "LATER · THE NEXT 30 DAYS");
+        assert_eq!(
+            day_heading(DayPick::Tomorrow, today, 3),
+            "TOMORROW · SUN 25 OCT"
+        );
+        assert_eq!(
+            day_heading(DayPick::Later, today, 3),
+            "LATER · THE NEXT 30 DAYS"
+        );
         assert_eq!(short_date("2026-10-26").as_deref(), Some("Mon 26 Oct"));
-        assert_eq!(empty_day_text(DayPick::Later), "Nothing due in the next 30 days");
+        assert_eq!(
+            empty_day_text(DayPick::Later),
+            "Nothing due in the next 30 days"
+        );
     }
 
     #[test]
@@ -1162,18 +1612,52 @@ mod tests {
     #[test]
     fn rows_say_what_and_which_way() {
         let coffee = txn("c", "expense", "Kopi", "Rp 25.000");
-        assert_eq!((txn_title(&coffee), txn_detail(&coffee, "19:40"), signed_sum(&coffee, true)), ("Kopi".to_string(), "BCA · 19:40".to_string(), "\u{2212}Rp 25.000".to_string()));
+        assert_eq!(
+            (
+                txn_title(&coffee),
+                txn_detail(&coffee, "19:40"),
+                signed_sum(&coffee, true)
+            ),
+            (
+                "Kopi".to_string(),
+                "BCA · 19:40".to_string(),
+                "\u{2212}Rp 25.000".to_string()
+            )
+        );
         assert_eq!(signed_sum(&coffee, false), "\u{2212}Rp •••");
         let pay = txn("p", "income", "", "Rp 1.250.000");
-        assert_eq!((txn_title(&pay), signed_sum(&pay, false)), ("Money in".to_string(), "+Rp •••".to_string()));
-        let lunch = Txn { category: Some("Makan & Minum".into()), ..txn("l", "expense", " ", "Rp 40.000") };
+        assert_eq!(
+            (txn_title(&pay), signed_sum(&pay, false)),
+            ("Money in".to_string(), "+Rp •••".to_string())
+        );
+        let lunch = Txn {
+            category: Some("Makan & Minum".into()),
+            ..txn("l", "expense", " ", "Rp 40.000")
+        };
         assert_eq!(txn_title(&lunch), "Makan & Minum");
         let mut mv = txn("m", "transfer", "", "Rp 500.000");
-        mv.to_wallet = Some(WalletRef { name: "GoPay".into(), color: String::new() });
-        assert_eq!((txn_title(&mv), txn_detail(&mv, "09:00"), signed_sum(&mv, true)), ("BCA to GoPay".to_string(), "Own transfer · 09:00".to_string(), "Rp 500.000".to_string()));
+        mv.to_wallet = Some(WalletRef {
+            name: "GoPay".into(),
+            color: String::new(),
+        });
+        assert_eq!(
+            (
+                txn_title(&mv),
+                txn_detail(&mv, "09:00"),
+                signed_sum(&mv, true)
+            ),
+            (
+                "BCA to GoPay".to_string(),
+                "Own transfer · 09:00".to_string(),
+                "Rp 500.000".to_string()
+            )
+        );
         mv.title = "Top up".into();
         assert_eq!(txn_detail(&mv, "09:00"), "BCA to GoPay · 09:00");
-        let no_wallet = Txn { wallet: None, ..txn("n", "expense", "Parkir", "Rp 5.000") };
+        let no_wallet = Txn {
+            wallet: None,
+            ..txn("n", "expense", "Parkir", "Rp 5.000")
+        };
         assert_eq!(txn_detail(&no_wallet, "08:10"), "08:10");
     }
 
@@ -1186,7 +1670,12 @@ mod tests {
             bill("subscription", "Netflix", "2026-10-29", Some("Rp 54.000")),
             bill("subscription", "Cloud", "2026-11-20", Some("Rp 29.000")),
         ];
-        let names = |p: DayPick| bills_for(&all, today, p).iter().map(|b| b.name.as_str()).collect::<Vec<_>>();
+        let names = |p: DayPick| {
+            bills_for(&all, today, p)
+                .iter()
+                .map(|b| b.name.as_str())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(names(DayPick::Today), ["Kartu Kredit BCA"]);
         assert_eq!(names(DayPick::Tomorrow), ["Spotify"]);
         assert_eq!(names(DayPick::Later), ["Netflix", "Cloud"]);
@@ -1198,7 +1687,10 @@ mod tests {
         let mut seen = Seen::default();
         let first = vec![day("2026-10-24", &["a", "b"])];
         seen.note(&first, 100.0);
-        assert_eq!((seen.glow("a", 100.0), seen.glowing_until(&first[0], 100.0)), (0.0, None));
+        assert_eq!(
+            (seen.glow("a", 100.0), seen.glowing_until(&first[0], 100.0)),
+            (0.0, None)
+        );
         let next = vec![day("2026-10-24", &["c", "a", "b"])];
         seen.note(&next, 130.0);
         assert_eq!(seen.glow("c", 130.0), 1.0);

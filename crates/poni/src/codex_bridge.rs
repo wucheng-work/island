@@ -2,6 +2,8 @@
 //! MCP 辅助进程只转交原始工具请求的回答，不创建或接管桌面会话。
 
 use crate::codex::{Kind, Message};
+#[cfg(windows)]
+use crate::codex_pipe::{Listener as UnixListener, Stream as UnixStream};
 use crate::events::{AppEvent, EventSink};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -14,8 +16,6 @@ use std::net::Shutdown;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
-#[cfg(windows)]
-use crate::codex_pipe::{Listener as UnixListener, Stream as UnixStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
@@ -220,9 +220,13 @@ impl Drop for Bridge {
 
 fn socket_path() -> io::Result<PathBuf> {
     #[cfg(windows)]
-    { crate::codex_pipe::path() }
+    {
+        crate::codex_pipe::path()
+    }
     #[cfg(unix)]
-    { Ok(crate::paths::cache_dir().join("codex").join("bridge.sock")) }
+    {
+        Ok(crate::paths::cache_dir().join("codex").join("bridge.sock"))
+    }
 }
 
 fn unique_id() -> String {

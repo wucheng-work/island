@@ -36,7 +36,10 @@ impl SaveErrors {
 
 pub fn save<T: Serialize>(path: &Path, value: &T, writable: bool) -> Result<(), SaveError> {
     if !writable {
-        pwarn!("{} couldn't be read at start; not overwriting it", path.display());
+        pwarn!(
+            "{} couldn't be read at start; not overwriting it",
+            path.display()
+        );
         return Err(SaveError::Protected);
     }
     poni_core::store::save_json_atomic(path, value).map_err(|error| {

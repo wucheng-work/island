@@ -297,18 +297,24 @@ impl Settings {
         // it off). One switched off by hand as an add-on stays off, as a hidden
         // tab. Its old key stays in the file, unread, as keys this version
         // doesn't know do.
-        if self.settings_version < 5 && self.addons.get("notifications") == Some(&false) && !self.hidden_tabs.iter().any(|k| k == "notifications") {
+        if self.settings_version < 5
+            && self.addons.get("notifications") == Some(&false)
+            && !self.hidden_tabs.iter().any(|k| k == "notifications")
+        {
             self.hidden_tabs.push("notifications".into());
         }
         // v6：今天与任务合并。旧版本仍显示任务时，合并后的入口保持可见；
         // 两个旧入口都隐藏时，继续隐藏今天。迁移仅执行一次。
         if self.settings_version < 6 {
             let tasks_hidden = self.hidden_tabs.iter().any(|key| key == "tasks");
-            self.hidden_tabs.retain(|key| key != "tasks" && (key != "today" || tasks_hidden));
+            self.hidden_tabs
+                .retain(|key| key != "tasks" && (key != "today" || tasks_hidden));
         }
         // v7：全局声音拆成模块开关，旧版静音状态一次性迁移，保存时移除旧键。
         let old_sounds = self.extra.remove("sounds");
-        if self.settings_version < 7 && old_sounds.as_ref().and_then(serde_json::Value::as_bool) == Some(false) {
+        if self.settings_version < 7
+            && old_sounds.as_ref().and_then(serde_json::Value::as_bool) == Some(false)
+        {
             self.focus_sound = false;
             self.shelf_sound = false;
             self.codex_sound = false;
@@ -317,24 +323,50 @@ impl Settings {
         // 兼容旧 Windows 版已拆分的声音设置，迁移后删除旧键。
         #[cfg(windows)]
         {
-            if let Some(enabled) = self.extra.remove("focus_sounds").and_then(|value| value.as_bool()) {
+            if let Some(enabled) = self
+                .extra
+                .remove("focus_sounds")
+                .and_then(|value| value.as_bool())
+            {
                 self.focus_sound = enabled;
             }
-            if let Some(enabled) = self.extra.remove("shelf_sounds").and_then(|value| value.as_bool()) {
+            if let Some(enabled) = self
+                .extra
+                .remove("shelf_sounds")
+                .and_then(|value| value.as_bool())
+            {
                 self.shelf_sound = enabled;
             }
             // LOGFONT 最多保存 31 个 UTF-16 单元；保留完整字符，不截断代理对。
             let mut units = 0;
-            self.ui_font = self.ui_font.trim().chars().filter(|ch| !ch.is_control()).take_while(|ch| {
-                units += ch.len_utf16();
-                units <= 31
-            }).collect();
+            self.ui_font = self
+                .ui_font
+                .trim()
+                .chars()
+                .filter(|ch| !ch.is_control())
+                .take_while(|ch| {
+                    units += ch.len_utf16();
+                    units <= 31
+                })
+                .collect();
             // 旧设置缺少字段时由 Default 补齐；手动填写的未知 ID 在读取边界恢复默认。
             for (id, default) in [
-                (&mut self.focus_sound_id, crate::sound_catalog::DEFAULT_FOCUS),
-                (&mut self.shelf_sound_id, crate::sound_catalog::DEFAULT_SHELF),
-                (&mut self.codex_sound_id, crate::sound_catalog::DEFAULT_CODEX),
-                (&mut self.wechat_sound_id, crate::sound_catalog::DEFAULT_WECHAT),
+                (
+                    &mut self.focus_sound_id,
+                    crate::sound_catalog::DEFAULT_FOCUS,
+                ),
+                (
+                    &mut self.shelf_sound_id,
+                    crate::sound_catalog::DEFAULT_SHELF,
+                ),
+                (
+                    &mut self.codex_sound_id,
+                    crate::sound_catalog::DEFAULT_CODEX,
+                ),
+                (
+                    &mut self.wechat_sound_id,
+                    crate::sound_catalog::DEFAULT_WECHAT,
+                ),
                 (&mut self.mail_sound_id, crate::sound_catalog::DEFAULT_MAIL),
             ] {
                 if crate::sound_catalog::find(id).is_none() {
@@ -360,10 +392,19 @@ impl Settings {
         }
         self.expanded_width = self.expanded_width.clamp(480.0, 900.0);
         self.weather_city = self.weather_city.trim().chars().take(80).collect();
-        self.weather_city_coordinates = self.weather_city_coordinates.filter(|(latitude, longitude)| {
-            !self.weather_city.is_empty() && latitude.is_finite() && longitude.is_finite() && (-90.0..=90.0).contains(latitude) && (-180.0..=180.0).contains(longitude)
-        });
-        self.island_x = self.island_x.filter(|x| x.is_finite()).map(|x| x.clamp(0.0, 1.0));
+        self.weather_city_coordinates =
+            self.weather_city_coordinates
+                .filter(|(latitude, longitude)| {
+                    !self.weather_city.is_empty()
+                        && latitude.is_finite()
+                        && longitude.is_finite()
+                        && (-90.0..=90.0).contains(latitude)
+                        && (-180.0..=180.0).contains(longitude)
+                });
+        self.island_x = self
+            .island_x
+            .filter(|x| x.is_finite())
+            .map(|x| x.clamp(0.0, 1.0));
         let p = &mut self.pomodoro;
         p.focus_min = p.focus_min.clamp(1, 180);
         p.short_break_min = p.short_break_min.clamp(1, 60);
@@ -380,10 +421,12 @@ mod tests {
     #[test]
     fn partial_json_fills_defaults() {
         // 已移除功能的字段不参与当前设置，但再次保存时保留原始值。
-        let s: Settings = serde_json::from_str(r#"{"idle_style":"eyes","water":{"goal_ml":1500}}"#).unwrap();
+        let s: Settings =
+            serde_json::from_str(r#"{"idle_style":"eyes","water":{"goal_ml":1500}}"#).unwrap();
         assert_eq!(s.idle_style, IdleStyle::Eyes);
         assert_eq!(s.pomodoro.focus_min, 25);
-        let back: serde_json::Value = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        let back: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(back["water"]["goal_ml"], 1500);
     }
 
@@ -393,7 +436,9 @@ mod tests {
         assert!(!s.system_on());
         s.set_system(true);
         assert!(s.system_on());
-        let s: Settings = serde_json::from_str(r#"{"addons":{"system":true,"sholat":true,"future":true}}"#).unwrap();
+        let s: Settings =
+            serde_json::from_str(r#"{"addons":{"system":true,"sholat":true,"future":true}}"#)
+                .unwrap();
         assert!(s.system_on());
         let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(back.addons.get("sholat"), Some(&true));
@@ -428,10 +473,22 @@ mod tests {
             Theme::Pill => "pill",
             Theme::Diorama => "diorama",
         };
-        for theme in [Theme::Classic, Theme::Oyen, Theme::Glass, Theme::Pill, Theme::Diorama] {
-            let s = Settings { theme, ..Settings::default() };
+        for theme in [
+            Theme::Classic,
+            Theme::Oyen,
+            Theme::Glass,
+            Theme::Pill,
+            Theme::Diorama,
+        ] {
+            let s = Settings {
+                theme,
+                ..Settings::default()
+            };
             let j = serde_json::to_string(&s).unwrap();
-            assert!(j.contains(&format!(r#""theme":"{}""#, name(theme))), "{theme:?}: {j}");
+            assert!(
+                j.contains(&format!(r#""theme":"{}""#, name(theme))),
+                "{theme:?}: {j}"
+            );
             let back: Settings = serde_json::from_str(&j).unwrap();
             assert_eq!(back, s, "{theme:?}");
             // It survives the clean-up a loaded file goes through.
@@ -445,7 +502,12 @@ mod tests {
 
     #[test]
     fn sanitize_clamps() {
-        let s = Settings { expanded_width: 5000.0, hover_delay_ms: 99999, ..Default::default() }.sanitized();
+        let s = Settings {
+            expanded_width: 5000.0,
+            hover_delay_ms: 99999,
+            ..Default::default()
+        }
+        .sanitized();
         assert_eq!(s.expanded_width, 900.0);
         assert_eq!(s.hover_delay_ms, 2000);
     }
@@ -455,22 +517,36 @@ mod tests {
         let s: Settings = serde_json::from_str(r#"{"hover_delay_ms":140}"#).unwrap();
         assert_eq!(s.settings_version, 0);
         let s = s.sanitized();
-        assert_eq!((s.hover_delay_ms, s.settings_version), (220, SETTINGS_VERSION));
+        assert_eq!(
+            (s.hover_delay_ms, s.settings_version),
+            (220, SETTINGS_VERSION)
+        );
         // A user's own choice is kept, and a current file isn't touched.
         let s: Settings = serde_json::from_str(r#"{"hover_delay_ms":90}"#).unwrap();
         assert_eq!(s.sanitized().hover_delay_ms, 90);
-        let s: Settings = serde_json::from_str(r#"{"settings_version":2,"hover_delay_ms":140}"#).unwrap();
+        let s: Settings =
+            serde_json::from_str(r#"{"settings_version":2,"hover_delay_ms":140}"#).unwrap();
         assert_eq!(s.sanitized().hover_delay_ms, 140);
     }
 
     #[test]
     fn files_with_removed_settings_still_load_and_keep_them() {
-        let s = serde_json::from_str::<Settings>(r#"{"settings_version":4,"clipboard_history":true,"theme":"oyen"}"#).unwrap().sanitized();
+        let s = serde_json::from_str::<Settings>(
+            r#"{"settings_version":4,"clipboard_history":true,"theme":"oyen"}"#,
+        )
+        .unwrap()
+        .sanitized();
         assert_eq!(s.theme, Theme::Oyen);
         assert_eq!(serde_json::to_value(&s).unwrap()["clipboard_history"], true);
         // A Clipboard start page from before 0.2.7 opens Music.
-        let s = serde_json::from_str::<Settings>(r#"{"settings_version":3,"start_page":"clipboard"}"#).unwrap().sanitized();
-        assert_eq!((s.start_page.as_str(), s.settings_version), ("media", SETTINGS_VERSION));
+        let s =
+            serde_json::from_str::<Settings>(r#"{"settings_version":3,"start_page":"clipboard"}"#)
+                .unwrap()
+                .sanitized();
+        assert_eq!(
+            (s.start_page.as_str(), s.settings_version),
+            ("media", SETTINGS_VERSION)
+        );
     }
 
     #[test]
@@ -484,21 +560,33 @@ mod tests {
         s.system_history = false;
         assert!(!s.system_history_on());
         // Files from before have no System switch: off.
-        let old: Settings = serde_json::from_str(r#"{"settings_version":4,"system_history":true}"#).unwrap();
+        let old: Settings =
+            serde_json::from_str(r#"{"settings_version":4,"system_history":true}"#).unwrap();
         assert!(!old.sanitized().system_on());
     }
 
     #[test]
     fn migrates_old_collapse_grace_once() {
         // Files from 0.1.7 and earlier hold the old 380 ms grace.
-        let s = serde_json::from_str::<Settings>(r#"{"settings_version":2,"collapse_delay_ms":380}"#).unwrap().sanitized();
-        assert_eq!((s.collapse_delay_ms, s.settings_version), (0, SETTINGS_VERSION));
-        let s = serde_json::from_str::<Settings>(r#"{"collapse_delay_ms":380,"hover_delay_ms":140}"#).unwrap().sanitized();
+        let s =
+            serde_json::from_str::<Settings>(r#"{"settings_version":2,"collapse_delay_ms":380}"#)
+                .unwrap()
+                .sanitized();
+        assert_eq!(
+            (s.collapse_delay_ms, s.settings_version),
+            (0, SETTINGS_VERSION)
+        );
+        let s =
+            serde_json::from_str::<Settings>(r#"{"collapse_delay_ms":380,"hover_delay_ms":140}"#)
+                .unwrap()
+                .sanitized();
         assert_eq!((s.collapse_delay_ms, s.hover_delay_ms), (0, 220));
         // A grace the user chose is kept, a current file isn't touched, and 0 stays 0.
-        let s: Settings = serde_json::from_str(r#"{"settings_version":2,"collapse_delay_ms":600}"#).unwrap();
+        let s: Settings =
+            serde_json::from_str(r#"{"settings_version":2,"collapse_delay_ms":600}"#).unwrap();
         assert_eq!(s.sanitized().collapse_delay_ms, 600);
-        let s: Settings = serde_json::from_str(r#"{"settings_version":3,"collapse_delay_ms":380}"#).unwrap();
+        let s: Settings =
+            serde_json::from_str(r#"{"settings_version":3,"collapse_delay_ms":380}"#).unwrap();
         assert_eq!(s.sanitized().collapse_delay_ms, 380);
         assert_eq!(Settings::default().sanitized().collapse_delay_ms, 0);
         // A file from a newer Poni keeps its version.
@@ -511,25 +599,38 @@ mod tests {
         // The default hides the island over full-screen apps; turning the
         // readout on keeps it on top instead.
         let before = Settings::default();
-        let mut s = Settings { game_stats: true, ..before.clone() };
+        let mut s = Settings {
+            game_stats: true,
+            ..before.clone()
+        };
         s.pair_game_stats(&before);
         assert!(s.game_stats && !s.hide_in_fullscreen);
         // Picking Hide afterwards turns the readout off.
         let before = s.clone();
-        let mut s = Settings { hide_in_fullscreen: true, ..before.clone() };
+        let mut s = Settings {
+            hide_in_fullscreen: true,
+            ..before.clone()
+        };
         s.pair_game_stats(&before);
         assert!(!s.game_stats && s.hide_in_fullscreen);
         // Stay on top alone, and the readout off, change nothing.
-        let before = Settings { hide_in_fullscreen: false, ..Settings::default() };
+        let before = Settings {
+            hide_in_fullscreen: false,
+            ..Settings::default()
+        };
         let mut s = before.clone();
         s.pair_game_stats(&before);
         assert_eq!(s, before);
         // A hand-edited file with both on keeps the readout, when changed
         // and when loaded.
-        let mut s = Settings { game_stats: true, ..Settings::default() };
+        let mut s = Settings {
+            game_stats: true,
+            ..Settings::default()
+        };
         s.pair_game_stats(&Settings::default());
         assert!(s.game_stats && !s.hide_in_fullscreen);
-        let s: Settings = serde_json::from_str(r#"{"game_stats":true,"hide_in_fullscreen":true}"#).unwrap();
+        let s: Settings =
+            serde_json::from_str(r#"{"game_stats":true,"hide_in_fullscreen":true}"#).unwrap();
         let s = s.sanitized();
         assert!(s.game_stats && !s.hide_in_fullscreen);
     }
@@ -538,7 +639,11 @@ mod tests {
     fn the_readout_stays_unless_peeks_are_picked() {
         // Files from 0.2.0 and before, and from the corner test build (its
         // "peek" was its default, not a choice), get the readout that stays.
-        for old in [r#"{"game_stats":true}"#, r#"{"game_stats":true,"game_readout":"peek"}"#, r#"{"game_readout":"corner"}"#] {
+        for old in [
+            r#"{"game_stats":true}"#,
+            r#"{"game_stats":true,"game_readout":"peek"}"#,
+            r#"{"game_readout":"corner"}"#,
+        ] {
             let s: Settings = serde_json::from_str(old).unwrap();
             assert!(!s.game_peek, "{old}");
         }
@@ -562,7 +667,8 @@ mod tests {
     fn the_island_never_steps_aside() {
         assert!(!Settings::default().step_aside);
         // 0.2.4 and 0.2.5 saved Step aside, their default: the island stays now.
-        let old: Settings = serde_json::from_str(r#"{"settings_version":3,"step_aside":true}"#).unwrap();
+        let old: Settings =
+            serde_json::from_str(r#"{"settings_version":3,"step_aside":true}"#).unwrap();
         assert!(!old.sanitized().step_aside);
     }
 
@@ -570,16 +676,27 @@ mod tests {
     fn notifications_switched_off_as_an_add_on_stays_off() {
         // Until 0.2.24 Notifications was an add-on, off by default. One switched
         // off by hand stays off, as a hidden tab.
-        let s = serde_json::from_str::<Settings>(r#"{"settings_version":4,"addons":{"notifications":false,"sholat":true}}"#).unwrap().sanitized();
+        let s = serde_json::from_str::<Settings>(
+            r#"{"settings_version":4,"addons":{"notifications":false,"sholat":true}}"#,
+        )
+        .unwrap()
+        .sanitized();
         assert_eq!(s.hidden_tabs, ["notifications"]);
         assert_eq!(s.addons.get("sholat"), Some(&true));
         // Switched on, or never touched: on, like everyone's now.
-        for file in [r#"{"settings_version":4,"addons":{"notifications":true}}"#, r#"{"settings_version":4}"#] {
+        for file in [
+            r#"{"settings_version":4,"addons":{"notifications":true}}"#,
+            r#"{"settings_version":4}"#,
+        ] {
             let s = serde_json::from_str::<Settings>(file).unwrap().sanitized();
             assert!(s.hidden_tabs.is_empty(), "{file}");
         }
         // Once only: after that, the tabs row is its switch.
-        let s = serde_json::from_str::<Settings>(r#"{"settings_version":5,"addons":{"notifications":false}}"#).unwrap().sanitized();
+        let s = serde_json::from_str::<Settings>(
+            r#"{"settings_version":5,"addons":{"notifications":false}}"#,
+        )
+        .unwrap()
+        .sanitized();
         assert!(s.hidden_tabs.is_empty());
     }
 
@@ -595,15 +712,22 @@ mod tests {
         assert_eq!(back.hidden_tabs, ["today", "future"]);
         let migrated = s.sanitized();
         assert_eq!(migrated.hidden_tabs, ["future"]);
-        let both: Settings = serde_json::from_str(r#"{"settings_version":5,"hidden_tabs":["today","tasks","future"]}"#).unwrap();
+        let both: Settings = serde_json::from_str(
+            r#"{"settings_version":5,"hidden_tabs":["today","tasks","future"]}"#,
+        )
+        .unwrap();
         assert_eq!(both.sanitized().hidden_tabs, ["today", "future"]);
-        let current: Settings = serde_json::from_str(r#"{"settings_version":6,"hidden_tabs":["today"]}"#).unwrap();
+        let current: Settings =
+            serde_json::from_str(r#"{"settings_version":6,"hidden_tabs":["today"]}"#).unwrap();
         assert_eq!(current.sanitized().hidden_tabs, ["today"]);
     }
 
     #[test]
     fn roundtrip() {
-        let s = Settings { lyrics_color: Some(0xF06292), ..Settings::default() };
+        let s = Settings {
+            lyrics_color: Some(0xF06292),
+            ..Settings::default()
+        };
         let j = serde_json::to_string_pretty(&s).unwrap();
         let back: Settings = serde_json::from_str(&j).unwrap();
         assert_eq!(s, back);

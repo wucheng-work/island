@@ -96,11 +96,21 @@ pub struct PsuModel {
 }
 
 const fn corsair_model(pid: u16, name: &'static str) -> PsuModel {
-    PsuModel { vid: CORSAIR_VID, pid, name, protocol: Protocol::Corsair }
+    PsuModel {
+        vid: CORSAIR_VID,
+        pid,
+        name,
+        protocol: Protocol::Corsair,
+    }
 }
 
 const fn msi_model(pid: u16, name: &'static str, layout: MsiLayout) -> PsuModel {
-    PsuModel { vid: MSI_VID, pid, name, protocol: Protocol::Msi(layout) }
+    PsuModel {
+        vid: MSI_VID,
+        pid,
+        name,
+        protocol: Protocol::Msi(layout),
+    }
 }
 
 pub const MODELS: [PsuModel; 20] = [
@@ -146,7 +156,11 @@ pub fn usb_ids(path: &str) -> Option<(u16, u16)> {
 pub fn linear11(word: u16, signed: bool) -> f32 {
     let exp = (word as i16) >> 11;
     let low = i32::from(word & 0x7ff);
-    let mant = if signed && low & 0x400 != 0 { low - 0x800 } else { low };
+    let mant = if signed && low & 0x400 != 0 {
+        low - 0x800
+    } else {
+        low
+    };
     mant as f32 * 2f32.powi(i32::from(exp))
 }
 
@@ -194,7 +208,11 @@ pub fn msi_name(reply: &[u8]) -> Option<String> {
     }
     let text = &reply[2..];
     let end = text.iter().position(|b| *b == 0).unwrap_or(text.len());
-    let name: String = text[..end].iter().filter(|b| b.is_ascii_graphic() || **b == b' ').map(|b| char::from(*b)).collect();
+    let name: String = text[..end]
+        .iter()
+        .filter(|b| b.is_ascii_graphic() || **b == b' ')
+        .map(|b| char::from(*b))
+        .collect();
     let name = name.trim().to_string();
     (!name.is_empty()).then_some(name)
 }
@@ -263,19 +281,38 @@ fn efficiency(v: f32) -> Option<f32> {
 }
 
 fn rail(nominal: f32, volts: f32, amps: f32) -> Option<Rail> {
-    let ok = volts.is_finite() && amps.is_finite() && volts > nominal * 0.5 && volts < nominal * 1.5 && (0.0..=400.0).contains(&amps);
-    ok.then_some(Rail { nominal, volts, amps })
+    let ok = volts.is_finite()
+        && amps.is_finite()
+        && volts > nominal * 0.5
+        && volts < nominal * 1.5
+        && (0.0..=400.0).contains(&amps);
+    ok.then_some(Rail {
+        nominal,
+        volts,
+        amps,
+    })
 }
 
 /// Corsair: the values read one by one (`None` where the PSU didn't answer)
 /// as one reading. Without the total output there's nothing to show.
-pub fn corsair_reading(name: &str, out_w: Option<f32>, mains_v: Option<f32>, in_amps: Option<f32>, temp_c: Option<f32>, fan: Option<f32>) -> Option<PsuReading> {
+pub fn corsair_reading(
+    name: &str,
+    out_w: Option<f32>,
+    mains_v: Option<f32>,
+    in_amps: Option<f32>,
+    temp_c: Option<f32>,
+    fan: Option<f32>,
+) -> Option<PsuReading> {
     let out_w = watts(out_w?)?;
     let mains_v = mains_v.and_then(mains);
     // Volts times amps at the input is its apparent power: within a few
     // percent of the real power behind active power factor correction, and
     // never below the output.
-    let in_w = mains_v.zip(in_amps).map(|(v, a)| v * a).and_then(watts).filter(|w| *w >= out_w && out_w > 0.0);
+    let in_w = mains_v
+        .zip(in_amps)
+        .map(|(v, a)| v * a)
+        .and_then(watts)
+        .filter(|w| *w >= out_w && out_w > 0.0);
     Some(PsuReading {
         name: name.to_string(),
         out_w,
@@ -289,7 +326,12 @@ pub fn corsair_reading(name: &str, out_w: Option<f32>, mains_v: Option<f32>, in_
 }
 
 /// MSI: the bulk read's data in `layout`, as one reading.
-pub fn msi_reading(name: &str, layout: MsiLayout, data: &[u8], mains_v: Option<f32>) -> Option<PsuReading> {
+pub fn msi_reading(
+    name: &str,
+    layout: MsiLayout,
+    data: &[u8],
+    mains_v: Option<f32>,
+) -> Option<PsuReading> {
     if data.len() < layout.len() {
         return None;
     }
@@ -303,7 +345,11 @@ pub fn msi_reading(name: &str, layout: MsiLayout, data: &[u8], mains_v: Option<f
     };
     let out_w = watts(w(rest))?;
     let eff = efficiency(w(rest + 2));
-    let rails = [12.0, 5.0, 3.3].into_iter().zip(rails).filter_map(|(n, (v, a))| rail(n, w(v), w(a))).collect();
+    let rails = [12.0, 5.0, 3.3]
+        .into_iter()
+        .zip(rails)
+        .filter_map(|(n, (v, a))| rail(n, w(v), w(a)))
+        .collect();
     Some(PsuReading {
         name: name.to_string(),
         out_w,
@@ -318,7 +364,9 @@ pub fn msi_reading(name: &str, layout: MsiLayout, data: &[u8], mains_v: Option<f
 
 /// MSI's input voltage register (the MEG models answer it).
 pub fn msi_mains(data: &[u8]) -> Option<f32> {
-    (data.len() >= 2).then(|| linear11(u16::from_le_bytes([data[0], data[1]]), false)).and_then(mains)
+    (data.len() >= 2)
+        .then(|| linear11(u16::from_le_bytes([data[0], data[1]]), false))
+        .and_then(mains)
 }
 
 /// The estimate's allowance for what reports no power of its own: the
@@ -345,17 +393,33 @@ impl PowerReading {
     /// From the power supply, with what the CPU and graphics card say they use.
     pub fn from_psu(psu: PsuReading, cpu_w: Option<f32>, gpu_w: Option<f32>) -> PowerReading {
         let known = cpu_w.unwrap_or(0.0) + gpu_w.unwrap_or(0.0);
-        PowerReading { total_w: psu.out_w, cpu_w, gpu_w, rest_w: (psu.out_w - known).max(0.0), psu: Some(psu) }
+        PowerReading {
+            total_w: psu.out_w,
+            cpu_w,
+            gpu_w,
+            rest_w: (psu.out_w - known).max(0.0),
+            psu: Some(psu),
+        }
     }
 
     /// A desktop without a PSU that reports: the CPU package, the graphics
     /// card and [`REST_W`]. None when a graphics card of its own doesn't
     /// report its power, since the total would leave out what may be most
     /// of it; a GPU built into the processor is inside the package's reading.
-    pub fn estimate(cpu_w: Option<f32>, gpu_w: Option<f32>, dedicated_gpu: bool) -> Option<PowerReading> {
+    pub fn estimate(
+        cpu_w: Option<f32>,
+        gpu_w: Option<f32>,
+        dedicated_gpu: bool,
+    ) -> Option<PowerReading> {
         let cpu = cpu_w?;
         let gpu = if dedicated_gpu { Some(gpu_w?) } else { None };
-        Some(PowerReading { total_w: cpu + gpu.unwrap_or(0.0) + REST_W, cpu_w: Some(cpu), gpu_w: gpu, rest_w: REST_W, psu: None })
+        Some(PowerReading {
+            total_w: cpu + gpu.unwrap_or(0.0) + REST_W,
+            cpu_w: Some(cpu),
+            gpu_w: gpu,
+            rest_w: REST_W,
+            psu: None,
+        })
     }
 
     pub fn estimated(&self) -> bool {
@@ -374,9 +438,13 @@ pub fn fmt_w(w: f32) -> String {
 
 /// A round top for a power chart at or above `peak` watts.
 pub fn watts_ceiling(peak: f32) -> f32 {
-    const TOPS: [f32; 11] = [50.0, 100.0, 150.0, 200.0, 300.0, 400.0, 500.0, 750.0, 1000.0, 1500.0, 2000.0];
+    const TOPS: [f32; 11] = [
+        50.0, 100.0, 150.0, 200.0, 300.0, 400.0, 500.0, 750.0, 1000.0, 1500.0, 2000.0,
+    ];
     let peak = if peak.is_finite() { peak } else { 0.0 };
-    TOPS.into_iter().find(|t| peak <= *t).unwrap_or_else(|| (peak / 500.0).ceil() * 500.0)
+    TOPS.into_iter()
+        .find(|t| peak <= *t)
+        .unwrap_or_else(|| (peak / 500.0).ceil() * 500.0)
 }
 
 #[cfg(test)]
@@ -403,11 +471,25 @@ mod tests {
 
     #[test]
     fn usb_ids_from_hid_paths() {
-        assert_eq!(usb_ids(r"\\?\hid#vid_1b1c&pid_1c1f#7&2f1f3a6&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}"), Some((0x1b1c, 0x1c1f)));
-        assert_eq!(usb_ids(r"\\?\HID#VID_0DB0&PID_C9EB&MI_00#8&1a2b3c&0&0000#{4d1e55b2}"), Some((0x0db0, 0xc9eb)));
+        assert_eq!(
+            usb_ids(
+                r"\\?\hid#vid_1b1c&pid_1c1f#7&2f1f3a6&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}"
+            ),
+            Some((0x1b1c, 0x1c1f))
+        );
+        assert_eq!(
+            usb_ids(r"\\?\HID#VID_0DB0&PID_C9EB&MI_00#8&1a2b3c&0&0000#{4d1e55b2}"),
+            Some((0x0db0, 0xc9eb))
+        );
         assert_eq!(usb_ids(r"\\?\hid#vid_1b1c#nothing"), None);
-        assert_eq!(model(0x0db0, 0xc9eb).map(|m| m.name), Some("MSI MEG Ai1600T"));
-        assert_eq!(model(0x1b1c, 0x1c1f).map(|m| m.protocol), Some(Protocol::Corsair));
+        assert_eq!(
+            model(0x0db0, 0xc9eb).map(|m| m.name),
+            Some("MSI MEG Ai1600T")
+        );
+        assert_eq!(
+            model(0x1b1c, 0x1c1f).map(|m| m.protocol),
+            Some(Protocol::Corsair)
+        );
         // MSI's other devices (its RGB controllers share the vendor id) aren't PSUs.
         assert_eq!(model(0x0db0, 0x0076), None);
     }
@@ -428,31 +510,63 @@ mod tests {
 
     #[test]
     fn corsair_wall_power_from_the_input() {
-        let r = corsair_reading("Corsair HX1500i", Some(412.0), Some(230.0), Some(1.95), Some(41.0), Some(0.0)).unwrap();
+        let r = corsair_reading(
+            "Corsair HX1500i",
+            Some(412.0),
+            Some(230.0),
+            Some(1.95),
+            Some(41.0),
+            Some(0.0),
+        )
+        .unwrap();
         assert_eq!(r.out_w, 412.0);
         assert!((r.in_w.unwrap() - 448.5).abs() < 0.01);
         assert!((r.efficiency.unwrap() - 0.9186).abs() < 0.001);
         assert_eq!(r.fan_rpm, Some(0));
         // No input current (most models): no wall reading, the rest stays.
-        let r = corsair_reading("Corsair RM850i", Some(250.0), Some(118.0), None, None, Some(640.0)).unwrap();
-        assert_eq!((r.in_w, r.efficiency, r.mains_v, r.fan_rpm), (None, None, Some(118.0), Some(640)));
+        let r = corsair_reading(
+            "Corsair RM850i",
+            Some(250.0),
+            Some(118.0),
+            None,
+            None,
+            Some(640.0),
+        )
+        .unwrap();
+        assert_eq!(
+            (r.in_w, r.efficiency, r.mains_v, r.fan_rpm),
+            (None, None, Some(118.0), Some(640))
+        );
         // No total, no reading; nonsense is dropped.
-        assert_eq!(corsair_reading("x", None, Some(230.0), None, None, None), None);
-        assert_eq!(corsair_reading("x", Some(9e9), None, None, None, None), None);
-        let r = corsair_reading("x", Some(300.0), Some(12.0), Some(1.0), Some(900.0), None).unwrap();
+        assert_eq!(
+            corsair_reading("x", None, Some(230.0), None, None, None),
+            None
+        );
+        assert_eq!(
+            corsair_reading("x", Some(9e9), None, None, None, None),
+            None
+        );
+        let r =
+            corsair_reading("x", Some(300.0), Some(12.0), Some(1.0), Some(900.0), None).unwrap();
         assert_eq!((r.mains_v, r.in_w, r.temp_c), (None, None, None));
     }
 
     /// A bulk read's data with each field at its offset.
     fn msi_data_for(layout: MsiLayout) -> Vec<u8> {
         let mut d = vec![0u8; 62];
-        let mut put = |at: usize, v: f32, exp: i32| d[at..at + 2].copy_from_slice(&word(v, exp).to_le_bytes());
+        let mut put = |at: usize, v: f32, exp: i32| {
+            d[at..at + 2].copy_from_slice(&word(v, exp).to_le_bytes())
+        };
         let (rails, rest): ([(usize, usize); 3], usize) = match layout {
             MsiLayout::MegP => ([(20, 22), (24, 26), (28, 30)], 32),
             MsiLayout::MegT => ([(0, 2), (4, 6), (8, 10)], 12),
             MsiLayout::MpgTs => ([(38, 0), (40, 2), (42, 4)], 30),
         };
-        for ((v, a), (volts, amps)) in rails.into_iter().zip([(12.06, 28.5), (5.02, 4.25), (3.31, 2.5)]) {
+        for ((v, a), (volts, amps)) in
+            rails
+                .into_iter()
+                .zip([(12.06, 28.5), (5.02, 4.25), (3.31, 2.5)])
+        {
             put(v, volts, -7);
             put(a, amps, -4);
         }
@@ -471,17 +585,36 @@ mod tests {
             assert_eq!(r.out_w, 368.0, "{layout:?}");
             assert!((r.efficiency.unwrap() - 0.93).abs() < 0.001, "{layout:?}");
             assert!((r.in_w.unwrap() - 395.7).abs() < 0.2, "{layout:?}");
-            assert_eq!((r.temp_c, r.fan_rpm, r.mains_v), (Some(38.5), Some(0), Some(229.5)), "{layout:?}");
+            assert_eq!(
+                (r.temp_c, r.fan_rpm, r.mains_v),
+                (Some(38.5), Some(0), Some(229.5)),
+                "{layout:?}"
+            );
             assert_eq!(r.rails.len(), 3, "{layout:?}");
-            assert!((r.rails[0].volts - 12.06).abs() < 0.01 && (r.rails[0].amps - 28.5).abs() < 0.07, "{layout:?}");
+            assert!(
+                (r.rails[0].volts - 12.06).abs() < 0.01 && (r.rails[0].amps - 28.5).abs() < 0.07,
+                "{layout:?}"
+            );
             assert!((r.rails[2].watts() - 8.27).abs() < 0.1, "{layout:?}");
             // A frame shorter than the layout is never read from its padding.
-            assert_eq!(msi_reading("x", layout, &d[..layout.len() - 1], None), None, "{layout:?}");
+            assert_eq!(
+                msi_reading("x", layout, &d[..layout.len() - 1], None),
+                None,
+                "{layout:?}"
+            );
         }
         // Efficiency in percent reads the same as a share.
         let mut d = msi_data_for(MsiLayout::MegT);
         d[14..16].copy_from_slice(&word(93.0, 0).to_le_bytes());
-        assert!((msi_reading("x", MsiLayout::MegT, &d, None).unwrap().efficiency.unwrap() - 0.93).abs() < 0.001);
+        assert!(
+            (msi_reading("x", MsiLayout::MegT, &d, None)
+                .unwrap()
+                .efficiency
+                .unwrap()
+                - 0.93)
+                .abs()
+                < 0.001
+        );
     }
 
     #[test]
@@ -491,8 +624,14 @@ mod tests {
         reply[2..14].copy_from_slice(b"MPG Ai1600TS");
         assert_eq!(msi_name(&reply).as_deref(), Some("MPG Ai1600TS"));
         assert_eq!(MsiLayout::from_name("MPG Ai1600TS"), Some(MsiLayout::MpgTs));
-        assert_eq!(MsiLayout::from_name("MEG Ai1600T PCIE5"), Some(MsiLayout::MegT));
-        assert_eq!(MsiLayout::from_name("MEG Ai1300P PCIE5"), Some(MsiLayout::MegP));
+        assert_eq!(
+            MsiLayout::from_name("MEG Ai1600T PCIE5"),
+            Some(MsiLayout::MegT)
+        );
+        assert_eq!(
+            MsiLayout::from_name("MEG Ai1300P PCIE5"),
+            Some(MsiLayout::MegP)
+        );
         assert_eq!(MsiLayout::from_name("Something else"), None);
         assert_eq!(msi_name(&msi_read(msi::ALL)), None);
         // A read's data, and the refusal of an unsupported register.
@@ -506,12 +645,22 @@ mod tests {
 
     #[test]
     fn whole_pc_from_the_psu_or_an_estimate() {
-        let psu = PsuReading { name: "Corsair HX1500i".into(), out_w: 412.0, ..PsuReading::default() };
+        let psu = PsuReading {
+            name: "Corsair HX1500i".into(),
+            out_w: 412.0,
+            ..PsuReading::default()
+        };
         let p = PowerReading::from_psu(psu, Some(73.0), Some(291.0));
         assert_eq!((p.total_w, p.rest_w, p.estimated()), (412.0, 48.0, false));
         // The parts may add up past a PSU's slower average for a moment.
-        let psu = PsuReading { out_w: 100.0, ..PsuReading::default() };
-        assert_eq!(PowerReading::from_psu(psu, Some(73.0), Some(91.0)).rest_w, 0.0);
+        let psu = PsuReading {
+            out_w: 100.0,
+            ..PsuReading::default()
+        };
+        assert_eq!(
+            PowerReading::from_psu(psu, Some(73.0), Some(91.0)).rest_w,
+            0.0
+        );
         // A desktop with a graphics card that reports its power.
         let p = PowerReading::estimate(Some(73.0), Some(91.0), true).unwrap();
         assert_eq!((p.total_w, p.rest_w, p.estimated()), (204.0, REST_W, true));

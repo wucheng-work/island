@@ -4,8 +4,8 @@ use crate::events::{AppEvent, EventSink};
 use objc2::rc::Retained;
 use objc2::{define_class, msg_send, sel, DefinedClass, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSApplication, NSBackingStoreType, NSButton, NSColor, NSEvent, NSEventModifierFlags,
-    NSFont, NSMenu, NSMenuItem, NSPopUpButton, NSResponder, NSTextField, NSView, NSWindow,
+    NSApplication, NSBackingStoreType, NSButton, NSColor, NSEvent, NSEventModifierFlags, NSFont,
+    NSMenu, NSMenuItem, NSPopUpButton, NSResponder, NSTextField, NSView, NSWindow,
     NSWindowStyleMask,
 };
 use objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
@@ -137,15 +137,21 @@ impl Picker {
     }
 
     fn show_default(&self) {
-        let name = alert_sounds::tone(self.module.default_id()).map_or("默认提示音", |tone| tone.name);
-        self.detail.setStringValue(&NSString::from_str(&format!("默认：{name}。点击“使用此音效”后生效。")));
-        self.detail.setTextColor(Some(&NSColor::secondaryLabelColor()));
+        let name = alert_sounds::tone(self.module.default_id())
+            .map_or("默认提示音", |tone| tone.name);
+        self.detail.setStringValue(&NSString::from_str(&format!(
+            "默认：{name}。点击“使用此音效”后生效。"
+        )));
+        self.detail
+            .setTextColor(Some(&NSColor::secondaryLabelColor()));
     }
 }
 
 /// 由主 App 释放借用后调用；窗口仅在打开期间持有原生控件和事件接收端。
 pub fn open(module: SoundModule, current: &str, sink: EventSink) {
-    let Some(mtm) = MainThreadMarker::new() else { return };
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
     close();
     let bounds = rect(0.0, 0.0, 480.0, 230.0);
     let style = NSWindowStyleMask::Titled | NSWindowStyleMask::Closable;
@@ -154,34 +160,66 @@ pub fn open(module: SoundModule, current: &str, sink: EventSink) {
     };
     window.setTitle(&NSString::from_str(&format!("{} · 提示音", module.title())));
     window.setHidesOnDeactivate(false);
-    unsafe { window.setReleasedWhenClosed(false); }
+    unsafe {
+        window.setReleasedWhenClosed(false);
+    }
     let this = SoundPickerView::alloc(mtm).set_ivars(RefCell::new(None));
     let view: Retained<SoundPickerView> = unsafe { msg_send![super(this), initWithFrame: bounds] };
 
     let heading = label(mtm, &view, "选择提示音", rect(24.0, 20.0, 432.0, 24.0));
     heading.setFont(Some(&NSFont::boldSystemFontOfSize(16.0)));
     heading.setTextColor(Some(&NSColor::labelColor()));
-    label(mtm, &view, "新款、常用及三全音、敲打电报随应用提供。试听音量随系统音量。", rect(24.0, 53.0, 432.0, 34.0));
+    label(
+        mtm,
+        &view,
+        "新款、常用及三全音、敲打电报随应用提供。试听音量随系统音量。",
+        rect(24.0, 53.0, 432.0, 34.0),
+    );
 
-    let choices = NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), rect(20.0, 97.0, 338.0, 28.0), false);
+    let choices = NSPopUpButton::initWithFrame_pullsDown(
+        NSPopUpButton::alloc(mtm),
+        rect(20.0, 97.0, 338.0, 28.0),
+        false,
+    );
     let menu = NSMenu::new(mtm);
     menu.setAutoenablesItems(false);
     let mut group = "";
     for (index, tone) in ALERT_TONES.iter().enumerate() {
         if tone.group != group {
             group = tone.group;
-            let heading = unsafe { NSMenuItem::initWithTitle_action_keyEquivalent(NSMenuItem::alloc(mtm), &NSString::from_str(group), None, &NSString::from_str("")) };
+            let heading = unsafe {
+                NSMenuItem::initWithTitle_action_keyEquivalent(
+                    NSMenuItem::alloc(mtm),
+                    &NSString::from_str(group),
+                    None,
+                    &NSString::from_str(""),
+                )
+            };
             heading.setEnabled(false);
             heading.setTag(-1);
             menu.addItem(&heading);
         }
-        let option = unsafe { NSMenuItem::initWithTitle_action_keyEquivalent(NSMenuItem::alloc(mtm), &NSString::from_str(tone.name), None, &NSString::from_str("")) };
+        let option = unsafe {
+            NSMenuItem::initWithTitle_action_keyEquivalent(
+                NSMenuItem::alloc(mtm),
+                &NSString::from_str(tone.name),
+                None,
+                &NSString::from_str(""),
+            )
+        };
         option.setTag(index as isize);
         option.setIndentationLevel(1);
         menu.addItem(&option);
     }
     choices.setMenu(Some(&menu));
-    let selected = ALERT_TONES.iter().position(|tone| tone.id == current).or_else(|| ALERT_TONES.iter().position(|tone| tone.id == module.default_id()));
+    let selected = ALERT_TONES
+        .iter()
+        .position(|tone| tone.id == current)
+        .or_else(|| {
+            ALERT_TONES
+                .iter()
+                .position(|tone| tone.id == module.default_id())
+        });
     if let Some(selected) = selected {
         choices.selectItemWithTag(selected as isize);
     }
@@ -191,19 +229,47 @@ pub fn open(module: SoundModule, current: &str, sink: EventSink) {
     }
     view.addSubview(&choices);
 
-    let preview = unsafe { NSButton::buttonWithTitle_target_action(&NSString::from_str("试听"), Some(view.as_ref()), Some(sel!(previewTone:)), mtm) };
+    let preview = unsafe {
+        NSButton::buttonWithTitle_target_action(
+            &NSString::from_str("试听"),
+            Some(view.as_ref()),
+            Some(sel!(previewTone:)),
+            mtm,
+        )
+    };
     preview.setFrame(rect(366.0, 96.0, 90.0, 30.0));
     view.addSubview(&preview);
     let detail = label(mtm, &view, "", rect(24.0, 138.0, 432.0, 34.0));
 
-    let restore = unsafe { NSButton::buttonWithTitle_target_action(&NSString::from_str("恢复默认"), Some(view.as_ref()), Some(sel!(restoreDefaultTone:)), mtm) };
+    let restore = unsafe {
+        NSButton::buttonWithTitle_target_action(
+            &NSString::from_str("恢复默认"),
+            Some(view.as_ref()),
+            Some(sel!(restoreDefaultTone:)),
+            mtm,
+        )
+    };
     restore.setFrame(rect(20.0, 184.0, 108.0, 30.0));
     view.addSubview(&restore);
-    let cancel = unsafe { NSButton::buttonWithTitle_target_action(&NSString::from_str("取消"), Some(view.as_ref()), Some(sel!(cancelTone:)), mtm) };
+    let cancel = unsafe {
+        NSButton::buttonWithTitle_target_action(
+            &NSString::from_str("取消"),
+            Some(view.as_ref()),
+            Some(sel!(cancelTone:)),
+            mtm,
+        )
+    };
     cancel.setFrame(rect(254.0, 184.0, 88.0, 30.0));
     cancel.setKeyEquivalent(&NSString::from_str("\u{1b}"));
     view.addSubview(&cancel);
-    let save = unsafe { NSButton::buttonWithTitle_target_action(&NSString::from_str("使用此音效"), Some(view.as_ref()), Some(sel!(useTone:)), mtm) };
+    let save = unsafe {
+        NSButton::buttonWithTitle_target_action(
+            &NSString::from_str("使用此音效"),
+            Some(view.as_ref()),
+            Some(sel!(useTone:)),
+            mtm,
+        )
+    };
     save.setFrame(rect(348.0, 184.0, 112.0, 30.0));
     save.setKeyEquivalent(&NSString::from_str("\r"));
     view.addSubview(&save);
@@ -215,14 +281,24 @@ pub fn open(module: SoundModule, current: &str, sink: EventSink) {
         save.setNextKeyView(Some(&choices));
     }
 
-    *view.ivars().borrow_mut() = Some(Picker { module, sink, choices: choices.clone(), detail });
+    *view.ivars().borrow_mut() = Some(Picker {
+        module,
+        sink,
+        choices: choices.clone(),
+        detail,
+    });
     if let Some(picker) = view.ivars().borrow().as_ref() {
         picker.show_default();
     }
     window.setContentView(Some(&view));
     window.makeFirstResponder(Some(&choices));
     window.center();
-    HOST.with(|slot| *slot.borrow_mut() = Some(Host { window: window.clone(), view }));
+    HOST.with(|slot| {
+        *slot.borrow_mut() = Some(Host {
+            window: window.clone(),
+            view,
+        })
+    });
     window.makeKeyAndOrderFront(None);
     NSApplication::sharedApplication(mtm).activate();
 }

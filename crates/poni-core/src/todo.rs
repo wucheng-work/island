@@ -35,7 +35,8 @@ impl Task {
         if self.done {
             return self.completed_day == Some(today);
         }
-        self.scheduled_day.is_some_and(|scheduled| scheduled <= today)
+        self.scheduled_day
+            .is_some_and(|scheduled| scheduled <= today)
     }
 }
 
@@ -48,7 +49,10 @@ pub struct TaskList {
 
 impl Default for TaskList {
     fn default() -> Self {
-        Self { tasks: Vec::new(), next_id: 1 }
+        Self {
+            tasks: Vec::new(),
+            next_id: 1,
+        }
     }
 }
 
@@ -62,7 +66,15 @@ impl TaskList {
         let text: String = text.chars().take(MAX_TASK_LEN).collect();
         let id = self.next_id.max(1);
         self.next_id = id + 1;
-        self.tasks.push(Task { id, text, done: false, created_unix: now_unix, done_unix: None, scheduled_day: Some(day), completed_day: None });
+        self.tasks.push(Task {
+            id,
+            text,
+            done: false,
+            created_unix: now_unix,
+            done_unix: None,
+            scheduled_day: Some(day),
+            completed_day: None,
+        });
         Some(id)
     }
 
@@ -123,7 +135,11 @@ impl TaskList {
 
     /// 所选日未完成事项在前（按创建顺序），已完成事项在后。
     pub fn display_order(&self, day: i64, today: i64) -> Vec<&Task> {
-        let mut open: Vec<&Task> = self.tasks.iter().filter(|t| !t.done && t.visible_on(day, today)).collect();
+        let mut open: Vec<&Task> = self
+            .tasks
+            .iter()
+            .filter(|t| !t.done && t.visible_on(day, today))
+            .collect();
         let mut done: Vec<&Task> = self
             .tasks
             .iter()
@@ -161,12 +177,18 @@ mod tests {
     fn truncates_long_text() {
         let mut l = TaskList::default();
         let id = l.add(&"x".repeat(500), 0, 0).unwrap();
-        assert_eq!(l.tasks.iter().find(|t| t.id == id).unwrap().text.len(), MAX_TASK_LEN);
+        assert_eq!(
+            l.tasks.iter().find(|t| t.id == id).unwrap().text.len(),
+            MAX_TASK_LEN
+        );
     }
 
     #[test]
     fn ids_survive_default_zero() {
-        let mut l = TaskList { tasks: vec![], next_id: 0 };
+        let mut l = TaskList {
+            tasks: vec![],
+            next_id: 0,
+        };
         assert_eq!(l.add("a", 0, 0), Some(1));
         assert_eq!(l.add("b", 0, 0), Some(2));
     }
@@ -183,21 +205,57 @@ mod tests {
         list.toggle(completed_today, 21, 100);
 
         let marks = list.day_marks(98, 10, 100);
-        assert_eq!(marks[0], DayTasks { has_tasks: true, has_open: false });
-        assert_eq!(marks[2], DayTasks { has_tasks: true, has_open: true });
-        assert_eq!(marks[7], DayTasks { has_tasks: true, has_open: true });
+        assert_eq!(
+            marks[0],
+            DayTasks {
+                has_tasks: true,
+                has_open: false
+            }
+        );
+        assert_eq!(
+            marks[2],
+            DayTasks {
+                has_tasks: true,
+                has_open: true
+            }
+        );
+        assert_eq!(
+            marks[7],
+            DayTasks {
+                has_tasks: true,
+                has_open: true
+            }
+        );
         assert_eq!(marks[9], DayTasks::default());
         for (index, mark) in marks.iter().enumerate() {
             let (done, total) = list.progress(98 + index as i64, 100);
-            assert_eq!(*mark, DayTasks { has_tasks: total > 0, has_open: done < total });
+            assert_eq!(
+                *mark,
+                DayTasks {
+                    has_tasks: total > 0,
+                    has_open: done < total
+                }
+            );
         }
 
         // 结转事项完成后，昨天不再结转到今天；空范围也不产生标记。
         list.toggle(earlier, 22, 99);
         list.clear_done(100, 100);
-        assert_eq!(list.day_marks(100, 1, 100)[0], DayTasks { has_tasks: true, has_open: true });
+        assert_eq!(
+            list.day_marks(100, 1, 100)[0],
+            DayTasks {
+                has_tasks: true,
+                has_open: true
+            }
+        );
         assert!(list.day_marks(100, 0, 100).is_empty());
         // 今日不在可见月份时，仍保留该月计划日的完成标记。
-        assert_eq!(list.day_marks(95, 1, 200)[0], DayTasks { has_tasks: true, has_open: false });
+        assert_eq!(
+            list.day_marks(95, 1, 200)[0],
+            DayTasks {
+                has_tasks: true,
+                has_open: false
+            }
+        );
     }
 }

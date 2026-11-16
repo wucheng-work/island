@@ -56,7 +56,12 @@ impl Rect {
     }
     /// Shrink by `dx` on the left/right and `dy` on the top/bottom.
     pub fn inset(&self, dx: f32, dy: f32) -> Rect {
-        Rect::new(self.x + dx, self.y + dy, (self.w - 2.0 * dx).max(0.0), (self.h - 2.0 * dy).max(0.0))
+        Rect::new(
+            self.x + dx,
+            self.y + dy,
+            (self.w - 2.0 * dx).max(0.0),
+            (self.h - 2.0 * dy).max(0.0),
+        )
     }
     pub fn offset(&self, dx: f32, dy: f32) -> Rect {
         Rect::new(self.x + dx, self.y + dy, self.w, self.h)
@@ -64,22 +69,34 @@ impl Rect {
     /// Split off `w` from the left; returns (left, rest).
     pub fn split_left(&self, w: f32) -> (Rect, Rect) {
         let w = w.min(self.w).max(0.0);
-        (Rect::new(self.x, self.y, w, self.h), Rect::new(self.x + w, self.y, self.w - w, self.h))
+        (
+            Rect::new(self.x, self.y, w, self.h),
+            Rect::new(self.x + w, self.y, self.w - w, self.h),
+        )
     }
     /// Split off `w` from the right; returns (rest, right).
     pub fn split_right(&self, w: f32) -> (Rect, Rect) {
         let w = w.min(self.w).max(0.0);
-        (Rect::new(self.x, self.y, self.w - w, self.h), Rect::new(self.right() - w, self.y, w, self.h))
+        (
+            Rect::new(self.x, self.y, self.w - w, self.h),
+            Rect::new(self.right() - w, self.y, w, self.h),
+        )
     }
     /// Split off `h` from the top; returns (top, rest).
     pub fn split_top(&self, h: f32) -> (Rect, Rect) {
         let h = h.min(self.h).max(0.0);
-        (Rect::new(self.x, self.y, self.w, h), Rect::new(self.x, self.y + h, self.w, self.h - h))
+        (
+            Rect::new(self.x, self.y, self.w, h),
+            Rect::new(self.x, self.y + h, self.w, self.h - h),
+        )
     }
     /// Split off `h` from the bottom; returns (rest, bottom).
     pub fn split_bottom(&self, h: f32) -> (Rect, Rect) {
         let h = h.min(self.h).max(0.0);
-        (Rect::new(self.x, self.y, self.w, self.h - h), Rect::new(self.x, self.bottom() - h, self.w, h))
+        (
+            Rect::new(self.x, self.y, self.w, self.h - h),
+            Rect::new(self.x, self.bottom() - h, self.w, h),
+        )
     }
     /// Divide horizontally into `n` equal columns separated by `gap`.
     pub fn columns(&self, n: usize, gap: f32) -> Vec<Rect> {
@@ -87,7 +104,9 @@ impl Rect {
             return Vec::new();
         }
         let cw = ((self.w - gap * (n as f32 - 1.0)) / n as f32).max(0.0);
-        (0..n).map(|i| Rect::new(self.x + i as f32 * (cw + gap), self.y, cw, self.h)).collect()
+        (0..n)
+            .map(|i| Rect::new(self.x + i as f32 * (cw + gap), self.y, cw, self.h))
+            .collect()
     }
     /// Divide vertically into `n` equal rows separated by `gap`.
     pub fn rows(&self, n: usize, gap: f32) -> Vec<Rect> {
@@ -95,10 +114,17 @@ impl Rect {
             return Vec::new();
         }
         let rh = ((self.h - gap * (n as f32 - 1.0)) / n as f32).max(0.0);
-        (0..n).map(|i| Rect::new(self.x, self.y + i as f32 * (rh + gap), self.w, rh)).collect()
+        (0..n)
+            .map(|i| Rect::new(self.x, self.y + i as f32 * (rh + gap), self.w, rh))
+            .collect()
     }
     pub fn lerp(a: Rect, b: Rect, t: f32) -> Rect {
-        Rect::new(lerp(a.x, b.x, t), lerp(a.y, b.y, t), lerp(a.w, b.w, t), lerp(a.h, b.h, t))
+        Rect::new(
+            lerp(a.x, b.x, t),
+            lerp(a.y, b.y, t),
+            lerp(a.w, b.w, t),
+            lerp(a.h, b.h, t),
+        )
     }
 }
 
@@ -142,10 +168,18 @@ impl Color {
         Self { a, ..self }
     }
     pub fn mul_alpha(self, f: f32) -> Self {
-        Self { a: self.a * f, ..self }
+        Self {
+            a: self.a * f,
+            ..self
+        }
     }
     pub fn lerp(a: Color, b: Color, t: f32) -> Color {
-        Color::rgba(lerp(a.r, b.r, t), lerp(a.g, b.g, t), lerp(a.b, b.b, t), lerp(a.a, b.a, t))
+        Color::rgba(
+            lerp(a.r, b.r, t),
+            lerp(a.g, b.g, t),
+            lerp(a.b, b.b, t),
+            lerp(a.a, b.a, t),
+        )
     }
     /// Relative luminance (sRGB approximation).
     pub fn luminance(&self) -> f32 {

@@ -22,9 +22,15 @@ impl Lyrics {
     pub fn plain(text: &str) -> Lyrics {
         let lines = text
             .lines()
-            .map(|l| LyricLine { time_s: 0.0, text: l.trim().to_string() })
+            .map(|l| LyricLine {
+                time_s: 0.0,
+                text: l.trim().to_string(),
+            })
             .collect();
-        Lyrics { lines, synced: false }
+        Lyrics {
+            lines,
+            synced: false,
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -33,7 +39,10 @@ impl Lyrics {
 
     /// Number of lines with text (blank stanza breaks don't count).
     pub fn text_lines(&self) -> usize {
-        self.lines.iter().filter(|l| !l.text.trim().is_empty()).count()
+        self.lines
+            .iter()
+            .filter(|l| !l.text.trim().is_empty())
+            .count()
     }
 
     /// Index of the line active at `t` seconds: the last line whose time is
@@ -53,8 +62,14 @@ impl Lyrics {
 
     /// Progress 0..=1 through line `i` at time `t` (used for smooth scrolling).
     pub fn line_progress(&self, i: usize, t: f64) -> f32 {
-        let Some(line) = self.lines.get(i) else { return 0.0 };
-        let next = self.lines.get(i + 1).map(|l| l.time_s).unwrap_or(line.time_s + 4.0);
+        let Some(line) = self.lines.get(i) else {
+            return 0.0;
+        };
+        let next = self
+            .lines
+            .get(i + 1)
+            .map(|l| l.time_s)
+            .unwrap_or(line.time_s + 4.0);
         let span = (next - line.time_s).max(0.05);
         ((t - line.time_s) / span).clamp(0.0, 1.0) as f32
     }
@@ -94,7 +109,10 @@ pub fn parse_lrc(src: &str) -> Lyrics {
         }
         let text = strip_word_timings(rest).trim().to_string();
         for t in stamps {
-            out.push(LyricLine { time_s: t, text: text.clone() });
+            out.push(LyricLine {
+                time_s: t,
+                text: text.clone(),
+            });
         }
     }
 
@@ -106,8 +124,15 @@ pub fn parse_lrc(src: &str) -> Lyrics {
     for l in &mut out {
         l.time_s = (l.time_s - shift).max(0.0);
     }
-    out.sort_by(|a, b| a.time_s.partial_cmp(&b.time_s).unwrap_or(std::cmp::Ordering::Equal));
-    Lyrics { lines: out, synced: true }
+    out.sort_by(|a, b| {
+        a.time_s
+            .partial_cmp(&b.time_s)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    Lyrics {
+        lines: out,
+        synced: true,
+    }
 }
 
 /// `mm:ss`, `mm:ss.xx`, `mm:ss.xxx`, `mm:ss:xx` → seconds.

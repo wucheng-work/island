@@ -36,7 +36,13 @@ pub struct Peek {
 impl Default for Peek {
     /// Right of the camera, until the pointer says otherwise.
     fn default() -> Self {
-        Peek { pointer: None, moved_at: f64::NEG_INFINITY, left: false, from: 1.0, since: 0.0 }
+        Peek {
+            pointer: None,
+            moved_at: f64::NEG_INFINITY,
+            left: false,
+            from: 1.0,
+            since: 0.0,
+        }
     }
 }
 
@@ -174,6 +180,9 @@ mod tests {
     #[test]
     fn a_small_move_keeps_where_they_look() {
         let eye = Point::new(120.0, 16.0);
-        assert_eq!(gaze(eye, Point::new(600.0, 500.0)), gaze(eye, Point::new(602.0, 501.0)));
+        assert_eq!(
+            gaze(eye, Point::new(600.0, 500.0)),
+            gaze(eye, Point::new(602.0, 501.0))
+        );
     }
 }

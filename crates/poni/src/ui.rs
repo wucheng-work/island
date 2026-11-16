@@ -7,8 +7,8 @@
 
 use crate::gfx::{Canvas, TextStyle, Weight};
 use crate::icons::Icon;
-use poni_core::geom::{palette, Color, Point, Rect};
 use poni_core::design::{control, radius, space};
+use poni_core::geom::{palette, Color, Point, Rect};
 
 pub type WidgetId = u64;
 
@@ -218,8 +218,22 @@ pub struct Ui<'a, 'g> {
 }
 
 impl<'a, 'g> Ui<'a, 'g> {
-    pub fn new(c: &'a mut Canvas<'g>, input: &'a mut Input, hits: &'a mut Vec<Hit>, now: f64) -> Self {
-        Self { c, input, hits, now, repaint: false, animating: false, live: false, wants_focus: None }
+    pub fn new(
+        c: &'a mut Canvas<'g>,
+        input: &'a mut Input,
+        hits: &'a mut Vec<Hit>,
+        now: f64,
+    ) -> Self {
+        Self {
+            c,
+            input,
+            hits,
+            now,
+            repaint: false,
+            animating: false,
+            live: false,
+            wants_focus: None,
+        }
     }
 
     /// Ask for one more frame (e.g. after a state change).
@@ -261,7 +275,11 @@ impl<'a, 'g> Ui<'a, 'g> {
 
     /// Register an interactive region and get its state.
     pub fn interact(&mut self, id: WidgetId, r: Rect, cursor: CursorKind) -> Resp {
-        self.hits.push(Hit { id, rect: r, cursor });
+        self.hits.push(Hit {
+            id,
+            rect: r,
+            cursor,
+        });
         let hovered = self.hovered(r);
         let pressed = self.input.down && self.input.pressed_id == Some(id);
         let clicked = self.input.clicked == Some((id, MouseButton::Left));
@@ -277,7 +295,13 @@ impl<'a, 'g> Ui<'a, 'g> {
         } else {
             None
         };
-        Resp { hovered, pressed, clicked, rclicked, drag }
+        Resp {
+            hovered,
+            pressed,
+            clicked,
+            rclicked,
+            drag,
+        }
     }
 
     /// Invisible clickable area.
@@ -286,7 +310,14 @@ impl<'a, 'g> Ui<'a, 'g> {
     }
 
     /// Round icon button with hover/pressed background.
-    pub fn icon_button(&mut self, id: WidgetId, r: Rect, icon: Icon, color: Color, icon_size: f32) -> Resp {
+    pub fn icon_button(
+        &mut self,
+        id: WidgetId,
+        r: Rect,
+        icon: Icon,
+        color: Color,
+        icon_size: f32,
+    ) -> Resp {
         let resp = self.button(id, r);
         let bg = if resp.pressed {
             palette::SURFACE_PRESSED
@@ -299,55 +330,134 @@ impl<'a, 'g> Ui<'a, 'g> {
             self.c.fill_rrect(r, r.h.min(r.w) / 2.0, bg);
         }
         let ir = Rect::from_center(r.center(), icon_size, icon_size);
-        let col = if resp.pressed { color.mul_alpha(0.8) } else { color };
+        let col = if resp.pressed {
+            color.mul_alpha(0.8)
+        } else {
+            color
+        };
         self.c.icon(icon, ir, col);
         resp
     }
 
     /// Width a [`Ui::pill`] needs for `label` (and an optional icon).
     pub fn pill_width(&mut self, label: &str, icon: bool, small: bool) -> f32 {
-        let (size, isz, pad) = if small { (crate::gfx::ts::FOOTNOTE, control::ICON_SMALL, space::MD) } else { (crate::gfx::ts::BODY, control::ICON, space::LG) };
-        let tw = if label.is_empty() { 0.0 } else { self.c.measure(label, &TextStyle::new(size).weight(Weight::Semibold), 400.0).0 };
-        let iw = if icon { isz + if label.is_empty() { 0.0 } else { 6.0 } } else { 0.0 };
+        let (size, isz, pad) = if small {
+            (crate::gfx::ts::FOOTNOTE, control::ICON_SMALL, space::MD)
+        } else {
+            (crate::gfx::ts::BODY, control::ICON, space::LG)
+        };
+        let tw = if label.is_empty() {
+            0.0
+        } else {
+            self.c
+                .measure(label, &TextStyle::new(size).weight(Weight::Semibold), 400.0)
+                .0
+        };
+        let iw = if icon {
+            isz + if label.is_empty() { 0.0 } else { 6.0 }
+        } else {
+            0.0
+        };
         (2.0 * pad + iw + tw).ceil()
     }
 
     /// A capsule button from the button system. Height decides the size:
     /// `PILL_SMALL` (28) = 12 pt label / 13 icon, `PILL_REGULAR` (34) = 13 / 14.
-    pub fn pill(&mut self, id: WidgetId, r: Rect, label: &str, icon: Option<Icon>, style: PillStyle) -> Resp {
+    pub fn pill(
+        &mut self,
+        id: WidgetId,
+        r: Rect,
+        label: &str,
+        icon: Option<Icon>,
+        style: PillStyle,
+    ) -> Resp {
         let resp = self.button(id, r);
         let small = r.h <= 30.0;
         let (fill, text) = match style {
             PillStyle::Utility => {
-                let f = if resp.pressed { Color::white(0.18) } else if resp.hovered { Color::white(0.12) } else { Color::white(0.065) };
-                (f, if resp.hovered || resp.pressed { palette::TEXT } else { palette::TEXT_DIM })
+                let f = if resp.pressed {
+                    Color::white(0.18)
+                } else if resp.hovered {
+                    Color::white(0.12)
+                } else {
+                    Color::white(0.065)
+                };
+                (
+                    f,
+                    if resp.hovered || resp.pressed {
+                        palette::TEXT
+                    } else {
+                        palette::TEXT_DIM
+                    },
+                )
             }
             PillStyle::Neutral => {
-                let f = if resp.pressed { Color::white(0.18) } else if resp.hovered { Color::white(0.12) } else { Color::white(0.065) };
+                let f = if resp.pressed {
+                    Color::white(0.18)
+                } else if resp.hovered {
+                    Color::white(0.12)
+                } else {
+                    Color::white(0.065)
+                };
                 (f, palette::TEXT)
             }
             PillStyle::Primary(c) => {
-                let a = if resp.pressed { 0.34 } else if resp.hovered { 0.26 } else { 0.18 };
+                let a = if resp.pressed {
+                    0.34
+                } else if resp.hovered {
+                    0.26
+                } else {
+                    0.18
+                };
                 (c.with_alpha(a), c)
             }
             PillStyle::UtilityAccent(c) => {
-                let f = c.with_alpha(if resp.pressed { 0.20 } else if resp.hovered { 0.14 } else { 0.08 });
+                let f = c.with_alpha(if resp.pressed {
+                    0.20
+                } else if resp.hovered {
+                    0.14
+                } else {
+                    0.08
+                });
                 (f, c)
             }
         };
         let corner = radius::CONTROL.min(r.h / 2.0);
         self.c.fill_rrect(r, corner, fill);
         self.c.stroke_rrect(r, corner, text.mul_alpha(0.10), 1.0);
-        let (size, isz) = if small { (crate::gfx::ts::FOOTNOTE, control::ICON_SMALL) } else { (crate::gfx::ts::BODY, control::ICON) };
+        let (size, isz) = if small {
+            (crate::gfx::ts::FOOTNOTE, control::ICON_SMALL)
+        } else {
+            (crate::gfx::ts::BODY, control::ICON)
+        };
         let st = TextStyle::new(size).weight(Weight::Semibold).color(text);
         // 限定内容宽度后再居中；窄按钮的文字交给 Canvas 省略，不挤出图标。
         let inner = r.inset(space::SM.min(r.w.max(0.0) / 4.0), 0.0);
-        let icon_w = if icon.is_some() { isz.min(inner.w.max(0.0)) } else { 0.0 };
-        let gap = if icon.is_some() && !label.is_empty() { control::ICON_GAP.min((inner.w - icon_w).max(0.0)) } else { 0.0 };
-        let text_w = if label.is_empty() { 0.0 } else { self.c.measure(label, &st, 400.0).0.min((inner.w - icon_w - gap).max(0.0)) };
+        let icon_w = if icon.is_some() {
+            isz.min(inner.w.max(0.0))
+        } else {
+            0.0
+        };
+        let gap = if icon.is_some() && !label.is_empty() {
+            control::ICON_GAP.min((inner.w - icon_w).max(0.0))
+        } else {
+            0.0
+        };
+        let text_w = if label.is_empty() {
+            0.0
+        } else {
+            self.c
+                .measure(label, &st, 400.0)
+                .0
+                .min((inner.w - icon_w - gap).max(0.0))
+        };
         let x = inner.x + (inner.w - icon_w - gap - text_w).max(0.0) / 2.0;
         if let Some(i) = icon {
-            self.c.icon(i, Rect::new(x, r.center().y - icon_w / 2.0, icon_w, icon_w), text);
+            self.c.icon(
+                i,
+                Rect::new(x, r.center().y - icon_w / 2.0, icon_w, icon_w),
+                text,
+            );
         }
         if text_w > 0.0 {
             // Core Text 在窄到连省略号也放不下时可能保留原行，裁剪仍守住按钮边界。
@@ -371,18 +481,49 @@ impl<'a, 'g> Ui<'a, 'g> {
     }
 
     /// Single-line text field. Click to focus, Enter submits, Esc cancels.
-    pub fn text_input(&mut self, id: WidgetId, r: Rect, buf: &mut String, placeholder: &str, max_chars: usize) -> TextInputResp {
+    pub fn text_input(
+        &mut self,
+        id: WidgetId,
+        r: Rect,
+        buf: &mut String,
+        placeholder: &str,
+        max_chars: usize,
+    ) -> TextInputResp {
         self.text_input_styled(id, r, buf, placeholder, max_chars, InputLook::Box)
     }
 
     /// A list-row style field: no box until hovered/focused, a leading icon in
     /// the same column as list checkboxes (centred at x+18, text at x+36), and
     /// an accent focus ring.
-    pub fn text_input_row(&mut self, id: WidgetId, r: Rect, buf: &mut String, placeholder: &str, max_chars: usize, accent: Color, icon: Option<Icon>) -> TextInputResp {
-        self.text_input_styled(id, r, buf, placeholder, max_chars, InputLook::Row { accent, icon })
+    pub fn text_input_row(
+        &mut self,
+        id: WidgetId,
+        r: Rect,
+        buf: &mut String,
+        placeholder: &str,
+        max_chars: usize,
+        accent: Color,
+        icon: Option<Icon>,
+    ) -> TextInputResp {
+        self.text_input_styled(
+            id,
+            r,
+            buf,
+            placeholder,
+            max_chars,
+            InputLook::Row { accent, icon },
+        )
     }
 
-    fn text_input_styled(&mut self, id: WidgetId, r: Rect, buf: &mut String, placeholder: &str, max_chars: usize, look: InputLook) -> TextInputResp {
+    fn text_input_styled(
+        &mut self,
+        id: WidgetId,
+        r: Rect,
+        buf: &mut String,
+        placeholder: &str,
+        max_chars: usize,
+        look: InputLook,
+    ) -> TextInputResp {
         let resp = self.interact(id, r, CursorKind::Text);
         let mut out = TextInputResp::default();
         if resp.clicked && self.input.focused != Some(id) {
@@ -412,7 +553,11 @@ impl<'a, 'g> Ui<'a, 'g> {
                 out.changed = *buf != committed;
                 *buf = committed;
                 self.input.caret = edit.marked.map_or(edit.selection.0, |m| m.0);
-                self.input.selection_len = if edit.marked.is_none() { edit.selection.1 } else { 0 };
+                self.input.selection_len = if edit.marked.is_none() {
+                    edit.selection.1
+                } else {
+                    0
+                };
             }
             let keys = std::mem::take(&mut self.input.keys);
             let mut chars: Vec<char> = buf.chars().collect();
@@ -470,7 +615,13 @@ impl<'a, 'g> Ui<'a, 'g> {
         // Draw.
         let inner = match look {
             InputLook::Box => {
-                let bg = if focused { Color::white(0.13) } else if resp.hovered { Color::white(0.1) } else { palette::SURFACE };
+                let bg = if focused {
+                    Color::white(0.13)
+                } else if resp.hovered {
+                    Color::white(0.1)
+                } else {
+                    palette::SURFACE
+                };
                 self.c.fill_rrect(r, radius::CONTROL, bg);
                 if focused {
                     self.c.stroke_rrect(r, radius::CONTROL, palette::BLUE, 1.0);
@@ -479,14 +630,30 @@ impl<'a, 'g> Ui<'a, 'g> {
             }
             InputLook::Row { accent, icon } => {
                 if focused || resp.hovered {
-                    self.c.fill_rrect(r, radius::CONTROL, if focused { Color::white(0.10) } else { palette::SURFACE });
+                    self.c.fill_rrect(
+                        r,
+                        radius::CONTROL,
+                        if focused {
+                            Color::white(0.10)
+                        } else {
+                            palette::SURFACE
+                        },
+                    );
                 }
                 if focused {
                     self.c.stroke_rrect(r, radius::CONTROL, accent, 1.5);
                 }
                 if let Some(i) = icon {
-                    let col = if buf.is_empty() { palette::TEXT_FAINT } else { accent };
-                    self.c.icon(i, Rect::from_center(Point::new(r.x + 18.0, r.center().y), 16.0, 16.0), col);
+                    let col = if buf.is_empty() {
+                        palette::TEXT_FAINT
+                    } else {
+                        accent
+                    };
+                    self.c.icon(
+                        i,
+                        Rect::from_center(Point::new(r.x + 18.0, r.center().y), 16.0, 16.0),
+                        col,
+                    );
                 }
                 Rect::new(r.x + 36.0, r.y, (r.w - 46.0).max(0.0), r.h)
             }
@@ -519,29 +686,50 @@ impl<'a, 'g> Ui<'a, 'g> {
         } else {
             0.0
         };
-        let scroll = if focused { (caret_w + 2.0 - inner.w).max(0.0) } else { 0.0 };
+        let scroll = if focused {
+            (caret_w + 2.0 - inner.w).max(0.0)
+        } else {
+            0.0
+        };
         let text_x = inner.x - scroll;
         self.c.clip(inner);
         #[cfg(target_os = "macos")]
         if focused && self.input.composition.is_none() && self.input.selection_len > 0 {
             let prefix: String = display.chars().take(display_caret).collect();
-            let through: String = display.chars().take(display_caret + self.input.selection_len).collect();
+            let through: String = display
+                .chars()
+                .take(display_caret + self.input.selection_len)
+                .collect();
             let left = text_x + self.c.measure_raw(&prefix, &st, 100_000.0).0;
             let right = text_x + self.c.measure_raw(&through, &st, 100_000.0).0;
-            self.c.fill_rrect(Rect::new(left, r.center().y - 10.0, right - left, 20.0), 2.0, Color::white(0.20));
+            self.c.fill_rrect(
+                Rect::new(left, r.center().y - 10.0, right - left, 20.0),
+                2.0,
+                Color::white(0.20),
+            );
         }
         if display.is_empty() {
-            self.c.text(placeholder, inner, &st.color(palette::TEXT_FAINT));
+            self.c
+                .text(placeholder, inner, &st.color(palette::TEXT_FAINT));
         } else if focused {
             let text_w = self.c.measure_raw(&display, &st, 100_000.0).0;
-            self.c.text_raw(&display, Rect::new(text_x, inner.y, text_w.max(inner.w) + 2.0, inner.h), &st);
+            self.c.text_raw(
+                &display,
+                Rect::new(text_x, inner.y, text_w.max(inner.w) + 2.0, inner.h),
+                &st,
+            );
         } else {
             self.c.text_raw(&display, inner, &st);
         }
         if focused {
             let x = text_x + caret_w + 0.5;
             let cy = r.center().y;
-            self.c.line(Point::new(x, cy - 8.0), Point::new(x, cy + 8.0), Color::white(0.9), 1.5);
+            self.c.line(
+                Point::new(x, cy - 8.0),
+                Point::new(x, cy + 8.0),
+                Color::white(0.9),
+                1.5,
+            );
             #[cfg(any(windows, target_os = "macos"))]
             {
                 if let Some((start, len)) = marked {
@@ -549,14 +737,28 @@ impl<'a, 'g> Ui<'a, 'g> {
                     let through: String = display.chars().take(start + len).collect();
                     let left = text_x + self.c.measure_raw(&prefix, &st, 100_000.0).0;
                     let right = text_x + self.c.measure_raw(&through, &st, 100_000.0).0;
-                    self.c.line(Point::new(left, cy + 10.0), Point::new(right, cy + 10.0), Color::white(0.7), 1.0);
+                    self.c.line(
+                        Point::new(left, cy + 10.0),
+                        Point::new(right, cy + 10.0),
+                        Color::white(0.7),
+                        1.0,
+                    );
                 }
             }
             #[cfg(target_os = "macos")]
             {
-                let selection_len = self.input.composition.as_ref().map_or(self.input.selection_len, |c| c.selection.1);
+                let selection_len = self
+                    .input
+                    .composition
+                    .as_ref()
+                    .map_or(self.input.selection_len, |c| c.selection.1);
                 self.input.text_session = Some(TextSession {
-                    edit: TextEdit { id, text: display.into_owned(), selection: (display_caret, selection_len), marked },
+                    edit: TextEdit {
+                        id,
+                        text: display.into_owned(),
+                        selection: (display_caret, selection_len),
+                        marked,
+                    },
                     caret_rect: Rect::new(x, cy - 9.0, 1.5, 18.0),
                     max_chars,
                 });
@@ -602,24 +804,61 @@ impl<'a, 'g> Ui<'a, 'g> {
     /// Horizontal progress bar. When `seekable` it can be clicked or dragged:
     /// while held it shows (and reports) the fraction under the pointer, and
     /// the release reports where to seek, even if the pointer slid off the bar.
-    pub fn progress_bar(&mut self, id: WidgetId, r: Rect, progress: f32, fill: Color, seekable: bool) -> Scrub {
+    pub fn progress_bar(
+        &mut self,
+        id: WidgetId,
+        r: Rect,
+        progress: f32,
+        fill: Color,
+        seekable: bool,
+    ) -> Scrub {
         let hit = Rect::new(r.x, r.y - 6.0, r.w, r.h + 12.0);
-        let resp = if seekable { self.button(id, hit) } else { Resp::default() };
-        let frac = |x: f32| if r.w > 0.0 { ((x - r.x) / r.w).clamp(0.0, 1.0) } else { 0.0 };
-        let held = if resp.pressed { self.input.mouse.map(|m| frac(m.x)) } else { None };
+        let resp = if seekable {
+            self.button(id, hit)
+        } else {
+            Resp::default()
+        };
+        let frac = |x: f32| {
+            if r.w > 0.0 {
+                ((x - r.x) / r.w).clamp(0.0, 1.0)
+            } else {
+                0.0
+            }
+        };
+        let held = if resp.pressed {
+            self.input.mouse.map(|m| frac(m.x))
+        } else {
+            None
+        };
         let began = resp.pressed && self.input.just_pressed;
-        let released = self.input.released.filter(|(rid, _)| seekable && *rid == id).map(|(_, p)| frac(p.x));
-        let thick = if (resp.hovered || held.is_some()) && seekable { r.h + 2.0 } else { r.h };
+        let released = self
+            .input
+            .released
+            .filter(|(rid, _)| seekable && *rid == id)
+            .map(|(_, p)| frac(p.x));
+        let thick = if (resp.hovered || held.is_some()) && seekable {
+            r.h + 2.0
+        } else {
+            r.h
+        };
         let bar = Rect::new(r.x, r.center().y - thick / 2.0, r.w, thick);
         self.c.fill_rrect(bar, thick / 2.0, palette::TRACK);
         let p = held.or(released).unwrap_or(progress).clamp(0.0, 1.0);
         if p > 0.0 {
-            self.c.fill_rrect(Rect::new(bar.x, bar.y, (bar.w * p).max(thick), bar.h), thick / 2.0, fill);
+            self.c.fill_rrect(
+                Rect::new(bar.x, bar.y, (bar.w * p).max(thick), bar.h),
+                thick / 2.0,
+                fill,
+            );
         }
         if released.is_some() {
             self.repaint = true;
         }
-        Scrub { held, released, began }
+        Scrub {
+            held,
+            released,
+            began,
+        }
     }
 
     /// Release keyboard focus (e.g. after submitting).
@@ -646,11 +885,18 @@ impl<'a, 'g> Ui<'a, 'g> {
 /// 两个设置视图共用的分段选择器宽度；与26 DIP控件的文字和内边距保持一致。
 pub(crate) fn picker_width(ui: &mut Ui, names: &[&str]) -> f32 {
     let style = TextStyle::footnote().weight(Weight::Semibold);
-    4.0 + names.iter().map(|name| (22.0 + ui.c.measure(name, &style, 300.0).0).ceil()).sum::<f32>()
+    4.0 + names
+        .iter()
+        .map(|name| (22.0 + ui.c.measure(name, &style, 300.0).0).ceil())
+        .sum::<f32>()
 }
 
 /// 保存故障时显示原因及操作。正常状态不占空间，不创建定时器或自动重试。
-pub fn save_warning(ui: &mut Ui, errors: &crate::persistence::SaveErrors, area: Rect) -> (bool, bool) {
+pub fn save_warning(
+    ui: &mut Ui,
+    errors: &crate::persistence::SaveErrors,
+    area: Rect,
+) -> (bool, bool) {
     let title = if errors.quit_blocked {
         "退出已取消：更改未保存"
     } else {
@@ -660,17 +906,54 @@ pub fn save_warning(ui: &mut Ui, errors: &crate::persistence::SaveErrors, area: 
             _ => "待办等数据尚未保存",
         }
     };
-    let protected = errors.settings == Some(crate::persistence::SaveError::Protected) || errors.store == Some(crate::persistence::SaveError::Protected);
-    let detail = if protected { "旧文件受保护，请先备份并修复后重启" } else { "请检查磁盘空间及数据文件夹权限" };
+    let protected = errors.settings == Some(crate::persistence::SaveError::Protected)
+        || errors.store == Some(crate::persistence::SaveError::Protected);
+    let detail = if protected {
+        "旧文件受保护，请先备份并修复后重启"
+    } else {
+        "请检查磁盘空间及数据文件夹权限"
+    };
     ui.c.fill_rrect(area, 8.0, palette::ORANGE.with_alpha(0.10));
     let discard = Rect::new(area.right() - 102.0, area.y + 9.0, 94.0, 28.0);
-    let retry_right = if errors.quit_blocked { discard.x - 6.0 } else { area.right() - 8.0 };
+    let retry_right = if errors.quit_blocked {
+        discard.x - 6.0
+    } else {
+        area.right() - 8.0
+    };
     let retry = Rect::new(retry_right - 64.0, area.y + 9.0, 64.0, 28.0);
-    let text_right = if errors.retryable() { retry.x - 8.0 } else if errors.quit_blocked { discard.x - 8.0 } else { area.right() - 8.0 };
+    let text_right = if errors.retryable() {
+        retry.x - 8.0
+    } else if errors.quit_blocked {
+        discard.x - 8.0
+    } else {
+        area.right() - 8.0
+    };
     let width = (text_right - area.x - 10.0).max(0.0);
-    ui.c.text(title, Rect::new(area.x + 10.0, area.y + 4.0, width, 20.0), &TextStyle::footnote().weight(Weight::Semibold).color(palette::ORANGE));
-    ui.c.text(detail, Rect::new(area.x + 10.0, area.y + 24.0, width, 18.0), &TextStyle::new(11.0).color(palette::TEXT_DIM));
-    let retry_clicked = errors.retryable() && ui.pill(wid("save.retry"), retry, "重试", None, PillStyle::Utility).clicked;
-    let discard_clicked = errors.quit_blocked && ui.pill(wid("save.discard-quit"), discard, "放弃并退出", None, PillStyle::UtilityAccent(palette::RED)).clicked;
+    ui.c.text(
+        title,
+        Rect::new(area.x + 10.0, area.y + 4.0, width, 20.0),
+        &TextStyle::footnote()
+            .weight(Weight::Semibold)
+            .color(palette::ORANGE),
+    );
+    ui.c.text(
+        detail,
+        Rect::new(area.x + 10.0, area.y + 24.0, width, 18.0),
+        &TextStyle::new(11.0).color(palette::TEXT_DIM),
+    );
+    let retry_clicked = errors.retryable()
+        && ui
+            .pill(wid("save.retry"), retry, "重试", None, PillStyle::Utility)
+            .clicked;
+    let discard_clicked = errors.quit_blocked
+        && ui
+            .pill(
+                wid("save.discard-quit"),
+                discard,
+                "放弃并退出",
+                None,
+                PillStyle::UtilityAccent(palette::RED),
+            )
+            .clicked;
     (retry_clicked, discard_clicked)
 }

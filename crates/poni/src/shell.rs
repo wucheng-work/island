@@ -16,7 +16,9 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use windows::core::{w, HSTRING};
-use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE};
+use windows::Win32::System::Com::{
+    CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
@@ -59,7 +61,16 @@ pub fn open(target: &str) {
 /// place it can be turned back on.
 pub fn open_startup_settings() {
     run("open", || {
-        let r = unsafe { ShellExecuteW(None, w!("open"), w!("ms-settings:startupapps"), None, None, SW_SHOWNORMAL) };
+        let r = unsafe {
+            ShellExecuteW(
+                None,
+                w!("open"),
+                w!("ms-settings:startupapps"),
+                None,
+                None,
+                SW_SHOWNORMAL,
+            )
+        };
         if (r.0 as isize) <= 32 {
             crate::pwarn!("open failed ({}): ms-settings:startupapps", r.0 as isize);
         }
@@ -71,9 +82,21 @@ pub fn open_startup_settings() {
 /// place Notifications can be allowed again once turned off.
 pub fn open_notification_settings() {
     run("open", || {
-        let r = unsafe { ShellExecuteW(None, w!("open"), w!("ms-settings:privacy-notifications"), None, None, SW_SHOWNORMAL) };
+        let r = unsafe {
+            ShellExecuteW(
+                None,
+                w!("open"),
+                w!("ms-settings:privacy-notifications"),
+                None,
+                None,
+                SW_SHOWNORMAL,
+            )
+        };
         if (r.0 as isize) <= 32 {
-            crate::pwarn!("open failed ({}): ms-settings:privacy-notifications", r.0 as isize);
+            crate::pwarn!(
+                "open failed ({}): ms-settings:privacy-notifications",
+                r.0 as isize
+            );
         }
     });
 }
@@ -88,7 +111,16 @@ pub fn open_app(app_id: &str) {
     }
     let args = format!("shell:AppsFolder\\{app_id}");
     run("open", move || {
-        let r = unsafe { ShellExecuteW(None, w!("open"), w!("explorer.exe"), &HSTRING::from(args.as_str()), None, SW_SHOWNORMAL) };
+        let r = unsafe {
+            ShellExecuteW(
+                None,
+                w!("open"),
+                w!("explorer.exe"),
+                &HSTRING::from(args.as_str()),
+                None,
+                SW_SHOWNORMAL,
+            )
+        };
         if (r.0 as isize) <= 32 {
             crate::pwarn!("open app failed ({}): {}", r.0 as isize, for_log(&args));
         }
@@ -102,7 +134,13 @@ pub fn open_app(app_id: &str) {
 /// characters at most: nothing that could end explorer's argument or leave
 /// the Apps folder.
 pub(crate) fn app_id_ok(id: &str) -> bool {
-    let allowed = |c: char| c.is_alphanumeric() || matches!(c, ' ' | '.' | '_' | '-' | '!' | '{' | '}' | '\\' | '(' | ')');
+    let allowed = |c: char| {
+        c.is_alphanumeric()
+            || matches!(
+                c,
+                ' ' | '.' | '_' | '-' | '!' | '{' | '}' | '\\' | '(' | ')'
+            )
+    };
     !id.is_empty()
         && id.chars().count() <= 255
         && id.trim() == id
@@ -132,7 +170,16 @@ pub fn reveal(path: &str) {
         }
         // `classify` rejected quotes, so the path cannot end the argument early.
         let args = HSTRING::from(format!("/select,\"{path}\""));
-        let r = unsafe { ShellExecuteW(None, w!("open"), w!("explorer.exe"), &args, None, SW_SHOWNORMAL) };
+        let r = unsafe {
+            ShellExecuteW(
+                None,
+                w!("open"),
+                w!("explorer.exe"),
+                &args,
+                None,
+                SW_SHOWNORMAL,
+            )
+        };
         if (r.0 as isize) <= 32 {
             crate::pwarn!("reveal failed ({}): {}", r.0 as isize, for_log(&path));
         }
@@ -146,18 +193,21 @@ fn run(what: &'static str, job: impl FnOnce() + Send + 'static) {
         crate::pwarn!("{what} refused: {MAX_IN_FLIGHT} shell requests are still pending");
         return;
     }
-    let spawned = std::thread::Builder::new().name("poni-shell".into()).spawn(move || {
-        let _slot = Slot;
-        // Shell extensions are apartment-threaded COM objects; DDE is off.
-        let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) };
-        if hr.is_err() {
-            crate::pwarn!("{what}: CoInitializeEx failed ({hr:?}); trying anyway");
-        }
-        job();
-        if hr.is_ok() {
-            unsafe { CoUninitialize() };
-        }
-    });
+    let spawned = std::thread::Builder::new()
+        .name("poni-shell".into())
+        .spawn(move || {
+            let _slot = Slot;
+            // Shell extensions are apartment-threaded COM objects; DDE is off.
+            let hr =
+                unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) };
+            if hr.is_err() {
+                crate::pwarn!("{what}: CoInitializeEx failed ({hr:?}); trying anyway");
+            }
+            job();
+            if hr.is_ok() {
+                unsafe { CoUninitialize() };
+            }
+        });
     if let Err(e) = spawned {
         // The closure (and its slot) never ran.
         IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
@@ -214,7 +264,9 @@ fn classify(s: &str) -> Result<Target, &'static str> {
 /// characters a browser's command line could split on (valid URLs
 /// percent-encode them).
 fn web_url_rest(rest: &str) -> Result<(), &'static str> {
-    if rest.chars().any(|c| c.is_whitespace() || matches!(c, '"' | '<' | '>' | '\\' | '^' | '`' | '{' | '|' | '}')) {
+    if rest.chars().any(|c| {
+        c.is_whitespace() || matches!(c, '"' | '<' | '>' | '\\' | '^' | '`' | '{' | '|' | '}')
+    }) {
         return Err("invalid URL characters");
     }
     let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
@@ -244,7 +296,11 @@ fn is_absolute_fs_path(s: &str) -> bool {
 /// `X:\rest` or `X:/rest` (a bare `X:` is relative to that drive's current folder).
 fn is_drive_path(s: &str) -> bool {
     let b = s.as_bytes();
-    b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && matches!(b[2], b'\\' | b'/') && is_clean_tail(&s[3..])
+    b.len() >= 3
+        && b[0].is_ascii_alphabetic()
+        && b[1] == b':'
+        && matches!(b[2], b'\\' | b'/')
+        && is_clean_tail(&s[3..])
 }
 
 /// `server\share[\rest]` after the leading `\\`.
@@ -260,25 +316,35 @@ fn is_unc_tail(s: &str) -> bool {
 /// No characters that are invalid in Windows path components (`:` would be
 /// an alternate data stream).
 fn is_clean_tail(s: &str) -> bool {
-    !s.chars().any(|c| matches!(c, '"' | '<' | '>' | '|' | '?' | '*' | ':'))
+    !s.chars()
+        .any(|c| matches!(c, '"' | '<' | '>' | '|' | '?' | '*' | ':'))
 }
 
 /// `name:` with a scheme of two or more characters (one letter is a drive).
 fn has_scheme(s: &str) -> bool {
-    let Some((scheme, _)) = s.split_once(':') else { return false };
+    let Some((scheme, _)) = s.split_once(':') else {
+        return false;
+    };
     scheme.len() >= 2
         && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
-        && scheme.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
 fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
     let head = s.get(..prefix.len())?;
-    head.eq_ignore_ascii_case(prefix).then(|| &s[prefix.len()..])
+    head.eq_ignore_ascii_case(prefix)
+        .then(|| &s[prefix.len()..])
 }
 
 /// A target shortened and stripped of control characters for one log line.
 fn for_log(s: &str) -> String {
-    let mut out: String = s.chars().take(LOG_CHARS).map(|c| if c.is_control() { '?' } else { c }).collect();
+    let mut out: String = s
+        .chars()
+        .take(LOG_CHARS)
+        .map(|c| if c.is_control() { '?' } else { c })
+        .collect();
     if s.chars().nth(LOG_CHARS).is_some() {
         out.push('…');
     }
@@ -301,7 +367,18 @@ mod tests {
             assert!(app_id_ok(id), "{id}");
         }
         let long = "a".repeat(256);
-        for id in ["", " Telegram", "a\"b", "a&b", "..\\..\\Windows", r"\\server\share", "x\ny", "app:id", "a/b", long.as_str()] {
+        for id in [
+            "",
+            " Telegram",
+            "a\"b",
+            "a&b",
+            "..\\..\\Windows",
+            r"\\server\share",
+            "x\ny",
+            "app:id",
+            "a/b",
+            long.as_str(),
+        ] {
             assert!(!app_id_ok(id), "{id}");
         }
     }
@@ -324,7 +401,12 @@ mod tests {
 
     #[test]
     fn accepts_web_urls() {
-        for u in ["https://lrclib.net", "HTTP://example.com/a?b=1#c", "https://user@host:8080/x", "http://[::1]:80/"] {
+        for u in [
+            "https://lrclib.net",
+            "HTTP://example.com/a?b=1#c",
+            "https://user@host:8080/x",
+            "http://[::1]:80/",
+        ] {
             assert_eq!(classify(u), Ok(Target::Url), "{u}");
         }
     }

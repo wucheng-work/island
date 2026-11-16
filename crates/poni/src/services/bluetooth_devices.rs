@@ -2,8 +2,8 @@
 
 use super::bluetooth::{
     braced, gatt_battery_result, paired_only, prop_bool, prop_guid, prop_u32, usable_container,
-    wait_result, ComApartment, LE_AUDIO_CATEGORIES, PKEY_COD_MAJOR, PKEY_CONNECTED,
-    PKEY_CONTAINER, PKEY_LE_CATEGORY,
+    wait_result, ComApartment, LE_AUDIO_CATEGORIES, PKEY_COD_MAJOR, PKEY_CONNECTED, PKEY_CONTAINER,
+    PKEY_LE_CATEGORY,
 };
 use poni_core::bluetooth::{BluetoothDevice as Device, BluetoothSnapshot, DeviceKind};
 use std::collections::{BTreeMap, HashMap};
@@ -11,7 +11,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use windows::core::{Error, Result as WinResult, GUID, HRESULT, HSTRING, PCWSTR};
 use windows::Devices::Bluetooth::{BluetoothConnectionStatus, BluetoothDevice, BluetoothLEDevice};
-use windows::Devices::Enumeration::{DeviceInformation, DeviceInformationCollection, DeviceInformationKind};
+use windows::Devices::Enumeration::{
+    DeviceInformation, DeviceInformationCollection, DeviceInformationKind,
+};
 use windows::Foundation::Collections::IIterable;
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
     SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW,
@@ -63,15 +65,29 @@ pub fn fetch_devices(cancel: &AtomicBool) -> Result<BluetoothSnapshot, String> {
         let endpoints = match enumerate(le, cancel) {
             Ok(endpoints) => endpoints,
             Err(error) => {
-                crate::pwarn!("bluetooth devices: {} enumeration failed ({:?})", if le { "LE" } else { "classic" }, error.code());
+                crate::pwarn!(
+                    "bluetooth devices: {} enumeration failed ({:?})",
+                    if le { "LE" } else { "classic" },
+                    error.code()
+                );
                 continue;
             }
         };
         source_count += 1;
         for endpoint in endpoints {
-            let key = endpoint.container.as_ref().map(braced).unwrap_or_else(|| endpoint.id.clone());
+            let key = endpoint
+                .container
+                .as_ref()
+                .map(braced)
+                .unwrap_or_else(|| endpoint.id.clone());
             let pending = devices.entry(key.clone()).or_insert_with(|| PendingDevice {
-                device: Device { id: key, name: String::new(), kind: DeviceKind::Other, battery: None, components: Vec::new() },
+                device: Device {
+                    id: key,
+                    name: String::new(),
+                    kind: DeviceKind::Other,
+                    battery: None,
+                    components: Vec::new(),
+                },
                 container: endpoint.container,
                 le_endpoints: Vec::new(),
             });
@@ -100,7 +116,10 @@ pub fn fetch_devices(cancel: &AtomicBool) -> Result<BluetoothSnapshot, String> {
             Ok(batteries) => batteries,
             Err(error) => {
                 check_cancelled(cancel)?;
-                crate::pwarn!("bluetooth devices: PnP battery enumeration failed ({:?})", error.code());
+                crate::pwarn!(
+                    "bluetooth devices: PnP battery enumeration failed ({:?})",
+                    error.code()
+                );
                 battery_failed = true;
                 HashMap::new()
             }
@@ -111,7 +130,11 @@ pub fn fetch_devices(cancel: &AtomicBool) -> Result<BluetoothSnapshot, String> {
     let mut out = Vec::with_capacity(devices.len());
     for mut pending in devices.into_values() {
         check_cancelled(cancel)?;
-        pending.device.battery = pending.container.as_ref().and_then(|container| pnp.get(&braced(container))).copied();
+        pending.device.battery = pending
+            .container
+            .as_ref()
+            .and_then(|container| pnp.get(&braced(container)))
+            .copied();
         let deadline = (Instant::now() + DEVICE_BUDGET).min(battery_deadline);
         for id in &pending.le_endpoints {
             if pending.device.battery.is_some() {
@@ -123,10 +146,15 @@ pub fn fetch_devices(cancel: &AtomicBool) -> Result<BluetoothSnapshot, String> {
             }
             check_cancelled(cancel)?;
             let open_deadline = (Instant::now() + Duration::from_secs(1)).min(deadline);
-            let device = match wait_result(open_deadline, Some(cancel), || BluetoothLEDevice::FromIdAsync(&HSTRING::from(id))) {
+            let device = match wait_result(open_deadline, Some(cancel), || {
+                BluetoothLEDevice::FromIdAsync(&HSTRING::from(id))
+            }) {
                 Ok(device) => device,
                 Err(error) => {
-                    crate::pwarn!("bluetooth devices: LE device open failed ({:?})", error.code());
+                    crate::pwarn!(
+                        "bluetooth devices: LE device open failed ({:?})",
+                        error.code()
+                    );
                     battery_failed = true;
                     continue;
                 }
@@ -137,14 +165,20 @@ pub fn fetch_devices(cancel: &AtomicBool) -> Result<BluetoothSnapshot, String> {
                     match gatt_battery_result(&device, deadline, Some(cancel)) {
                         Ok(level) => pending.device.battery = level,
                         Err(error) => {
-                            crate::pwarn!("bluetooth devices: GATT battery read failed ({:?})", error.code());
+                            crate::pwarn!(
+                                "bluetooth devices: GATT battery read failed ({:?})",
+                                error.code()
+                            );
                             battery_failed = true;
                         }
                     }
                 }
                 Ok(_) => {}
                 Err(error) => {
-                    crate::pwarn!("bluetooth devices: LE connection state read failed ({:?})", error.code());
+                    crate::pwarn!(
+                        "bluetooth devices: LE connection state read failed ({:?})",
+                        error.code()
+                    );
                     battery_failed = true;
                 }
             }
@@ -159,35 +193,74 @@ pub fn fetch_devices(cancel: &AtomicBool) -> Result<BluetoothSnapshot, String> {
     if battery_failed {
         warnings.push("部分设备电量暂时无法读取，请稍后刷新");
     }
-    out.sort_by(|left, right| left.name.cmp(&right.name).then_with(|| left.id.cmp(&right.id)));
-    Ok(BluetoothSnapshot { devices: out, warning: (!warnings.is_empty()).then(|| warnings.join("；")) })
+    out.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    Ok(BluetoothSnapshot {
+        devices: out,
+        warning: (!warnings.is_empty()).then(|| warnings.join("；")),
+    })
 }
 
 fn enumerate(le: bool, cancel: &AtomicBool) -> WinResult<Vec<Endpoint>> {
     let selector = if le {
-        BluetoothLEDevice::GetDeviceSelectorFromConnectionStatus(BluetoothConnectionStatus::Connected)?
+        BluetoothLEDevice::GetDeviceSelectorFromConnectionStatus(
+            BluetoothConnectionStatus::Connected,
+        )?
     } else {
-        BluetoothDevice::GetDeviceSelectorFromConnectionStatus(BluetoothConnectionStatus::Connected)?
+        BluetoothDevice::GetDeviceSelectorFromConnectionStatus(
+            BluetoothConnectionStatus::Connected,
+        )?
     };
     let selector = HSTRING::from(paired_only(&selector.to_string_lossy()));
-    let class_properties = if le { [PKEY_LE_CATEGORY, PKEY_LE_SUBCATEGORY] } else { [PKEY_COD_MAJOR, PKEY_COD_MINOR] };
-    let full = [PKEY_CONTAINER, PKEY_CONNECTED, class_properties[0], class_properties[1]];
+    let class_properties = if le {
+        [PKEY_LE_CATEGORY, PKEY_LE_SUBCATEGORY]
+    } else {
+        [PKEY_COD_MAJOR, PKEY_COD_MINOR]
+    };
+    let full = [
+        PKEY_CONTAINER,
+        PKEY_CONNECTED,
+        class_properties[0],
+        class_properties[1],
+    ];
     let basic = [PKEY_CONTAINER, PKEY_CONNECTED];
     let deadline = Instant::now() + ENUM_TIMEOUT;
     let mut found: Option<DeviceInformationCollection> = None;
     let mut last_error = None;
     // 只对旧系统不支持的分类属性降级，不隐藏权限或蓝牙服务错误。
     for properties in [&full[..], &basic[..], &[][..]] {
-        let properties = IIterable::<HSTRING>::try_from(properties.iter().map(|key| HSTRING::from(*key)).collect::<Vec<_>>())?;
-        match wait_result(deadline, Some(cancel), || DeviceInformation::FindAllAsyncWithKindAqsFilterAndAdditionalProperties(
-            &selector, &properties, DeviceInformationKind::AssociationEndpoint,
-        )) {
-            Ok(devices) => { found = Some(devices); break; }
+        let properties = IIterable::<HSTRING>::try_from(
+            properties
+                .iter()
+                .map(|key| HSTRING::from(*key))
+                .collect::<Vec<_>>(),
+        )?;
+        match wait_result(deadline, Some(cancel), || {
+            DeviceInformation::FindAllAsyncWithKindAqsFilterAndAdditionalProperties(
+                &selector,
+                &properties,
+                DeviceInformationKind::AssociationEndpoint,
+            )
+        }) {
+            Ok(devices) => {
+                found = Some(devices);
+                break;
+            }
             Err(error) if error.code() == HRESULT(0x80070057u32 as i32) => last_error = Some(error),
             Err(error) => return Err(error),
         }
     }
-    let found = found.ok_or_else(|| last_error.unwrap_or_else(|| Error::new(HRESULT(0x80004005u32 as i32), "Bluetooth enumeration failed")))?;
+    let found = found.ok_or_else(|| {
+        last_error.unwrap_or_else(|| {
+            Error::new(
+                HRESULT(0x80004005u32 as i32),
+                "Bluetooth enumeration failed",
+            )
+        })
+    })?;
     let mut out = Vec::new();
     for index in 0..found.Size()? {
         if cancel.load(Ordering::Relaxed) {
@@ -199,9 +272,15 @@ fn enumerate(le: bool, cancel: &AtomicBool) -> WinResult<Vec<Endpoint>> {
             continue;
         }
         let kind = if le {
-            le_kind(prop_u32(&properties, PKEY_LE_CATEGORY), prop_u32(&properties, PKEY_LE_SUBCATEGORY))
+            le_kind(
+                prop_u32(&properties, PKEY_LE_CATEGORY),
+                prop_u32(&properties, PKEY_LE_SUBCATEGORY),
+            )
         } else {
-            classic_kind(prop_u32(&properties, PKEY_COD_MAJOR), prop_u32(&properties, PKEY_COD_MINOR))
+            classic_kind(
+                prop_u32(&properties, PKEY_COD_MAJOR),
+                prop_u32(&properties, PKEY_COD_MINOR),
+            )
         };
         out.push(Endpoint {
             id: info.Id()?.to_string_lossy(),
@@ -217,19 +296,31 @@ struct DeviceInfoSet(HDEVINFO);
 
 impl Drop for DeviceInfoSet {
     fn drop(&mut self) {
-        unsafe { let _ = SetupDiDestroyDeviceInfoList(self.0); }
+        unsafe {
+            let _ = SetupDiDestroyDeviceInfoList(self.0);
+        }
     }
 }
 
 /// SetupAPI只读取Windows维护的本地属性，包含同一蓝牙设备的根节点和服务节点。
 fn fetch_pnp_batteries(cancel: &AtomicBool) -> WinResult<HashMap<String, u8>> {
-    let set = DeviceInfoSet(unsafe { SetupDiGetClassDevsW(None, PCWSTR::null(), HWND::default(), DIGCF_PRESENT | DIGCF_ALLCLASSES)? });
+    let set = DeviceInfoSet(unsafe {
+        SetupDiGetClassDevsW(
+            None,
+            PCWSTR::null(),
+            HWND::default(),
+            DIGCF_PRESENT | DIGCF_ALLCLASSES,
+        )?
+    });
     let mut out = HashMap::new();
     for index in 0..u32::MAX {
         if cancel.load(Ordering::Relaxed) {
             break;
         }
-        let mut info = SP_DEVINFO_DATA { cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as u32, ..Default::default() };
+        let mut info = SP_DEVINFO_DATA {
+            cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as u32,
+            ..Default::default()
+        };
         if let Err(error) = unsafe { SetupDiEnumDeviceInfo(set.0, index, &mut info) } {
             if error.code() == HRESULT::from_win32(ERROR_NO_MORE_ITEMS.0) {
                 break;
@@ -237,21 +328,53 @@ fn fetch_pnp_batteries(cancel: &AtomicBool) -> WinResult<HashMap<String, u8>> {
             return Err(error);
         }
         let mut instance = [0u16; MAX_DEVICE_ID_LEN as usize];
-        unsafe { SetupDiGetDeviceInstanceIdW(set.0, &info, Some(&mut instance), None)?; }
-        let end = instance.iter().position(|value| *value == 0).unwrap_or(instance.len());
+        unsafe {
+            SetupDiGetDeviceInstanceIdW(set.0, &info, Some(&mut instance), None)?;
+        }
+        let end = instance
+            .iter()
+            .position(|value| *value == 0)
+            .unwrap_or(instance.len());
         let instance = String::from_utf16_lossy(&instance[..end]);
-        if !instance.starts_with("BTHENUM\\") && !instance.starts_with("BTHLE\\") && !instance.starts_with("BTHLEDEVICE\\") {
+        if !instance.starts_with("BTHENUM\\")
+            && !instance.starts_with("BTHLE\\")
+            && !instance.starts_with("BTHLEDEVICE\\")
+        {
             continue;
         }
         let mut property_type = DEVPROPTYPE::default();
         let mut battery = [0u8; 1];
         let mut size = 0;
-        let battery_read = unsafe { SetupDiGetDevicePropertyW(set.0, &info, &BATTERY_PROPERTY, &mut property_type, Some(&mut battery), Some(&mut size), 0) };
-        if battery_read.is_err() || property_type != DEVPROP_TYPE_BYTE || size != 1 || battery[0] > 100 {
+        let battery_read = unsafe {
+            SetupDiGetDevicePropertyW(
+                set.0,
+                &info,
+                &BATTERY_PROPERTY,
+                &mut property_type,
+                Some(&mut battery),
+                Some(&mut size),
+                0,
+            )
+        };
+        if battery_read.is_err()
+            || property_type != DEVPROP_TYPE_BYTE
+            || size != 1
+            || battery[0] > 100
+        {
             continue;
         }
         let mut container = [0u8; 16];
-        let container_read = unsafe { SetupDiGetDevicePropertyW(set.0, &info, &DEVPKEY_Device_ContainerId, &mut property_type, Some(&mut container), Some(&mut size), 0) };
+        let container_read = unsafe {
+            SetupDiGetDevicePropertyW(
+                set.0,
+                &info,
+                &DEVPKEY_Device_ContainerId,
+                &mut property_type,
+                Some(&mut container),
+                Some(&mut size),
+                0,
+            )
+        };
         if container_read.is_err() || property_type != DEVPROP_TYPE_GUID || size != 16 {
             continue;
         }

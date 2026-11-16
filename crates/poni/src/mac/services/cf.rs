@@ -97,7 +97,11 @@ pub fn data_bytes(v: CFTypeRef) -> Option<Vec<u8>> {
             return None;
         }
         let (p, n) = (CFDataGetBytePtr(v), CFDataGetLength(v));
-        Some(if p.is_null() || n <= 0 { Vec::new() } else { std::slice::from_raw_parts(p, n as usize).to_vec() })
+        Some(if p.is_null() || n <= 0 {
+            Vec::new()
+        } else {
+            std::slice::from_raw_parts(p, n as usize).to_vec()
+        })
     }
 }
 

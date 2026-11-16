@@ -112,7 +112,11 @@ class GitHub:
             url = API + url
         if params:
             url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
-        headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "oyen-poni-download-stats"}
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "oyen-poni-download-stats",
+        }
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         for attempt in range(5):
@@ -244,8 +248,15 @@ def count_ci(gh: GitHub, steps: dict[str, dict[str, tuple[str, str]]], ledger: d
                         continue
                     tag, file = names[step["name"]]
                     ledger[key] = {
-                        "job_id": str(job["id"]), "step": step["name"], "run_id": str(run["id"]), "attempt": str(job.get("run_attempt") or 1),
-                        "started_at": step["started_at"], "branch": run.get("head_branch") or "", "workflow": workflow, "release": tag, "file": file,
+                        "job_id": str(job["id"]),
+                        "step": step["name"],
+                        "run_id": str(run["id"]),
+                        "attempt": str(job.get("run_attempt") or 1),
+                        "started_at": step["started_at"],
+                        "branch": run.get("head_branch") or "",
+                        "workflow": workflow,
+                        "release": tag,
+                        "file": file,
                     }
                     added += 1
     return added

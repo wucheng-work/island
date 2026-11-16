@@ -3,8 +3,8 @@
 //! 字号来自 core 设计尺度；具体字体族、CJK 回退、主题字体与排版测量由平台 Canvas 负责。
 //! 保留统一的字重、对齐、行距、换行及用户选色语义，避免两套 builder 逐渐分歧。
 
-use poni_core::geom::Color;
 use poni_core::design::type_scale as ts;
+use poni_core::geom::Color;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Weight {
@@ -42,7 +42,17 @@ pub struct TextStyle {
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 impl TextStyle {
     pub fn new(size: f32) -> Self {
-        Self { size, weight: Weight::Regular, color: poni_core::geom::palette::TEXT, preserve_color: false, align: Align::Left, tabular: false, wrap: false, vcenter: true, line: 0.0 }
+        Self {
+            size,
+            weight: Weight::Regular,
+            color: poni_core::geom::palette::TEXT,
+            preserve_color: false,
+            align: Align::Left,
+            tabular: false,
+            wrap: false,
+            vcenter: true,
+            line: 0.0,
+        }
     }
     pub fn caption() -> Self {
         Self::new(ts::CAPTION)
@@ -107,5 +117,6 @@ impl TextStyle {
 
 /// 自选歌词色保持原值；默认色只在这里按当前主题解析，绘制时不再二次映射。
 pub fn lyrics_color(rgb: Option<u32>, look: &poni_core::look::Look) -> Color {
-    rgb.map(Color::hex).unwrap_or_else(|| look.paint_text(poni_core::geom::palette::BLUE))
+    rgb.map(Color::hex)
+        .unwrap_or_else(|| look.paint_text(poni_core::geom::palette::BLUE))
 }

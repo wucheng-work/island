@@ -1,7 +1,9 @@
 //! 用户主动打开的系统调色板，不启动后台工作。
 
 use windows::Win32::Foundation::{COLORREF, HWND};
-use windows::Win32::UI::Controls::Dialogs::{ChooseColorW, CommDlgExtendedError, CC_FULLOPEN, CC_RGBINIT, CHOOSECOLORW};
+use windows::Win32::UI::Controls::Dialogs::{
+    ChooseColorW, CommDlgExtendedError, CC_FULLOPEN, CC_RGBINIT, CHOOSECOLORW,
+};
 
 pub fn choose(owner: HWND, rgb: u32) -> Result<Option<u32>, String> {
     let mut custom = [COLORREF(0x00ffffff); 16];
@@ -15,7 +17,9 @@ pub fn choose(owner: HWND, rgb: u32) -> Result<Option<u32>, String> {
     };
     if unsafe { ChooseColorW(&mut dialog) }.as_bool() {
         let color = dialog.rgbResult.0;
-        return Ok(Some((color & 0x00ff00) | ((color & 0xff) << 16) | ((color >> 16) & 0xff)));
+        return Ok(Some(
+            (color & 0x00ff00) | ((color & 0xff) << 16) | ((color >> 16) & 0xff),
+        ));
     }
     let error = unsafe { CommDlgExtendedError() };
     if error.0 == 0 {

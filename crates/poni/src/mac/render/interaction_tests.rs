@@ -31,7 +31,12 @@ impl PageHarness {
         st.page = page;
         st.settings.expanded_width = width;
         self.gfx.set_look(poni_core::look::of(st.settings.theme));
-        let body = Rect::new(0.0, 0.0, pages::expanded_width(page, st), pages::HEADER_H + pages::content_height(page, st) + pages::PAD);
+        let body = Rect::new(
+            0.0,
+            0.0,
+            pages::expanded_width(page, st),
+            pages::HEADER_H + pages::content_height(page, st) + pages::PAD,
+        );
         let mut hits = Vec::new();
         {
             let mut canvas = self.gfx.canvas(self.bitmap.ctx());
@@ -50,14 +55,19 @@ impl PageHarness {
 }
 
 fn hit(hits: &[Hit], id: WidgetId) -> &Hit {
-    hits.iter().find(|hit| hit.id == id).unwrap_or_else(|| panic!("missing hit {id}"))
+    hits.iter()
+        .find(|hit| hit.id == id)
+        .unwrap_or_else(|| panic!("missing hit {id}"))
 }
 
 fn within(hit: &Hit, width: f32, height: f32) {
     let rect = hit.rect;
     assert!(rect.w > 0.0 && rect.h > 0.0, "invalid hit {rect:?}");
     assert!(
-        rect.x >= 0.0 && rect.y >= 0.0 && rect.right() <= width + 0.5 && rect.bottom() <= height + 0.5,
+        rect.x >= 0.0
+            && rect.y >= 0.0
+            && rect.right() <= width + 0.5
+            && rect.bottom() <= height + 0.5,
         "hit outside page: {rect:?} in {width}×{height}"
     );
 }
@@ -69,29 +79,42 @@ fn header_navigation_and_all_settings_entry_remain_reachable_at_supported_widths
         for width in [480.0, 620.0, 900.0] {
             let mut st = base_state(theme);
             media(&mut st);
-            let index = pages::tabs(&st).iter().position(|page| *page == PageKind::Today).unwrap();
+            let index = pages::tabs(&st)
+                .iter()
+                .position(|page| *page == PageKind::Today)
+                .unwrap();
             let hits = harness.draw(&mut st, PageKind::Media, width);
             let tab = wid_n("tab", index as u64);
             within(hit(&hits, tab), width, 100.0);
             harness.click(&hits, tab);
             harness.draw(&mut st, PageKind::Media, width);
-            assert!(st.cmds.contains(&Command::SetPage(PageKind::Today)), "{theme:?} at {width}");
+            assert!(
+                st.cmds.contains(&Command::SetPage(PageKind::Today)),
+                "{theme:?} at {width}"
+            );
 
             st.cmds.clear();
             let hits = harness.draw(&mut st, PageKind::Settings, width);
             let advanced = wid(pages::settings::ADVANCED_ID);
-            within(hit(&hits, advanced), width, pages::HEADER_H + pages::settings::height(&st) + pages::PAD);
+            within(
+                hit(&hits, advanced),
+                width,
+                pages::HEADER_H + pages::settings::height(&st) + pages::PAD,
+            );
             harness.click(&hits, advanced);
             harness.draw(&mut st, PageKind::Settings, width);
-            assert!(st.cmds.contains(&Command::OpenSettings), "{theme:?} at {width}");
+            assert!(
+                st.cmds.contains(&Command::OpenSettings),
+                "{theme:?} at {width}"
+            );
         }
     }
 }
 
 #[test]
 fn every_advanced_settings_category_responds_to_real_hit_testing() {
-    use crate::settings_window::{Frame, View};
     use crate::settings_model::Section;
+    use crate::settings_window::{Frame, View};
     let mut st = base_state(Theme::Pill);
     sample_mail(&mut st);
     let mut view = View::new(Section::General);
@@ -110,7 +133,9 @@ fn every_advanced_settings_category_responds_to_real_hit_testing() {
     };
     draw(&mut view, &mut st);
     for (index, section) in Section::ALL.into_iter().enumerate() {
-        let rect = view.hit_rect(wid_n("settingswin.nav", index as u64)).expect("settings navigation hit");
+        let rect = view
+            .hit_rect(wid_n("settingswin.nav", index as u64))
+            .expect("settings navigation hit");
         view.press(rect.center());
         view.release(rect.center());
         draw(&mut view, &mut st);
@@ -148,7 +173,10 @@ fn selected_date_and_chinese_city_input_use_the_actual_page_controls() {
             .cmds
             .iter()
             .any(|command| matches!(command, Command::SearchWeatherCities { query, .. } if query == "长沙")));
-        assert!(!st.cmds.iter().any(|command| matches!(command, Command::LocateWeather)));
+        assert!(!st
+            .cmds
+            .iter()
+            .any(|command| matches!(command, Command::LocateWeather)));
     }
 }
 
@@ -186,7 +214,11 @@ fn mail_account_menu_owns_input_and_keeps_preview_and_back_actions_working() {
         sample_mail(&mut st);
         st.settings.mail.enabled = true;
         let hits = harness.draw(&mut st, PageKind::Mail, width);
-        harness.input.mouse = Some(hit(&hits, wid("mail.message.demo-mail-qq.qq-101")).rect.center());
+        harness.input.mouse = Some(
+            hit(&hits, wid("mail.message.demo-mail-qq.qq-101"))
+                .rect
+                .center(),
+        );
         harness.input.wheel = -1.0;
         let hits = harness.draw(&mut st, PageKind::Mail, width);
         assert!(st.mail.scroll > 0.0);
@@ -194,7 +226,9 @@ fn mail_account_menu_owns_input_and_keeps_preview_and_back_actions_working() {
         let hits = harness.draw(&mut st, PageKind::Mail, width);
         assert!(st.mail.account_filter_open);
         assert!(
-            !hits.iter().any(|hit| hit.id == wid("mail.message.demo-mail-qq.qq-101")),
+            !hits
+                .iter()
+                .any(|hit| hit.id == wid("mail.message.demo-mail-qq.qq-101")),
             "dropdown must not expose the message beneath it"
         );
         harness.click(&hits, wid("mail.account-option.demo-mail-aruba"));
@@ -206,7 +240,10 @@ fn mail_account_menu_owns_input_and_keeps_preview_and_back_actions_working() {
         let hits = harness.draw(&mut st, PageKind::Mail, width);
         harness.click(&hits, wid("mail.message.demo-mail-aruba.aruba-303"));
         harness.draw(&mut st, PageKind::Mail, width);
-        assert_eq!(st.mail.selected_message, Some(("demo-mail-aruba".into(), "aruba-303".into())));
+        assert_eq!(
+            st.mail.selected_message,
+            Some(("demo-mail-aruba".into(), "aruba-303".into()))
+        );
         assert!(st.mail.preview_loading);
         assert!(st
             .cmds

@@ -4,8 +4,13 @@ use crate::events::{AppEvent, EventSink};
 use crate::mail::{MailAction, MailCredentialInput};
 use objc2::rc::Retained;
 use objc2::{define_class, msg_send, sel, DefinedClass, MainThreadMarker, MainThreadOnly};
-use objc2_app_kit::{NSAlert, NSAlertFirstButtonReturn, NSAlertStyle, NSApplication, NSButton, NSColor, NSFont, NSPopUpButton, NSResponder, NSSecureTextField, NSTextField, NSView};
-use objc2_foundation::{NSArray, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSUUID};
+use objc2_app_kit::{
+    NSAlert, NSAlertFirstButtonReturn, NSAlertStyle, NSApplication, NSButton, NSColor, NSFont,
+    NSPopUpButton, NSResponder, NSSecureTextField, NSTextField, NSView,
+};
+use objc2_foundation::{
+    NSArray, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSUUID,
+};
 use poni_core::mail::{MailAccount, MailProvider};
 use std::cell::RefCell;
 
@@ -120,13 +125,31 @@ impl MailAccountView {
 impl Editor {
     fn update_provider(&self) {
         let google = self.account.provider == MailProvider::Gmail;
-        self.host_label.setStringValue(&NSString::from_str(if google { "客户端 ID" } else { "IMAP 服务器" }));
-        self.host.setPlaceholderString(Some(&NSString::from_str(if google { "Google 桌面应用客户端 ID" } else { "例如：imaps.aruba.it" })));
+        self.host_label
+            .setStringValue(&NSString::from_str(if google {
+                "客户端 ID"
+            } else {
+                "IMAP 服务器"
+            }));
+        self.host
+            .setPlaceholderString(Some(&NSString::from_str(if google {
+                "Google 桌面应用客户端 ID"
+            } else {
+                "例如：imaps.aruba.it"
+            })));
         self.port.setHidden(google);
         self.port_label.setHidden(google);
-        self.secret_label.setStringValue(&NSString::from_str(if google { "客户端密钥" } else { "密码／授权码" }));
+        self.secret_label
+            .setStringValue(&NSString::from_str(if google {
+                "客户端密钥"
+            } else {
+                "密码／授权码"
+            }));
         self.save.setTitle(&NSString::from_str("保存并授权"));
-        self.detail.setStringValue(&NSString::from_str(instructions(self.account.provider, self.previous.is_none())));
+        self.detail.setStringValue(&NSString::from_str(instructions(
+            self.account.provider,
+            self.previous.is_none(),
+        )));
         self.error.setStringValue(&NSString::from_str(""));
     }
 
@@ -140,22 +163,49 @@ impl Editor {
             edited.port = 993;
         } else {
             edited.host = self.host.stringValue().to_string().trim().into();
-            edited.port = self.port.stringValue().to_string().trim().parse::<u16>().ok().filter(|port| *port > 0).ok_or("端口需要是 1–65535 之间的整数")?;
+            edited.port = self
+                .port
+                .stringValue()
+                .to_string()
+                .trim()
+                .parse::<u16>()
+                .ok()
+                .filter(|port| *port > 0)
+                .ok_or("端口需要是 1–65535 之间的整数")?;
         }
         edited.validate()?;
-        let changed = self.previous.as_ref().is_some_and(|a| a.provider != edited.provider || a.address != edited.address || a.host != edited.host || a.port != edited.port);
+        let changed = self.previous.as_ref().is_some_and(|a| {
+            a.provider != edited.provider
+                || a.address != edited.address
+                || a.host != edited.host
+                || a.port != edited.port
+        });
         let secret = self.secret.stringValue().to_string();
         let credentials = if google {
             let client_id = self.host.stringValue().to_string().trim().to_string();
             let client_secret = secret.trim().to_string();
-            if client_id.is_empty() && client_secret.is_empty() && self.previous.is_some() && !changed {
+            if client_id.is_empty()
+                && client_secret.is_empty()
+                && self.previous.is_some()
+                && !changed
+            {
                 MailCredentialInput::Keep
             } else if client_id.is_empty() || client_secret.is_empty() {
-                return Err("请填写 Google 桌面应用客户端 ID 和密钥；编辑时两项都留空可保留授权".into());
-            } else if !client_id.ends_with(".apps.googleusercontent.com") || client_id.chars().any(char::is_whitespace) {
-                return Err("客户端 ID 应以 .apps.googleusercontent.com 结尾，请使用桌面应用 OAuth 配置".into());
+                return Err(
+                    "请填写 Google 桌面应用客户端 ID 和密钥；编辑时两项都留空可保留授权".into(),
+                );
+            } else if !client_id.ends_with(".apps.googleusercontent.com")
+                || client_id.chars().any(char::is_whitespace)
+            {
+                return Err(
+                    "客户端 ID 应以 .apps.googleusercontent.com 结尾，请使用桌面应用 OAuth 配置"
+                        .into(),
+                );
             } else {
-                MailCredentialInput::Google { client_id, client_secret }
+                MailCredentialInput::Google {
+                    client_id,
+                    client_secret,
+                }
             }
         } else if secret.is_empty() {
             if self.previous.is_none() || changed {
@@ -176,36 +226,121 @@ pub fn show(mtm: MainThreadMarker, previous: Option<MailAccount>, sink: EventSin
         account.id = NSUUID::UUID().UUIDString().to_string().to_ascii_lowercase();
         account.name = account.provider.title().into();
     }
-    account.revision = previous.as_ref().map_or(1, |a| a.revision.saturating_add(1));
+    account.revision = previous
+        .as_ref()
+        .map_or(1, |a| a.revision.saturating_add(1));
     let this = MailAccountView::alloc(mtm).set_ivars(RefCell::new(None));
-    let form: Retained<MailAccountView> = unsafe { msg_send![super(this), initWithFrame: rect(0.0, 0.0, FORM_W, FORM_H as f64)] };
+    let form: Retained<MailAccountView> =
+        unsafe { msg_send![super(this), initWithFrame: rect(0.0, 0.0, FORM_W, FORM_H as f64)] };
     // 表单保持透明，沿用设置列表 fill_group 的背景、描边和圆角。
-    let heading = label(mtm, &form, if previous.is_none() { "添加邮箱账户" } else { "编辑邮箱账户" }, rect(LABEL_X, 12.0, FORM_W - 2.0 * LABEL_X, 22.0));
+    let heading = label(
+        mtm,
+        &form,
+        if previous.is_none() {
+            "添加邮箱账户"
+        } else {
+            "编辑邮箱账户"
+        },
+        rect(LABEL_X, 12.0, FORM_W - 2.0 * LABEL_X, 22.0),
+    );
     heading.setFont(Some(&NSFont::boldSystemFontOfSize(13.0)));
     heading.setTextColor(Some(&NSColor::labelColor()));
-    let detail = label(mtm, &form, "", rect(LABEL_X, 42.0, FORM_W - 2.0 * LABEL_X, 42.0));
+    let detail = label(
+        mtm,
+        &form,
+        "",
+        rect(LABEL_X, 42.0, FORM_W - 2.0 * LABEL_X, 42.0),
+    );
     detail.setTextColor(Some(&NSColor::secondaryLabelColor()));
     label(mtm, &form, "邮箱类型", rect(LABEL_X, 98.0, 104.0, 22.0));
-    let provider = NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), rect(FIELD_X, 94.0, FIELD_W, 28.0), false);
-    let titles: Vec<_> = MailProvider::ALL.iter().map(|p| NSString::from_str(p.title())).collect();
+    let provider = NSPopUpButton::initWithFrame_pullsDown(
+        NSPopUpButton::alloc(mtm),
+        rect(FIELD_X, 94.0, FIELD_W, 28.0),
+        false,
+    );
+    let titles: Vec<_> = MailProvider::ALL
+        .iter()
+        .map(|p| NSString::from_str(p.title()))
+        .collect();
     provider.addItemsWithTitles(&NSArray::from_retained_slice(&titles));
-    provider.selectItemAtIndex(MailProvider::ALL.iter().position(|p| *p == account.provider).unwrap_or(0) as isize);
+    provider.selectItemAtIndex(
+        MailProvider::ALL
+            .iter()
+            .position(|p| *p == account.provider)
+            .unwrap_or(0) as isize,
+    );
     form.addSubview(&provider);
-    let (_, name) = field(mtm, &form, "显示名称", &account.name, "例如：工作邮箱", 132.0);
-    let (_, address) = field(mtm, &form, "邮箱地址", &account.address, "完整邮箱地址", 168.0);
-    let (host_label, host) = field(mtm, &form, "IMAP 服务器", if account.provider == MailProvider::Gmail { "" } else { &account.host }, "", 204.0);
+    let (_, name) = field(
+        mtm,
+        &form,
+        "显示名称",
+        &account.name,
+        "例如：工作邮箱",
+        132.0,
+    );
+    let (_, address) = field(
+        mtm,
+        &form,
+        "邮箱地址",
+        &account.address,
+        "完整邮箱地址",
+        168.0,
+    );
+    let (host_label, host) = field(
+        mtm,
+        &form,
+        "IMAP 服务器",
+        if account.provider == MailProvider::Gmail {
+            ""
+        } else {
+            &account.host
+        },
+        "",
+        204.0,
+    );
     let (port_label, port) = field(mtm, &form, "端口", &account.port.to_string(), "993", 240.0);
-    let secret_label = label(mtm, &form, "密码／授权码", rect(LABEL_X, 280.0, 104.0, 22.0));
-    let secret = NSSecureTextField::initWithFrame(NSSecureTextField::alloc(mtm), rect(FIELD_X, 276.0, FIELD_W, 28.0));
+    let secret_label = label(
+        mtm,
+        &form,
+        "密码／授权码",
+        rect(LABEL_X, 280.0, 104.0, 22.0),
+    );
+    let secret = NSSecureTextField::initWithFrame(
+        NSSecureTextField::alloc(mtm),
+        rect(FIELD_X, 276.0, FIELD_W, 28.0),
+    );
     secret.setFont(Some(&NSFont::systemFontOfSize(13.0)));
-    secret.setPlaceholderString(Some(&NSString::from_str(if previous.is_none() { "仅保存到 macOS 钥匙串" } else { "留空保留现有凭据" })));
+    secret.setPlaceholderString(Some(&NSString::from_str(if previous.is_none() {
+        "仅保存到 macOS 钥匙串"
+    } else {
+        "留空保留现有凭据"
+    })));
     form.addSubview(&secret);
-    let error = label(mtm, &form, "", rect(LABEL_X, 312.0, FORM_W - 2.0 * LABEL_X, 36.0));
+    let error = label(
+        mtm,
+        &form,
+        "",
+        rect(LABEL_X, 312.0, FORM_W - 2.0 * LABEL_X, 36.0),
+    );
     error.setTextColor(Some(&NSColor::systemRedColor()));
-    let cancel = unsafe { NSButton::buttonWithTitle_target_action(&NSString::from_str("取消"), Some(form.as_ref()), Some(sel!(cancelAccount:)), mtm) };
+    let cancel = unsafe {
+        NSButton::buttonWithTitle_target_action(
+            &NSString::from_str("取消"),
+            Some(form.as_ref()),
+            Some(sel!(cancelAccount:)),
+            mtm,
+        )
+    };
     cancel.setFrame(rect(FORM_W - 244.0, 354.0, 96.0, 30.0));
     form.addSubview(&cancel);
-    let save = unsafe { NSButton::buttonWithTitle_target_action(&NSString::from_str("保存并授权"), Some(form.as_ref()), Some(sel!(saveAccount:)), mtm) };
+    let save = unsafe {
+        NSButton::buttonWithTitle_target_action(
+            &NSString::from_str("保存并授权"),
+            Some(form.as_ref()),
+            Some(sel!(saveAccount:)),
+            mtm,
+        )
+    };
     save.setFrame(rect(FORM_W - 140.0, 354.0, 112.0, 30.0));
     form.addSubview(&save);
     unsafe {
@@ -220,7 +355,23 @@ pub fn show(mtm: MainThreadMarker, previous: Option<MailAccount>, sink: EventSin
         save.setNextKeyView(Some(&cancel));
         cancel.setNextKeyView(Some(&provider));
     }
-    let editor = Editor { previous, account, sink, provider, name, address, host, host_label, port, port_label, secret, secret_label, detail, error, save };
+    let editor = Editor {
+        previous,
+        account,
+        sink,
+        provider,
+        name,
+        address,
+        host,
+        host_label,
+        port,
+        port_label,
+        secret,
+        secret_label,
+        detail,
+        error,
+        save,
+    };
     editor.update_provider();
     *form.ivars().borrow_mut() = Some(editor);
     crate::settings_host::mount_mail_editor(form);
@@ -232,8 +383,13 @@ pub fn confirm_remove(mtm: MainThreadMarker, account: MailAccount, sink: EventSi
     let alert = account_alert(mtm);
     alert.setAlertStyle(NSAlertStyle::Warning);
     alert.setMessageText(&NSString::from_str("移除邮箱账户？"));
-    alert.setInformativeText(&NSString::from_str(&format!("{}\n{}\n\n移除此应用保存的账户、凭据和邮件缓存。邮箱服务器中的邮件会保留。", account.name, account.address,)));
-    alert.addButtonWithTitle(&NSString::from_str("取消")).setKeyEquivalent(&NSString::from_str("\u{1b}"));
+    alert.setInformativeText(&NSString::from_str(&format!(
+        "{}\n{}\n\n移除此应用保存的账户、凭据和邮件缓存。邮箱服务器中的邮件会保留。",
+        account.name, account.address,
+    )));
+    alert
+        .addButtonWithTitle(&NSString::from_str("取消"))
+        .setKeyEquivalent(&NSString::from_str("\u{1b}"));
     alert.addButtonWithTitle(&NSString::from_str("移除账户"));
     let response = alert.runModal();
     alert.window().orderOut(None);
@@ -261,7 +417,14 @@ fn label(mtm: MainThreadMarker, form: &NSView, text: &str, frame: NSRect) -> Ret
     label
 }
 
-fn field(mtm: MainThreadMarker, form: &NSView, title: &str, value: &str, placeholder: &str, y: f64) -> (Retained<NSTextField>, Retained<NSTextField>) {
+fn field(
+    mtm: MainThreadMarker,
+    form: &NSView,
+    title: &str,
+    value: &str,
+    placeholder: &str,
+    y: f64,
+) -> (Retained<NSTextField>, Retained<NSTextField>) {
     let caption = label(mtm, form, title, rect(LABEL_X, y + 4.0, 104.0, 22.0));
     let field = NSTextField::textFieldWithString(&NSString::from_str(value), mtm);
     field.setFont(Some(&NSFont::systemFontOfSize(13.0)));

@@ -70,7 +70,16 @@ def main():
     ap = argparse.ArgumentParser(description="Compare two self-test output folders, exact pixels.")
     ap.add_argument("before", type=Path)
     ap.add_argument("after", type=Path)
-    ap.add_argument("--noise", type=Path, action="append", default=[], help="another run of the <before> build (repeatable): pictures that differ there too are time-dependent")
+    ap.add_argument(
+        "--noise",
+        type=Path,
+        action="append",
+        default=[],
+        help=(
+            "another run of the <before> build (repeatable): pictures that "
+            "differ there too are time-dependent"
+        ),
+    )
     args = ap.parse_args()
     for d in [args.before, args.after] + args.noise:
         if not d.is_dir():
@@ -120,7 +129,10 @@ def main():
 
     fb, fa = failed_checks(args.before), failed_checks(args.after)
     if fb is not None and fa is not None:
-        print(f"report.json failed checks: before {len(fb)}, after {len(fa)}" + (f"; new in after: {', '.join(sorted(fa - fb))}" if fa - fb else ""))
+        print(
+            f"report.json failed checks: before {len(fb)}, after {len(fa)}"
+            + (f"; new in after: {', '.join(sorted(fa - fb))}" if fa - fb else "")
+        )
 
     ok = not changed and not gone
     print("result: " + ("no picture changed" if ok else "pictures changed"))

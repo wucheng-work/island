@@ -518,7 +518,12 @@ fn draw_detail(
     );
     ui.c.fill_rrect(body, radius::PANEL, palette::SURFACE);
     let markdown_command = conversation::draw_message(
-        ui, &entry.message.id, &entry.message.text, scroll, body.inset(13.0, 10.0), accent,
+        ui,
+        &entry.message.id,
+        &entry.message.text,
+        scroll,
+        body.inset(13.0, 10.0),
+        accent,
     );
 
     if waiting {

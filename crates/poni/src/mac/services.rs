@@ -17,16 +17,14 @@ pub mod fullscreen;
 pub mod host;
 #[path = "services/http.rs"]
 pub mod http;
-#[path = "services/login.rs"]
-pub mod login;
 #[path = "services/location.rs"]
 pub mod location;
-#[path = "services/mail.rs"]
-pub mod mail;
-#[path = "services/translation.rs"]
-pub mod translation;
+#[path = "services/login.rs"]
+pub mod login;
 #[path = "../services/lyrics.rs"]
 pub mod lyrics;
+#[path = "services/mail.rs"]
+pub mod mail;
 #[path = "services/media.rs"]
 pub mod media;
 #[path = "services/mediaremote.rs"]
@@ -46,14 +44,16 @@ pub mod sysmon;
 pub mod sysstats;
 #[path = "services/thumbs.rs"]
 pub mod thumbs;
-#[path = "services/weather.rs"]
-pub mod weather;
+#[path = "services/translation.rs"]
+pub mod translation;
 #[path = "services/update.rs"]
 pub mod update;
+#[path = "services/weather.rs"]
+pub mod weather;
 
 use crate::commands::{Sound, SoundSource};
-use objc2::AnyThread;
 use objc2::rc::Retained;
+use objc2::AnyThread;
 use objc2_app_kit::{NSColor, NSColorSpace, NSSound, NSWorkspace};
 use objc2_foundation::{NSArray, NSFileManager, NSString, NSURL};
 use poni_core::alert_sounds::{self, AlertSounds, SoundModule};
@@ -212,15 +212,26 @@ pub fn play_tone(id: &str) -> bool {
     ALERT_SOUND.with(|cell| {
         let mut active = cell.borrow_mut();
         if active.as_ref().is_none_or(|(current, _)| current != id) {
-            let Some(bundle) = std::env::current_exe().ok().and_then(|exe| exe.parent()?.parent().map(std::path::Path::to_path_buf)) else {
+            let Some(bundle) = std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent()?.parent().map(std::path::Path::to_path_buf))
+            else {
                 pwarn!("sound: cannot locate application resources");
                 return false;
             };
             let path = bundle.join("Resources/Sounds").join(tone.file);
             #[cfg(debug_assertions)]
-            let path = if path.is_file() { path } else { std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/sounds").join(tone.file) };
+            let path = if path.is_file() {
+                path
+            } else {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../assets/sounds")
+                    .join(tone.file)
+            };
             let path = NSString::from_str(&path.to_string_lossy());
-            let Some(sound) = NSSound::initWithContentsOfFile_byReference(NSSound::alloc(), &path, false) else {
+            let Some(sound) =
+                NSSound::initWithContentsOfFile_byReference(NSSound::alloc(), &path, false)
+            else {
                 pwarn!("sound: cannot load {}", tone.id);
                 return false;
             };
@@ -229,7 +240,9 @@ pub fn play_tone(id: &str) -> bool {
             }
             *active = Some((id.to_string(), sound));
         }
-        let Some((_, sound)) = active.as_ref() else { return false };
+        let Some((_, sound)) = active.as_ref() else {
+            return false;
+        };
         if sound.isPlaying() {
             sound.stop();
         }

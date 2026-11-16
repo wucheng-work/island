@@ -24,7 +24,9 @@ pub fn on_phase_ended(st: &mut AppState, ended: PhaseEnded) {
         let count = st.store.focus_sessions.entry(key.clone()).or_insert(0);
         *count = count.saturating_add(1);
         let cutoff = st.local.add_days(-KEEP_STATS_DAYS).day_key();
-        st.store.focus_sessions.retain(|day, _| day.as_str() >= cutoff.as_str());
+        st.store
+            .focus_sessions
+            .retain(|day, _| day.as_str() >= cutoff.as_str());
         st.save();
     }
     let today = st.store.focus_sessions.get(&key).copied().unwrap_or(0);
@@ -34,7 +36,11 @@ pub fn on_phase_ended(st: &mut AppState, ended: PhaseEnded) {
             Icon::Timer,
             phase_color(Phase::Focus),
             "休息结束".to_string(),
-            if ended.auto_started { format!("已开始 {minutes} 分钟专注") } else { "点击开始下一次专注".to_string() },
+            if ended.auto_started {
+                format!("已开始 {minutes} 分钟专注")
+            } else {
+                "点击开始下一次专注".to_string()
+            },
         ),
         Phase::ShortBreak | Phase::LongBreak => {
             let title = if ended.next == Phase::LongBreak {
@@ -42,12 +48,25 @@ pub fn on_phase_ended(st: &mut AppState, ended: PhaseEnded) {
             } else {
                 format!("专注完成 · 休息 {minutes} 分钟")
             };
-            let action = if ended.auto_started { "休息已开始" } else { "点击开始休息" };
-            (Icon::Coffee, phase_color(ended.next), title, format!("今天已专注 {today} 次 · {action}"))
+            let action = if ended.auto_started {
+                "休息已开始"
+            } else {
+                "点击开始休息"
+            };
+            (
+                Icon::Coffee,
+                phase_color(ended.next),
+                title,
+                format!("今天已专注 {today} 次 · {action}"),
+            )
         }
     };
     // 自动开始时打开页面；等待开始时保留无需展开岛的一键操作。
-    let action = if ended.auto_started { NoticeAction::OpenPage(PageKind::Focus) } else { NoticeAction::StartFocus };
+    let action = if ended.auto_started {
+        NoticeAction::OpenPage(PageKind::Focus)
+    } else {
+        NoticeAction::StartFocus
+    };
     st.notify(icon, color, title, subtitle, 6.0, Some(action));
     if !ended.auto_started {
         st.set_notice_inline(InlineAction::StartFocus);
@@ -69,7 +88,12 @@ mod tests {
         settings.focus_sound = true;
         settings.pomodoro.auto_start_breaks = false;
         let mut st = AppState::new(settings, Store::default());
-        st.local = LocalDateTime { year: 2026, month: 11, day: 12, ..LocalDateTime::default() };
+        st.local = LocalDateTime {
+            year: 2026,
+            month: 11,
+            day: 12,
+            ..LocalDateTime::default()
+        };
         st.store.focus_sessions.insert("2020-01-01".into(), 9);
         st.pomodoro.start(0.0);
         let ended = st.pomodoro.tick(st.pomodoro.current_duration()).unwrap();
@@ -80,8 +104,14 @@ mod tests {
         assert!(!st.store.focus_sessions.contains_key("2020-01-01"));
         assert!(st.cmds.contains(&Command::SaveStore));
         assert!(st.cmds.contains(&Command::Play(Sound::Chime)));
-        assert!(matches!(st.notice.as_ref().and_then(|notice| notice.action.as_ref()), Some(NoticeAction::StartFocus)));
-        assert!(matches!(st.notice.as_ref().and_then(|notice| notice.inline.as_ref()), Some(InlineAction::StartFocus)));
+        assert!(matches!(
+            st.notice.as_ref().and_then(|notice| notice.action.as_ref()),
+            Some(NoticeAction::StartFocus)
+        ));
+        assert!(matches!(
+            st.notice.as_ref().and_then(|notice| notice.inline.as_ref()),
+            Some(InlineAction::StartFocus)
+        ));
     }
 
     #[test]
@@ -99,7 +129,10 @@ mod tests {
         assert!(st.store.focus_sessions.is_empty());
         assert!(!st.cmds.contains(&Command::SaveStore));
         assert!(!st.cmds.contains(&Command::Play(Sound::Chime)));
-        assert!(matches!(st.notice.as_ref().and_then(|notice| notice.action.as_ref()), Some(NoticeAction::OpenPage(PageKind::Focus))));
+        assert!(matches!(
+            st.notice.as_ref().and_then(|notice| notice.action.as_ref()),
+            Some(NoticeAction::OpenPage(PageKind::Focus))
+        ));
         assert!(st.notice.as_ref().unwrap().inline.is_none());
         assert!(st.pomodoro.is_running());
     }

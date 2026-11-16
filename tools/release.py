@@ -95,7 +95,14 @@ def bump_patch():
         # Cargo may format the changed workspace blocks; dependency resolution must stay identical.
         def dependencies_only(value):
             blocks = re.split(r"(?m)^\[\[package\]\]\s*$", value)
-            return [block for block in blocks[1:] if not any(re.search(r'^name = "' + name + r'"$', block, re.M) for name in WORKSPACE_PACKAGES)]
+            return [
+                block
+                for block in blocks[1:]
+                if not any(
+                    re.search(r'^name = "' + name + r'"$', block, re.M)
+                    for name in WORKSPACE_PACKAGES
+                )
+            ]
         if dependencies_only(current) != dependencies_only(old_lock.decode("utf-8")):
             raise ValueError("Cargo changed dependency locks; restored version files for review")
     except (OSError, subprocess.CalledProcessError, ValueError):
@@ -103,7 +110,10 @@ def bump_patch():
         lock.write_bytes(old_lock)
         raise
     print(f"{version} -> {new_version}")
-    print(f"Next: write docs/release-notes/v{new_version}.md, run both platform checks, then explicitly authorize packaging/tagging.")
+    print(
+        f"Next: write docs/release-notes/v{new_version}.md, run both platform checks, "
+        "then explicitly authorize packaging/tagging."
+    )
 
 
 def main():

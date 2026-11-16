@@ -60,7 +60,13 @@ thread_local! {
 /// its picture, with the time in it (Clock) or without (Minimal), or
 /// hidden: it has no eyes.
 pub fn looks(theme: Theme) -> &'static [IdleStyle] {
-    const ALL: [IdleStyle; 5] = [IdleStyle::Clock, IdleStyle::Eyes, IdleStyle::Minimal, IdleStyle::Hidden, IdleStyle::Status];
+    const ALL: [IdleStyle; 5] = [
+        IdleStyle::Clock,
+        IdleStyle::Eyes,
+        IdleStyle::Minimal,
+        IdleStyle::Hidden,
+        IdleStyle::Status,
+    ];
     const DIORAMA: [IdleStyle; 3] = [IdleStyle::Clock, IdleStyle::Minimal, IdleStyle::Hidden];
     match theme {
         Theme::Pill => &ALL,
@@ -89,9 +95,19 @@ pub fn geom(st: &AppState) -> Option<Geom> {
 /// A first guess before anything was measured, on the wide side (a
 /// stretched bar looks better than a squeezed one for its first frame).
 fn estimate(st: &AppState) -> f32 {
-    let chars = |s: &str| s.chars().map(|c| if c.is_ascii() { 7.6 } else { 14.5 }).sum::<f32>();
-    let text = chars(&crate::localization::date_short(&st.local)) + DATE_GAP + chars(&fmt_clock(&st.local, st.settings.use_24h));
-    let right = if st.power.has_battery { PCT_GAP + chars("100%") + BATT_GAP + BATT_W + BATT_END } else { end_inset(H) };
+    let chars = |s: &str| {
+        s.chars()
+            .map(|c| if c.is_ascii() { 7.6 } else { 14.5 })
+            .sum::<f32>()
+    };
+    let text = chars(&crate::localization::date_short(&st.local))
+        + DATE_GAP
+        + chars(&fmt_clock(&st.local, st.settings.use_24h));
+    let right = if st.power.has_battery {
+        PCT_GAP + chars("100%") + BATT_GAP + BATT_W + BATT_END
+    } else {
+        end_inset(H)
+    };
     even(left_w(st, H) + text + 2.0 * CHIP_PAD + right)
 }
 
@@ -138,7 +154,11 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, body: Rect) -> bool {
         } else {
             Icon::Volume
         };
-        ui.c.icon(icon, Rect::new(body.x + VOL_X, cy - VOL_BOX / 2.0, VOL_BOX, VOL_BOX), GLYPH);
+        ui.c.icon(
+            icon,
+            Rect::new(body.x + VOL_X, cy - VOL_BOX / 2.0, VOL_BOX, VOL_BOX),
+            GLYPH,
+        );
     }
 
     // Right: the battery, its nub BATT_END from the end.
@@ -152,7 +172,11 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, body: Rect) -> bool {
         let pct = format!("{}%", p.percent.min(100));
         // Low, the number turns red with the charge (as the clock's badge
         // does): a sliver of red alone is easy to miss.
-        let pct_ts = ts.color(if low(p.percent, charging) { palette::RED } else { PCT });
+        let pct_ts = ts.color(if low(p.percent, charging) {
+            palette::RED
+        } else {
+            PCT
+        });
         let (pw, _) = ui.c.measure(&pct, &pct_ts, 100.0);
         let bx = snap(ui, body.right() - BATT_END - BATT_W);
         let by = snap(ui, cy - BATT.1 / 2.0);
@@ -174,7 +198,11 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, body: Rect) -> bool {
     ui.c.stroke_rrect(chip, CHIP_H / 2.0 - 0.5, CHIP_RIM, 1.0);
     let tx = chip.x + (cw - (dw + DATE_GAP + tw)) / 2.0;
     ui.c.text(&date, Rect::new(tx, body.y, dw + 2.0, body.h), &ts);
-    ui.c.text(&time, Rect::new(tx + dw + DATE_GAP, body.y, tw + 2.0, body.h), &ts);
+    ui.c.text(
+        &time,
+        Rect::new(tx + dw + DATE_GAP, body.y, tw + 2.0, body.h),
+        &ts,
+    );
 
     // Hug what was just measured from the next frame on.
     let want = even(left_w(st, H) + chip_w + right_w);
@@ -199,7 +227,12 @@ fn snap(ui: &Ui, v: f32) -> f32 {
 /// the resting pill's own glyph (`pill::idle::battery`, which takes the box
 /// with the nub), so every Pill battery is one drawing.
 pub(crate) fn battery(ui: &mut Ui, r: Rect, percent: u8, charging: bool) {
-    super::idle::battery(ui, Rect::new(r.x, r.y, r.w + NUB.0 + NUB.1, r.h), percent, charging);
+    super::idle::battery(
+        ui,
+        Rect::new(r.x, r.y, r.w + NUB.0 + NUB.1, r.h),
+        percent,
+        charging,
+    );
 }
 
 #[cfg(test)]
@@ -215,14 +248,21 @@ mod tests {
         for theme in [Theme::Classic, Theme::Oyen, Theme::Glass] {
             assert_eq!(looks(theme), &looks(Theme::Pill)[..4], "{theme:?}");
             // They draw the clock for it, so a picker marks Clock.
-            assert_eq!(shown(theme, IdleStyle::Status), IdleStyle::Clock, "{theme:?}");
+            assert_eq!(
+                shown(theme, IdleStyle::Status),
+                IdleStyle::Clock,
+                "{theme:?}"
+            );
             assert_eq!(shown(theme, IdleStyle::Eyes), IdleStyle::Eyes, "{theme:?}");
         }
     }
 
     #[test]
     fn diorama_rests_as_its_picture_with_the_time_or_without() {
-        assert_eq!(looks(Theme::Diorama), &[IdleStyle::Clock, IdleStyle::Minimal, IdleStyle::Hidden]);
+        assert_eq!(
+            looks(Theme::Diorama),
+            &[IdleStyle::Clock, IdleStyle::Minimal, IdleStyle::Hidden]
+        );
         // Every look a picker offers is one it then marks.
         for style in looks(Theme::Diorama) {
             assert_eq!(shown(Theme::Diorama, *style), *style);
@@ -234,14 +274,26 @@ mod tests {
 
     #[test]
     fn the_bar_is_a_capsule_that_makes_room_for_the_battery() {
-        let mut st = AppState::new(Settings { theme: Theme::Pill, idle_style: IdleStyle::Status, ..Settings::default() }, Store::default());
+        let mut st = AppState::new(
+            Settings {
+                theme: Theme::Pill,
+                idle_style: IdleStyle::Status,
+                ..Settings::default()
+            },
+            Store::default(),
+        );
         st.volume.known = true;
         st.power.has_battery = false;
         let bare = geom(&st).unwrap();
         assert_eq!((bare.h, bare.r), (32.0, 16.0));
         st.power.has_battery = true;
         let with = geom(&st).unwrap();
-        assert!(with.w >= bare.w + PCT_GAP + BATT_GAP + BATT_W, "{} vs {}", with.w, bare.w);
+        assert!(
+            with.w >= bare.w + PCT_GAP + BATT_GAP + BATT_W,
+            "{} vs {}",
+            with.w,
+            bare.w
+        );
         // Even widths keep the centred body on whole pixels at 100 %.
         assert_eq!((with.w % 2.0, bare.w % 2.0), (0.0, 0.0));
     }

@@ -150,9 +150,14 @@ fn sync(st: &mut AppState, l: &mut Local, items: &[ShelfItem], now: f64, shown: 
     }
     let undo_items: &[ShelfItem] = l.undo.as_ref().map(|(v, _)| v.as_slice()).unwrap_or(&[]);
     if st.shelf_thumbs.len() > items.len() + undo_items.len() {
-        st.shelf_thumbs.retain(|p, _| items.iter().chain(undo_items).any(|i| &i.path == p));
+        st.shelf_thumbs
+            .retain(|p, _| items.iter().chain(undo_items).any(|i| &i.path == p));
     }
-    let keep: Vec<String> = items.iter().chain(undo_items).map(|i| key(&i.path)).collect();
+    let keep: Vec<String> = items
+        .iter()
+        .chain(undo_items)
+        .map(|i| key(&i.path))
+        .collect();
     if l.seen.len() > keep.len() {
         l.seen.retain(|k, _| keep.contains(k));
     }
@@ -266,7 +271,12 @@ fn draw_items(
     let now = st.now;
     let head = Rect::new(area.x, area.y + TOP, area.w, HEAD_H);
     let row_y = head.bottom() + HEAD_GAP;
-    let row = Rect::new(area.x, row_y, area.w, (area.bottom() - FOOT_H - 8.0 - row_y).max(0.0));
+    let row = Rect::new(
+        area.x,
+        row_y,
+        area.w,
+        (area.bottom() - FOOT_H - 8.0 - row_y).max(0.0),
+    );
     let n = items.len();
 
     // Horizontal scrolling (the wheel only gets consumed when there is
@@ -336,7 +346,16 @@ fn draw_items(
             palette::SURFACE
         };
         ui.c.fill_rrect(tile, TILE_R, fill);
-        ui.c.stroke_rrect(tile, TILE_R, if hot { st.accent.with_alpha(0.32) } else { palette::BORDER }, 1.0);
+        ui.c.stroke_rrect(
+            tile,
+            TILE_R,
+            if hot {
+                st.accent.with_alpha(0.32)
+            } else {
+                palette::BORDER
+            },
+            1.0,
+        );
         let thumb = Rect::new(tile.x + (TILE_W - THUMB) / 2.0, tile.y + 12.0, THUMB, THUMB);
         let tile_a = ui.c.alpha();
         // Missing files: everything but the caption is greyed out.
@@ -345,7 +364,8 @@ fn draw_items(
         match &img {
             Some(im) => ui.c.image(im, thumb, THUMB_R),
             None => {
-                let folder = kind == Some(PathKind::Folder) || (kind.is_none() && extension(&it.path).is_empty());
+                let folder = kind == Some(PathKind::Folder)
+                    || (kind.is_none() && extension(&it.path).is_empty());
                 let icon = if folder { Icon::Folder } else { Icon::File };
                 ui.c.icon(icon, Rect::from_center(thumb.center(), 24.0, 24.0), tint);
             }
@@ -353,29 +373,73 @@ fn draw_items(
         let name_r = Rect::new(tile.x + 10.0, thumb.bottom() + 8.0, TILE_W - 20.0, 30.0);
         // Keep two lines of the original name; the macOS text renderer needs an explicit clip.
         ui.c.clip(name_r);
-        ui.c.text_raw(&display_name(&it.path), name_r, &TextStyle::footnote().weight(Weight::Medium).center().wrap().top().line_spacing(1.25));
+        ui.c.text_raw(
+            &display_name(&it.path),
+            name_r,
+            &TextStyle::footnote()
+                .weight(Weight::Medium)
+                .center()
+                .wrap()
+                .top()
+                .line_spacing(1.25),
+        );
         ui.c.unclip();
         ui.c.set_alpha(tile_a);
         let cap_r = Rect::new(name_r.x, name_r.bottom() + 5.0, name_r.w, 22.0);
         if hot {
             let action = ui.button(wid_n("shelf.reveal", wid(&k)), intersect(cap_r, row));
-            let fill = if action.pressed { palette::SURFACE_PRESSED } else if action.hovered { palette::SURFACE_HOVER } else { palette::SURFACE };
+            let fill = if action.pressed {
+                palette::SURFACE_PRESSED
+            } else if action.hovered {
+                palette::SURFACE_HOVER
+            } else {
+                palette::SURFACE
+            };
             ui.c.fill_rrect(cap_r, 8.0, fill);
-            let label = if missing { "重新检查" } else { "显示位置" };
-            ui.c.text(label, cap_r, &TextStyle::caption().weight(Weight::Medium).color(st.accent).center());
+            let label = if missing {
+                "重新检查"
+            } else {
+                "显示位置"
+            };
+            ui.c.text(
+                label,
+                cap_r,
+                &TextStyle::caption()
+                    .weight(Weight::Medium)
+                    .color(st.accent)
+                    .center(),
+            );
             if action.clicked || action.rclicked {
-                actions.push(if missing { Action::Recheck(it.path.clone()) } else { Action::Reveal(it.path.clone()) });
+                actions.push(if missing {
+                    Action::Recheck(it.path.clone())
+                } else {
+                    Action::Reveal(it.path.clone())
+                });
             }
         } else if missing {
-            ui.c.text("文件已移动或删除", cap_r, &TextStyle::caption().weight(Weight::Medium).color(palette::TEXT_DIM).center());
+            ui.c.text(
+                "文件已移动或删除",
+                cap_r,
+                &TextStyle::caption()
+                    .weight(Weight::Medium)
+                    .color(palette::TEXT_DIM)
+                    .center(),
+            );
         } else {
-            ui.c.text_raw(&caption(&it.path, kind), cap_r, &TextStyle::caption().color(palette::TEXT_DIM).center());
+            ui.c.text_raw(
+                &caption(&it.path, kind),
+                cap_r,
+                &TextStyle::caption().color(palette::TEXT_DIM).center(),
+            );
         }
 
         // Remove button on hover, tucked onto the thumbnail's corner.
         if hot {
             let c = Point::new(thumb.right() - 2.0, thumb.y + 2.0);
-            let cr = ui.button(wid_n("shelf.remove", wid(&k)), intersect(Rect::from_center(c, 22.0, 22.0), row));
+            let cr = ui.button(
+                wid_n("shelf.remove", wid(&k)),
+                intersect(Rect::from_center(c, 22.0, 22.0), row),
+            );
             let fill = if cr.pressed {
                 Color::white(0.42)
             } else if cr.hovered {
@@ -393,10 +457,18 @@ fn draw_items(
         ui.c.set_alpha(base);
 
         if resp.clicked {
-            actions.push(if missing { Action::Recheck(it.path.clone()) } else { Action::Open(it.path.clone()) });
+            actions.push(if missing {
+                Action::Recheck(it.path.clone())
+            } else {
+                Action::Open(it.path.clone())
+            });
         }
         if resp.rclicked {
-            actions.push(if missing { Action::Recheck(it.path.clone()) } else { Action::Reveal(it.path.clone()) });
+            actions.push(if missing {
+                Action::Recheck(it.path.clone())
+            } else {
+                Action::Reveal(it.path.clone())
+            });
         }
         if resp.pressed && !missing && !l.drag_started {
             if let Some((dx, dy)) = resp.drag {
@@ -414,7 +486,11 @@ fn draw_items(
         fade_edge(ui, fade_h, true);
     }
     if scroll < max_scroll - 0.5 {
-        fade_edge(ui, Rect::new(row.right() - FADE_W, fade_h.y, FADE_W, fade_h.h), false);
+        fade_edge(
+            ui,
+            Rect::new(row.right() - FADE_W, fade_h.y, FADE_W, fade_h.h),
+            false,
+        );
     }
     ui.c.unclip();
 
@@ -436,22 +512,53 @@ fn draw_items(
     draw_footer(ui, area, items, hovered.map(|(_, i)| i));
 }
 
-fn draw_header(ui: &mut Ui, st: &AppState, l: &Local, head: Rect, items: &[ShelfItem], actions: &mut Vec<Action>) {
+fn draw_header(
+    ui: &mut Ui,
+    st: &AppState,
+    l: &Local,
+    head: Rect,
+    items: &[ShelfItem],
+    actions: &mut Vec<Action>,
+) {
     let n = items.len();
-    ui.c.icon(Icon::Tray, Rect::new(head.x + 5.0, head.y + 5.0, 18.0, 18.0), palette::TEXT_DIM);
+    ui.c.icon(
+        Icon::Tray,
+        Rect::new(head.x + 5.0, head.y + 5.0, 18.0, 18.0),
+        palette::TEXT_DIM,
+    );
     let title = "文件暂存区";
     let title_style = TextStyle::headline();
     let title_w = ui.c.measure(title, &title_style, head.w).0;
-    ui.c.text(title, Rect::new(head.x + 36.0, head.y, title_w, head.h), &title_style);
+    ui.c.text(
+        title,
+        Rect::new(head.x + 36.0, head.y, title_w, head.h),
+        &title_style,
+    );
     let capacity = Rect::new(head.x + 36.0 + title_w + 10.0, head.y + 4.0, 48.0, 20.0);
-    ui.c.text(&format!("{n} / {MAX_SHELF_ITEMS}"), capacity, &TextStyle::caption().tabular().color(palette::TEXT_FAINT).center());
+    ui.c.text(
+        &format!("{n} / {MAX_SHELF_ITEMS}"),
+        capacity,
+        &TextStyle::caption()
+            .tabular()
+            .color(palette::TEXT_FAINT)
+            .center(),
+    );
 
     // Small utility pills on the right: Clear, plus Undo for a while after a removal.
     let mut right = head.right();
     if n > 0 {
         let clear_w = ui.pill_width("清空", true, true);
         let clear_r = Rect::new(right - clear_w, head.y, clear_w, PILL_SMALL);
-        if ui.pill(wid("shelf.clear"), clear_r, "清空", Some(Icon::Trash), PillStyle::Utility).clicked {
+        if ui
+            .pill(
+                wid("shelf.clear"),
+                clear_r,
+                "清空",
+                Some(Icon::Trash),
+                PillStyle::Utility,
+            )
+            .clicked
+        {
             actions.push(Action::Clear);
         }
         right = clear_r.x - PILL_GAP;
@@ -459,7 +566,16 @@ fn draw_header(ui: &mut Ui, st: &AppState, l: &Local, head: Rect, items: &[Shelf
     if l.undo.as_ref().is_some_and(|(_, t)| st.now - t < UNDO_SECS) {
         let undo_w = ui.pill_width("撤销", true, true);
         let undo_r = Rect::new(right - undo_w, head.y, undo_w, PILL_SMALL);
-        if ui.pill(wid("shelf.undo"), undo_r, "撤销", Some(Icon::Undo), PillStyle::UtilityAccent(st.accent)).clicked {
+        if ui
+            .pill(
+                wid("shelf.undo"),
+                undo_r,
+                "撤销",
+                Some(Icon::Undo),
+                PillStyle::UtilityAccent(st.accent),
+            )
+            .clicked
+        {
             actions.push(Action::Undo);
         }
     }
@@ -486,12 +602,19 @@ fn file_color(path: &str, kind: Option<PathKind>) -> Color {
 
 fn draw_footer(ui: &mut Ui, area: Rect, items: &[ShelfItem], hovered: Option<usize>) {
     let hint = match hovered.and_then(|i| items.get(i)) {
-        Some(it) if imaging::path_kind(&it.path) == Some(PathKind::Missing) => {
-            (format!("已移动或删除 · 原位置：{}", parent_dir(&it.path)), palette::TEXT_DIM)
-        }
+        Some(it) if imaging::path_kind(&it.path) == Some(PathKind::Missing) => (
+            format!("已移动或删除 · 原位置：{}", parent_dir(&it.path)),
+            palette::TEXT_DIM,
+        ),
         Some(it) => (parent_dir(&it.path), palette::TEXT_DIM),
-        None if items.len() >= MAX_SHELF_ITEMS => ("已满 · 新文件会替换最早的暂存项".to_string(), palette::TEXT_FAINT),
-        None => ("文件保留在原位置，移除暂存项不会删除原文件".to_string(), palette::TEXT_FAINT),
+        None if items.len() >= MAX_SHELF_ITEMS => (
+            "已满 · 新文件会替换最早的暂存项".to_string(),
+            palette::TEXT_FAINT,
+        ),
+        None => (
+            "文件保留在原位置，移除暂存项不会删除原文件".to_string(),
+            palette::TEXT_FAINT,
+        ),
     };
     let hint_r = Rect::new(area.x, area.bottom() - FOOT_H, area.w, FOOT_H);
     ui.c.text_raw(&hint.0, hint_r, &TextStyle::caption().color(hint.1));
@@ -531,28 +654,55 @@ fn parent_dir(path: &str) -> String {
 fn draw_drop_overlay(ui: &mut Ui, st: &AppState, zone: Rect, glow: f32, card: Option<(Rect, f32)>) {
     let base = ui.c.alpha();
     ui.c.set_alpha(base * glow);
-    drop_zone(ui, card, zone, 16.0, st.accent.with_alpha(0.10), st.accent.with_alpha(0.9));
+    drop_zone(
+        ui,
+        card,
+        zone,
+        16.0,
+        st.accent.with_alpha(0.10),
+        st.accent.with_alpha(0.9),
+    );
     // One centred group: Plus + label.
     let ls = TextStyle::body().weight(Weight::Semibold);
     let tw = ui.c.measure(DROP_LABEL, &ls, zone.w).0;
     let (isz, gap) = (16.0, 6.0);
     let c = zone.center();
     let x = c.x - (isz + gap + tw) / 2.0;
-    ui.c.icon(Icon::Plus, Rect::new(x, c.y - isz / 2.0, isz, isz), st.accent);
-    ui.c.text(DROP_LABEL, Rect::new(x + isz + gap, c.y - 10.0, tw + 2.0, 20.0), &ls);
+    ui.c.icon(
+        Icon::Plus,
+        Rect::new(x, c.y - isz / 2.0, isz, isz),
+        st.accent,
+    );
+    ui.c.text(
+        DROP_LABEL,
+        Rect::new(x + isz + gap, c.y - 10.0, tw + 2.0, 20.0),
+        &ls,
+    );
     ui.c.set_alpha(base);
 }
 
 // ---------------------------------------------------------------- empty state
 
-fn draw_empty(ui: &mut Ui, st: &AppState, l: &Local, area: Rect, card: Option<(Rect, f32)>, actions: &mut Vec<Action>) {
+fn draw_empty(
+    ui: &mut Ui,
+    st: &AppState,
+    l: &Local,
+    area: Rect,
+    card: Option<(Rect, f32)>,
+    actions: &mut Vec<Action>,
+) {
     let g = l.glow;
     let accent = st.accent;
     let head = Rect::new(area.x, area.y + TOP, area.w, HEAD_H);
     draw_header(ui, st, l, head, &[], actions);
     // Same bottom edge as the drop overlay over a filled shelf.
     let zone_y = head.bottom() + HEAD_GAP;
-    let zone = Rect::new(area.x, zone_y, area.w, (area.bottom() - FOOT_H - 12.0 - zone_y).max(0.0));
+    let zone = Rect::new(
+        area.x,
+        zone_y,
+        area.w,
+        (area.bottom() - FOOT_H - 12.0 - zone_y).max(0.0),
+    );
     let fill = Color::lerp(palette::SURFACE.mul_alpha(0.5), accent.with_alpha(0.13), g);
     let stroke = Color::lerp(palette::BORDER, accent.with_alpha(0.9), g);
     drop_zone(ui, card, zone, 18.0, fill, stroke);
@@ -563,14 +713,30 @@ fn draw_empty(ui: &mut Ui, st: &AppState, l: &Local, area: Rect, card: Option<(R
     } else if undo_live {
         (Icon::Tray, "暂存区已清空", "可在上方撤销，或继续拖入文件")
     } else {
-        (Icon::Tray, "随手一放，稍后取用", "拖入文件或文件夹，跨应用取用更方便")
+        (
+            Icon::Tray,
+            "随手一放，稍后取用",
+            "拖入文件或文件夹，跨应用取用更方便",
+        )
     };
     // Icon, title and hint share the same centred drop target.
     let c = zone.center();
     let icon_col = Color::lerp(palette::TEXT_DIM, accent, g);
-    ui.c.icon(icon, Rect::from_center(Point::new(c.x, c.y - 22.0), 26.0, 26.0), icon_col);
-    ui.c.text(title, Rect::new(zone.x, c.y - 4.0, zone.w, 20.0), &TextStyle::headline().center());
-    ui.c.text(hint, Rect::new(zone.x + 16.0, c.y + 16.0, zone.w - 32.0, 18.0), &TextStyle::footnote().color(palette::TEXT_DIM).center());
+    ui.c.icon(
+        icon,
+        Rect::from_center(Point::new(c.x, c.y - 22.0), 26.0, 26.0),
+        icon_col,
+    );
+    ui.c.text(
+        title,
+        Rect::new(zone.x, c.y - 4.0, zone.w, 20.0),
+        &TextStyle::headline().center(),
+    );
+    ui.c.text(
+        hint,
+        Rect::new(zone.x + 16.0, c.y + 16.0, zone.w - 32.0, 18.0),
+        &TextStyle::footnote().color(palette::TEXT_DIM).center(),
+    );
     draw_footer(ui, area, &[], None);
 }
 
@@ -605,7 +771,11 @@ fn fade_edge(ui: &mut Ui, r: Rect, from_left: bool) {
         // composite over band j equals alpha(j).
         let b = 1.0 - (1.0 - alpha(j)) / (1.0 - alpha(j + 1));
         let w = r.w * (j + 1) as f32 / BANDS as f32;
-        let band = if from_left { Rect::new(r.x, r.y, w, r.h) } else { Rect::new(r.right() - w, r.y, w, r.h) };
+        let band = if from_left {
+            Rect::new(r.x, r.y, w, r.h)
+        } else {
+            Rect::new(r.right() - w, r.y, w, r.h)
+        };
         ui.c.fill_rect(band, Color::black(b.clamp(0.0, 1.0)));
     }
 }
@@ -613,7 +783,14 @@ fn fade_edge(ui: &mut Ui, r: Rect, from_left: bool) {
 /// Drop zone: a fill plus one solid hairline whose outer edge follows the
 /// fill's corners exactly (no fill peeking past the stroke). On the Pill card
 /// (`card`) its corners in the card's rounded corners follow those.
-fn drop_zone(ui: &mut Ui, card: Option<(Rect, f32)>, zone: Rect, radius: f32, fill: Color, stroke: Color) {
+fn drop_zone(
+    ui: &mut Ui,
+    card: Option<(Rect, f32)>,
+    zone: Rect,
+    radius: f32,
+    fill: Color,
+    stroke: Color,
+) {
     super::card::fill_box(ui, card, zone, radius, fill);
     super::card::stroke_box(ui, card, zone, radius, stroke, ZONE_STROKE);
 }

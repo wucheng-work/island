@@ -4,10 +4,14 @@
 use crate::activities::{self, Mode};
 use crate::clock;
 use crate::commands::{Command, MediaCmd, NotifyCmd, OyenzaCmd, Sound, SoundModule, SoundSource};
-use crate::events::{AppEvent, AppleMusicStatus, EventSink, OyenzaEvent, SendHwnd, WM_APP_APPBAR, WM_APP_EVENT, WM_APP_FRAME, WM_APP_TRAY, WM_APP_WECHAT};
+use crate::events::{
+    AppEvent, AppleMusicStatus, EventSink, OyenzaEvent, SendHwnd, WM_APP_APPBAR, WM_APP_EVENT,
+    WM_APP_FRAME, WM_APP_TRAY, WM_APP_WECHAT,
+};
 use crate::gfx::{px_rect, px_union, scale_about, union_rect, Canvas, Gfx, HitMask};
 use crate::icons::Icon;
 use crate::island::{Geom, Island, SHOULDER};
+use crate::mail::{MailAction, MailConnection, MailEvent, MailMessage};
 use crate::oyen;
 use crate::pages::{self, PageKind};
 use crate::paths;
@@ -17,22 +21,22 @@ use crate::services::{self, Services};
 use crate::settings_host::{self, SettingsWindow};
 use crate::settings_model::Section;
 use crate::state::{
-    AppState, FpsAccess, HudKind, InlineAction, LyricsState, LyricsStatus, Notice, NoticeAction, NotifyAccess, OyenzaLink,
+    AppState, FpsAccess, HudKind, InlineAction, LyricsState, LyricsStatus, Notice, NoticeAction,
+    NotifyAccess, OyenzaLink,
 };
 use crate::tray::{self, Tray};
 use crate::ui::{wid, CursorKind, Hit, Input, MouseButton, Ui};
 use crate::window::{self, FrameClock, FrameTick, MonitorInfo};
 use crate::{dragdrop, selftest, shell};
-use poni_core::spot;
 use poni_core::frametime::{ambient_divisor, MotionStats};
 use poni_core::geom::{palette, Color, Point, Rect};
 use poni_core::oyenza;
-use poni_core::settings::{IdleStyle, Settings, Theme};
 use poni_core::settings::MonitorChoice;
+use poni_core::settings::{IdleStyle, Settings, Theme};
+use poni_core::spot;
 use poni_core::store::{load_json, parse_json, save_json_atomic, LoadOutcome, Store};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
-use crate::mail::{MailAction, MailConnection, MailEvent, MailMessage};
 mod mail;
 use std::sync::mpsc::{self, Receiver};
 use windows::core::{w, Result};
@@ -40,16 +44,18 @@ use windows::Foundation::Numerics::Matrix3x2;
 use windows::Win32::Foundation::*;
 use windows::Win32::System::Ole::{OleInitialize, OleUninitialize};
 use windows::Win32::System::Threading::CreateMutexW;
-use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
+use windows::Win32::UI::HiDpi::{
+    SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 #[path = "app/codex.rs"]
 mod codex;
-#[path = "app/weather.rs"]
-mod weather;
 #[path = "app/update.rs"]
 mod update;
+#[path = "app/weather.rs"]
+mod weather;
 
 /// Not exported by windows-rs 0.58's WindowsAndMessaging module.
 const WM_MOUSELEAVE: u32 = 0x02A3;
@@ -79,7 +85,8 @@ const WTS_SESSION_LOCK_: usize = 7;
 const WTS_SESSION_UNLOCK_: usize = 8;
 
 /// Steps for copying the Apple Music token (README).
-const APPLE_MUSIC_HELP_URL: &str = "https://github.com/lucacadalora/oyenza-studio#apple-music-lyrics";
+const APPLE_MUSIC_HELP_URL: &str =
+    "https://github.com/lucacadalora/oyenza-studio#apple-music-lyrics";
 
 thread_local! {
     static APP: RefCell<Option<App>> = const { RefCell::new(None) };
@@ -94,11 +101,28 @@ thread_local! {
 pub enum Deferred {
     DragOut(Vec<String>),
     Menu(POINT),
-    ChooseFont { owner: HWND },
-    ChooseSound { owner: HWND, module: SoundModule },
-    EditMailAccount { account: Option<poni_core::mail::MailAccount>, sink: EventSink, owner: HWND, font_family: String },
-    RemoveMailAccount { account: poni_core::mail::MailAccount, sink: EventSink, owner: HWND },
-    ChooseLyricsColor { owner: HWND, rgb: u32 },
+    ChooseFont {
+        owner: HWND,
+    },
+    ChooseSound {
+        owner: HWND,
+        module: SoundModule,
+    },
+    EditMailAccount {
+        account: Option<poni_core::mail::MailAccount>,
+        sink: EventSink,
+        owner: HWND,
+        font_family: String,
+    },
+    RemoveMailAccount {
+        account: poni_core::mail::MailAccount,
+        sink: EventSink,
+        owner: HWND,
+    },
+    ChooseLyricsColor {
+        owner: HWND,
+        rgb: u32,
+    },
     Update(update::Prompt),
 }
 
@@ -108,14 +132,22 @@ pub fn main_entry() -> i32 {
     if let Some(i) = args.iter().position(|a| a == services::frames::ALLOW_ARG) {
         return services::frames::allow_main(args.get(i + 1).map_or("", String::as_str));
     }
-    let selftest_dir = args.iter().position(|a| a == "--selftest").map(|i| args.get(i + 1).cloned().unwrap_or_else(|| "selftest-out".into()));
+    let selftest_dir = args.iter().position(|a| a == "--selftest").map(|i| {
+        args.get(i + 1)
+            .cloned()
+            .unwrap_or_else(|| "selftest-out".into())
+    });
     if let Some(dir) = &selftest_dir {
         let home = std::path::Path::new(dir).join("home");
         let _ = std::fs::remove_dir_all(&home);
         std::env::set_var("PONI_HOME", &home);
     }
     crate::plog::init(paths::log_path());
-    pinfo!("Island For Windows {} starting (args: {:?})", env!("CARGO_PKG_VERSION"), &args[1..]);
+    pinfo!(
+        "Island For Windows {} starting (args: {:?})",
+        env!("CARGO_PKG_VERSION"),
+        &args[1..]
+    );
     std::panic::set_hook(Box::new(|info| {
         perror!("panic: {info}");
     }));
@@ -124,7 +156,11 @@ pub fn main_entry() -> i32 {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
     // Single instance (the self-test may run next to a normal instance).
-    let mutex_name = if selftest_dir.is_some() { w!("Local\\Poni.Island.SelfTest") } else { w!("Local\\Poni.Island") };
+    let mutex_name = if selftest_dir.is_some() {
+        w!("Local\\Poni.Island.SelfTest")
+    } else {
+        w!("Local\\Poni.Island")
+    };
     let _mutex = unsafe { CreateMutexW(None, true, mutex_name) };
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
         pinfo!("another instance is running; exiting");
@@ -169,7 +205,10 @@ fn run(selftest_dir: Option<String>) -> Result<i32> {
         if let Err(e) = save_json_atomic(&paths::settings_path(), &settings) {
             pwarn!("saving settings failed: {e}");
         } else if s_out != LoadOutcome::Missing {
-            pinfo!("settings: wrote back migrated / out-of-range values (v{})", settings.settings_version);
+            pinfo!(
+                "settings: wrote back migrated / out-of-range values (v{})",
+                settings.settings_version
+            );
         }
     }
     let (store, d_out): (Store, _) = load_json(&paths::store_path());
@@ -179,7 +218,17 @@ fn run(selftest_dir: Option<String>) -> Result<i32> {
 
     let (tx, rx) = mpsc::channel();
     let sink = EventSink::new(tx, SendHwnd::new(hwnd));
-    let app = App::new(hwnd, helper, sink, rx, settings, store, selftest_dir, s_out.writable(), d_out.writable())?;
+    let app = App::new(
+        hwnd,
+        helper,
+        sink,
+        rx,
+        settings,
+        store,
+        selftest_dir,
+        s_out.writable(),
+        d_out.writable(),
+    )?;
     APP.with(|c| *c.borrow_mut() = Some(app));
     with_app(|app| app.start());
     pinfo!("started; entering message loop");
@@ -230,10 +279,16 @@ fn note_missed(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
             FRAME_MISSED.with(|f| f.set(true));
             true
         }
-        WM_APP_EVENT | WM_MOUSELEAVE | WM_TIMER | WM_LBUTTONUP | WM_APP_TRAY | WM_APP_APPBAR | WM_APP_WECHAT => {
+        WM_APP_EVENT | WM_MOUSELEAVE | WM_TIMER | WM_LBUTTONUP | WM_APP_TRAY | WM_APP_APPBAR
+        | WM_APP_WECHAT => {
             MISSED.with(|m| {
                 let mut v = m.borrow_mut();
-                if v.len() < 64 && !(msg != WM_TIMER && v.iter().any(|x| x.0 == msg && x.1 == wp && (msg != WM_APP_WECHAT || x.2 == lp))) {
+                if v.len() < 64
+                    && !(msg != WM_TIMER
+                        && v.iter().any(|x| {
+                            x.0 == msg && x.1 == wp && (msg != WM_APP_WECHAT || x.2 == lp)
+                        }))
+                {
                     v.push((msg, wp, lp));
                 }
             });
@@ -280,7 +335,12 @@ unsafe extern "system" fn helper_wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: L
 }
 
 /// The Settings window's messages (`settings_window`).
-unsafe extern "system" fn settings_wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+unsafe extern "system" fn settings_wndproc(
+    hwnd: HWND,
+    msg: u32,
+    wp: WPARAM,
+    lp: LPARAM,
+) -> LRESULT {
     let mut deferred = Vec::new();
     let res = with_app(|app| app.handle_settings_window(hwnd, msg, wp, lp, &mut deferred));
     for d in deferred {
@@ -302,7 +362,9 @@ fn run_deferred(d: Deferred) {
                 SoundModule::Codex => app.st.settings.codex_sound_id.clone(),
                 SoundModule::WeChat => app.st.settings.wechat_sound_id.clone(),
                 SoundModule::Mail => app.st.settings.mail_sound_id.clone(),
-            }) else { return };
+            }) else {
+                return;
+            };
             let result = services::sound_picker::choose(owner, module, &current);
             with_app(|app| {
                 app.picker_open = false;
@@ -310,10 +372,18 @@ fn run_deferred(d: Deferred) {
                     Ok(Some(id)) => {
                         let before = app.st.settings.clone();
                         let (selected, sound) = match module {
-                            SoundModule::Focus => (&mut app.st.settings.focus_sound_id, Sound::Tick),
-                            SoundModule::Shelf => (&mut app.st.settings.shelf_sound_id, Sound::Shelf),
-                            SoundModule::Codex => (&mut app.st.settings.codex_sound_id, Sound::Codex),
-                            SoundModule::WeChat => (&mut app.st.settings.wechat_sound_id, Sound::WeChat),
+                            SoundModule::Focus => {
+                                (&mut app.st.settings.focus_sound_id, Sound::Tick)
+                            }
+                            SoundModule::Shelf => {
+                                (&mut app.st.settings.shelf_sound_id, Sound::Shelf)
+                            }
+                            SoundModule::Codex => {
+                                (&mut app.st.settings.codex_sound_id, Sound::Codex)
+                            }
+                            SoundModule::WeChat => {
+                                (&mut app.st.settings.wechat_sound_id, Sound::WeChat)
+                            }
                             SoundModule::Mail => (&mut app.st.settings.mail_sound_id, Sound::Mail),
                         };
                         *selected = id;
@@ -323,13 +393,22 @@ fn run_deferred(d: Deferred) {
                         services::sound::play(sound, &app.st.settings);
                     }
                     Ok(None) => {}
-                    Err(message) => app.st.notify(Icon::Bell, palette::ORANGE, "无法更改提示音", message, 5.0, None),
+                    Err(message) => app.st.notify(
+                        Icon::Bell,
+                        palette::ORANGE,
+                        "无法更改提示音",
+                        message,
+                        5.0,
+                        None,
+                    ),
                 }
                 app.request_frame();
             });
         }
         Deferred::ChooseFont { owner } => {
-            let Some(current) = with_app(|app| app.st.settings.ui_font.clone()) else { return };
+            let Some(current) = with_app(|app| app.st.settings.ui_font.clone()) else {
+                return;
+            };
             let result = services::font::choose(owner, &current);
             with_app(|app| {
                 app.picker_open = false;
@@ -341,13 +420,25 @@ fn run_deferred(d: Deferred) {
                         app.st.cmd(Command::SaveSettings);
                     }
                     Ok(None) => {}
-                    Err(message) => app.st.notify(Icon::Gear, palette::RED, "字体选择失败", message, 6.0, None),
+                    Err(message) => {
+                        app.st
+                            .notify(Icon::Gear, palette::RED, "字体选择失败", message, 6.0, None)
+                    }
                 }
                 app.request_frame();
             });
         }
-        Deferred::EditMailAccount { account, sink, owner, font_family } => crate::mail_accounts::show(owner, account, sink, &font_family),
-        Deferred::RemoveMailAccount { account, sink, owner } => crate::mail_accounts::confirm_remove(owner, account, sink),
+        Deferred::EditMailAccount {
+            account,
+            sink,
+            owner,
+            font_family,
+        } => crate::mail_accounts::show(owner, account, sink, &font_family),
+        Deferred::RemoveMailAccount {
+            account,
+            sink,
+            owner,
+        } => crate::mail_accounts::confirm_remove(owner, account, sink),
         Deferred::ChooseLyricsColor { owner, rgb } => {
             let result = services::color::choose(owner, rgb);
             with_app(|app| {
@@ -356,7 +447,14 @@ fn run_deferred(d: Deferred) {
                     Ok(Some(color)) => app.on_event(AppEvent::LyricsColor(color)),
                     Ok(None) => {}
                     Err(message) => {
-                        app.st.notify(Icon::Lyrics, palette::ORANGE, "无法更改歌词颜色", &message, 5.0, None);
+                        app.st.notify(
+                            Icon::Lyrics,
+                            palette::ORANGE,
+                            "无法更改歌词颜色",
+                            &message,
+                            5.0,
+                            None,
+                        );
                     }
                 }
                 app.request_frame();
@@ -373,7 +471,15 @@ fn run_deferred(d: Deferred) {
             let Some((helper, items)) = with_app(|app| {
                 // Right-clicked on the open island (the tray's menu leaves it as it is).
                 app.menu_open = app.expanded && app.hovering;
-                (app.helper, tray::menu_items(&app.st.settings, app.st.pinned, &app.st.oyenza.link, crate::updates::menu_line(&app.st, app.updater.is_some())))
+                (
+                    app.helper,
+                    tray::menu_items(
+                        &app.st.settings,
+                        app.st.pinned,
+                        &app.st.oyenza.link,
+                        crate::updates::menu_line(&app.st, app.updater.is_some()),
+                    ),
+                )
             }) else {
                 return;
             };
@@ -384,7 +490,8 @@ fn run_deferred(d: Deferred) {
                     app.on_menu(cmd);
                 }
                 app.take_update_prompt()
-            }).flatten();
+            })
+            .flatten();
             if let Some(prompt) = prompt {
                 update::run_prompt(prompt);
             }
@@ -774,7 +881,13 @@ impl App {
         services::power::register(self.helper);
         if !fake {
             self.sync_codex();
-            self.services = Some(Services::start(&self.sink, self.hwnd, self.helper, &self.st.settings, self.oyenza_activity()));
+            self.services = Some(Services::start(
+                &self.sink,
+                self.hwnd,
+                self.helper,
+                &self.st.settings,
+                self.oyenza_activity(),
+            ));
             self.tell_media_rest();
             self.configure_mail();
             self.sync_top_watch();
@@ -804,7 +917,11 @@ impl App {
             }
             // 仅加载本地更新状态；网络和线程等到用户右键选择“检查更新”。
             if !crate::autostart::packaged() {
-                self.updater = Some(crate::updates::Updater::start(paths::data_dir().join("update.json"), &mut self.st, crate::updates::unix_now()));
+                self.updater = Some(crate::updates::Updater::start(
+                    paths::data_dir().join("update.json"),
+                    &mut self.st,
+                    crate::updates::unix_now(),
+                ));
             }
         }
         if let Err(e) = dragdrop::register(self.hwnd, self.sink.clone()) {
@@ -888,8 +1005,14 @@ impl App {
     /// centre stays put and both edges glide at sub-pixel precision. Call at
     /// start and whenever the scale, the monitor or the expanded width changes.
     fn layout_surface(&mut self) {
-        let tallest = PageKind::ALL.iter().map(|p| pages::content_height(*p, &self.st)).fold(0.0f32, f32::max);
-        self.layout_surface_for(self.st.settings.expanded_width, pages::HEADER_H + tallest + pages::PAD);
+        let tallest = PageKind::ALL
+            .iter()
+            .map(|p| pages::content_height(*p, &self.st))
+            .fold(0.0f32, f32::max);
+        self.layout_surface_for(
+            self.st.settings.expanded_width,
+            pages::HEADER_H + tallest + pages::PAD,
+        );
         // The band Step aside watches follows the monitor and its scale.
         self.sync_top_watch();
     }
@@ -901,7 +1024,12 @@ impl App {
     fn sync_top_watch(&mut self) {
         let m = &self.monitor;
         let px = (TOP_BAND * self.gfx.scale()).ceil() as i32;
-        let band = self.st.settings.step_aside.then(|| RECT { left: m.rect.left, top: m.top(), right: m.rect.right, bottom: m.top() + px });
+        let band = self.st.settings.step_aside.then(|| RECT {
+            left: m.rect.left,
+            top: m.top(),
+            right: m.rect.right,
+            bottom: m.top() + px,
+        });
         if band.is_none() {
             self.top_windows.clear();
         }
@@ -925,7 +1053,10 @@ impl App {
     /// (`place_island`).
     fn place_surface(&mut self, w: i32, h: i32) {
         let s = self.gfx.scale();
-        let (left, mon_w) = (self.monitor.rect.left, self.monitor.rect.right - self.monitor.rect.left);
+        let (left, mon_w) = (
+            self.monitor.rect.left,
+            self.monitor.rect.right - self.monitor.rect.left,
+        );
         self.laid_spot = self.st.settings.island_x;
         let (x, home) = match self.laid_spot {
             None => (left + (mon_w - w) / 2, w as f32 / 2.0 / s),
@@ -936,7 +1067,12 @@ impl App {
             }
         };
         self.home_cx = home;
-        let surface = Surface { x, y: self.monitor.top(), w, h };
+        let surface = Surface {
+            x,
+            y: self.monitor.top(),
+            w,
+            h,
+        };
         if surface != self.surface {
             self.surface = surface;
             self.prev_canvas_px = None;
@@ -955,7 +1091,12 @@ impl App {
     fn place_island(&mut self) {
         self.cx = match self.laid_spot {
             None => self.home_cx,
-            Some(_) => spot::fit_centre(self.home_cx, self.surface.w as f32 / self.gfx.scale(), self.island.current().w, self.island.side_room()),
+            Some(_) => spot::fit_centre(
+                self.home_cx,
+                self.surface.w as f32 / self.gfx.scale(),
+                self.island.current().w,
+                self.island.side_room(),
+            ),
         };
     }
 
@@ -970,7 +1111,10 @@ impl App {
 
     /// Where a mouse message's point is on the screen, pixels across.
     fn screen_x(&self, lp: LPARAM) -> i32 {
-        let mut pt = POINT { x: (lp.0 & 0xffff) as u16 as i16 as i32, y: ((lp.0 >> 16) & 0xffff) as u16 as i16 as i32 };
+        let mut pt = POINT {
+            x: (lp.0 & 0xffff) as u16 as i16 as i32,
+            y: ((lp.0 >> 16) & 0xffff) as u16 as i16 as i32,
+        };
         unsafe {
             let _ = windows::Win32::Graphics::Gdi::ClientToScreen(self.hwnd, &mut pt);
         }
@@ -999,7 +1143,12 @@ impl App {
         }
         self.grab = Some(Grab { moved: true, ..g });
         let mon_w = (self.monitor.rect.right - self.monitor.rect.left) as f32 / s;
-        let centre = spot::fit_centre(g.centre + dx as f32 / s, mon_w, self.island.current().w, self.island.side_room());
+        let centre = spot::fit_centre(
+            g.centre + dx as f32 / s,
+            mon_w,
+            self.island.current().w,
+            self.island.side_room(),
+        );
         self.st.settings.island_x = spot::remember(centre, mon_w);
         self.sync_spot();
         self.request_frame();
@@ -1028,7 +1177,14 @@ impl App {
         if floats != self.laid_floating {
             self.layout_surface();
             let (w, h) = (self.surface.w, self.surface.h);
-            self.log_queue.push(format!("island {}; window {w}x{h}", if floats { "floats below the top edge" } else { "hangs from the top edge" }));
+            self.log_queue.push(format!(
+                "island {}; window {w}x{h}",
+                if floats {
+                    "floats below the top edge"
+                } else {
+                    "hangs from the top edge"
+                }
+            ));
         }
     }
 
@@ -1042,10 +1198,16 @@ impl App {
         let need_w = ((bw + 2.0 * self.island.side_room()) * s).ceil() as i32;
         let need_h = ((bh + self.island.bottom_room() + self.island.top()) * s).ceil() as i32;
         if need_w > self.surface.w || need_h > self.surface.h {
-            let tallest = PageKind::ALL.iter().map(|p| pages::content_height(*p, &self.st)).fold(0.0f32, f32::max);
+            let tallest = PageKind::ALL
+                .iter()
+                .map(|p| pages::content_height(*p, &self.st))
+                .fold(0.0f32, f32::max);
             let body_h = (pages::HEADER_H + tallest + pages::PAD).max(bh / OVERSHOOT * 1.1);
             pinfo!("island outgrew the window; growing it to fit {bw:.0}x{bh:.0} DIP");
-            self.layout_surface_for(self.st.settings.expanded_width.max(bw / OVERSHOOT * 1.1), body_h);
+            self.layout_surface_for(
+                self.st.settings.expanded_width.max(bw / OVERSHOOT * 1.1),
+                body_h,
+            );
         }
     }
 
@@ -1079,7 +1241,11 @@ impl App {
             self.saved(crate::persistence::SaveFile::Settings, Ok(()));
             return;
         }
-        let result = crate::persistence::save(&paths::settings_path(), &self.st.settings, self.settings_writable);
+        let result = crate::persistence::save(
+            &paths::settings_path(),
+            &self.st.settings,
+            self.settings_writable,
+        );
         if result.is_ok() {
             self.saved_settings = self.st.settings.clone();
         }
@@ -1102,7 +1268,11 @@ impl App {
                 Some(NoticeAction::OpenCodex(id)) => self.select_codex(&id, false),
                 Some(NoticeAction::OpenSaveErrors) => self.set_page(PageKind::Settings),
                 Some(NoticeAction::OpenPage(p)) => {
-                    let page = if p == PageKind::Oyenza { pages::first_tab(&self.st) } else { p };
+                    let page = if p == PageKind::Oyenza {
+                        pages::first_tab(&self.st)
+                    } else {
+                        p
+                    };
                     self.set_page(page);
                     if page == PageKind::Mail {
                         if let Some((_, id)) = self.mail_notice.take() {
@@ -1147,8 +1317,17 @@ impl App {
 
     // ------------------------------------------------------------ messages
 
-    fn handle_island(&mut self, msg: u32, wp: WPARAM, lp: LPARAM, deferred: &mut Vec<Deferred>) -> Option<LRESULT> {
-        if let Some(result) = self.text_input.message(self.hwnd, msg, wp, lp, &mut self.input, self.gfx.scale()) {
+    fn handle_island(
+        &mut self,
+        msg: u32,
+        wp: WPARAM,
+        lp: LPARAM,
+        deferred: &mut Vec<Deferred>,
+    ) -> Option<LRESULT> {
+        if let Some(result) =
+            self.text_input
+                .message(self.hwnd, msg, wp, lp, &mut self.input, self.gfx.scale())
+        {
             self.request_frame();
             return Some(result);
         }
@@ -1203,11 +1382,19 @@ impl App {
                     self.hovering = true;
                     self.collapse_due = false;
                     unsafe {
-                        let mut tme = TRACKMOUSEEVENT { cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32, dwFlags: TME_LEAVE, hwndTrack: self.hwnd, dwHoverTime: 0 };
+                        let mut tme = TRACKMOUSEEVENT {
+                            cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                            dwFlags: TME_LEAVE,
+                            hwndTrack: self.hwnd,
+                            dwHoverTime: 0,
+                        };
                         let _ = TrackMouseEvent(&mut tme);
                         let _ = KillTimer(self.hwnd, TIMER_COLLAPSE);
                     }
-                    if !self.expanded && clock::mono() - self.left_at < REOPEN_S && !self.codex_notice_shown() {
+                    if !self.expanded
+                        && clock::mono() - self.left_at < REOPEN_S
+                        && !self.codex_notice_shown()
+                    {
                         // Back onto the island while it is still closing.
                         self.expand();
                     } else if !self.expanded {
@@ -1245,7 +1432,12 @@ impl App {
                 self.input.pressed_id = self.hit_at(p).map(|h| h.id);
                 unsafe { SetCapture(self.hwnd) };
                 if !self.expanded {
-                    let inline = self.st.notice.as_ref().and_then(|n| n.inline).filter(|_| self.input.pressed_id == Some(wid("notice.act")));
+                    let inline = self
+                        .st
+                        .notice
+                        .as_ref()
+                        .and_then(|n| n.inline)
+                        .filter(|_| self.input.pressed_id == Some(wid("notice.act")));
                     if let Some(a) = inline {
                         // The notice's inline pill acts in place without
                         // expanding. The press is consumed here, so the
@@ -1257,8 +1449,14 @@ impl App {
                         // Opens when the button comes up (`open_from_press`),
                         // unless the pointer moves sideways first: then it
                         // drags the island along the top edge (`drag_island`).
-                        let centre = (self.surface.x - self.monitor.rect.left) as f32 / self.gfx.scale() + self.cx;
-                        self.grab = Some(Grab { from_px: self.screen_x(lp), centre, moved: false });
+                        let centre = (self.surface.x - self.monitor.rect.left) as f32
+                            / self.gfx.scale()
+                            + self.cx;
+                        self.grab = Some(Grab {
+                            from_px: self.screen_x(lp),
+                            centre,
+                            moved: false,
+                        });
                         // Held still on it, it doesn't open by itself either.
                         self.cancel_hover();
                     }
@@ -1309,7 +1507,9 @@ impl App {
                 if lp.0 != self.hwnd.0 as isize && self.grab.take().is_some_and(|g| g.moved) {
                     self.dropped_island();
                 }
-                if lp.0 != self.hwnd.0 as isize && (self.input.down || self.input.pressed_id.is_some()) {
+                if lp.0 != self.hwnd.0 as isize
+                    && (self.input.down || self.input.pressed_id.is_some())
+                {
                     self.input.down = false;
                     self.input.pressed_id = None;
                     if !self.hovering {
@@ -1350,7 +1550,12 @@ impl App {
                 Some(LRESULT(0))
             }
             WM_SETCURSOR => {
-                let kind = self.input.mouse.and_then(|p| self.hit_at(p)).map(|h| h.cursor).unwrap_or(CursorKind::Arrow);
+                let kind = self
+                    .input
+                    .mouse
+                    .and_then(|p| self.hit_at(p))
+                    .map(|h| h.cursor)
+                    .unwrap_or(CursorKind::Arrow);
                 unsafe {
                     let id = match kind {
                         CursorKind::Arrow => IDC_ARROW,
@@ -1363,7 +1568,11 @@ impl App {
                 }
                 Some(LRESULT(1))
             }
-            WM_MOUSEACTIVATE => Some(LRESULT(if self.text_focus { MA_ACTIVATE as isize } else { MA_NOACTIVATE as isize })),
+            WM_MOUSEACTIVATE => Some(LRESULT(if self.text_focus {
+                MA_ACTIVATE as isize
+            } else {
+                MA_NOACTIVATE as isize
+            })),
             WM_ACTIVATE => {
                 if (wp.0 & 0xffff) as u32 == WA_INACTIVE && self.text_focus {
                     self.text_input.blur(self.hwnd, &mut self.input);
@@ -1397,7 +1606,13 @@ impl App {
         }
     }
 
-    fn handle_helper(&mut self, msg: u32, wp: WPARAM, lp: LPARAM, deferred: &mut Vec<Deferred>) -> Option<LRESULT> {
+    fn handle_helper(
+        &mut self,
+        msg: u32,
+        wp: WPARAM,
+        lp: LPARAM,
+        deferred: &mut Vec<Deferred>,
+    ) -> Option<LRESULT> {
         if msg == self.taskbar_created_msg && msg != 0 {
             // Explorer重启后重新注册Shell事件，旧注册先解除。
             self.wechat = None;
@@ -1538,7 +1753,11 @@ impl App {
                 }
                 w.raise();
             }
-            None => match SettingsWindow::new(self.monitor.work, self.gfx.dpi.round() as u32, section.unwrap_or(Section::General)) {
+            None => match SettingsWindow::new(
+                self.monitor.work,
+                self.gfx.dpi.round() as u32,
+                section.unwrap_or(Section::General),
+            ) {
                 Ok(mut w) => {
                     w.set_font_family(&self.st.settings.ui_font);
                     pinfo!("settings window: open");
@@ -1569,7 +1788,9 @@ impl App {
         for _ in 0..4 {
             self.st.now = self.st.now.max(clock::mono());
             let now = self.st.now;
-            let Some(w) = self.settings_win.as_mut() else { return };
+            let Some(w) = self.settings_win.as_mut() else {
+                return;
+            };
             let owner = w.hwnd;
             let out = w.paint(&mut self.st, now, None, false);
             if out.close {
@@ -1595,7 +1816,9 @@ impl App {
     /// Draw the Settings window on this frame when something in it changed
     /// (all of it), or still glides (only what moves).
     fn paint_settings_if_dirty(&mut self, deferred: &mut Vec<Deferred>) {
-        let Some(w) = self.settings_win.as_ref() else { return };
+        let Some(w) = self.settings_win.as_ref() else {
+            return;
+        };
         if w.view.dirty {
             self.paint_settings(deferred);
         } else if w.view.moving {
@@ -1614,14 +1837,29 @@ impl App {
         self.settings_win.as_ref().is_some_and(|w| w.view.moving)
     }
 
-    fn handle_settings_window(&mut self, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM, deferred: &mut Vec<Deferred>) -> Option<LRESULT> {
+    fn handle_settings_window(
+        &mut self,
+        hwnd: HWND,
+        msg: u32,
+        wp: WPARAM,
+        lp: LPARAM,
+        deferred: &mut Vec<Deferred>,
+    ) -> Option<LRESULT> {
         let w = self.settings_win.as_mut().filter(|w| w.hwnd == hwnd)?;
         let scale = w.scale();
-        if let Some(result) = w.text_input.message(hwnd, msg, wp, lp, &mut w.view.input, scale) {
+        if let Some(result) = w
+            .text_input
+            .message(hwnd, msg, wp, lp, &mut w.view.input, scale)
+        {
             self.paint_settings(deferred);
             return Some(result);
         }
-        let xy = |lp: LPARAM| ((lp.0 & 0xffff) as u16 as i16 as i32, ((lp.0 >> 16) & 0xffff) as u16 as i16 as i32);
+        let xy = |lp: LPARAM| {
+            (
+                (lp.0 & 0xffff) as u16 as i16 as i32,
+                ((lp.0 >> 16) & 0xffff) as u16 as i16 as i32,
+            )
+        };
         match msg {
             WM_NCHITTEST => {
                 // Empty parts of the card move the window; the shadow takes nothing.
@@ -1644,7 +1882,12 @@ impl App {
                 if !w.tracking {
                     w.tracking = true;
                     unsafe {
-                        let mut tme = TRACKMOUSEEVENT { cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32, dwFlags: TME_LEAVE, hwndTrack: hwnd, dwHoverTime: 0 };
+                        let mut tme = TRACKMOUSEEVENT {
+                            cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                            dwFlags: TME_LEAVE,
+                            hwndTrack: hwnd,
+                            dwHoverTime: 0,
+                        };
                         let _ = TrackMouseEvent(&mut tme);
                     }
                 }
@@ -1689,13 +1932,18 @@ impl App {
                 if raw % WHEEL_DELTA as i32 == 0 {
                     w.view.wheel(p, delta);
                 } else {
-                    w.view.scroll_by(p, delta * crate::settings_window::WHEEL_STEP);
+                    w.view
+                        .scroll_by(p, delta * crate::settings_window::WHEEL_STEP);
                 }
                 self.paint_settings(deferred);
                 Some(LRESULT(0))
             }
             WM_SETCURSOR if (lp.0 & 0xffff) as u32 == HTCLIENT => {
-                let kind = w.view.input.mouse.map_or(CursorKind::Arrow, |p| w.view.cursor_at(p));
+                let kind = w
+                    .view
+                    .input
+                    .mouse
+                    .map_or(CursorKind::Arrow, |p| w.view.cursor_at(p));
                 unsafe {
                     let id = match kind {
                         CursorKind::Arrow => IDC_ARROW,
@@ -1752,7 +2000,9 @@ impl App {
                 }
                 if !self.hovering || self.expanded || self.grab.is_some() {
                     self.hover_arm = None;
-                } else if self.mode == Mode::Notice && self.st.notice.as_ref().is_some_and(|n| n.inline.is_some()) {
+                } else if self.mode == Mode::Notice
+                    && self.st.notice.as_ref().is_some_and(|n| n.inline.is_some())
+                {
                     // A notice with an inline pill stays put under a resting
                     // pointer so the pill can be clicked (a click on the rest
                     // of the notice still opens its page). The dwell stays
@@ -1840,12 +2090,26 @@ impl App {
     fn use_apple_music_token(&mut self) {
         let text = services::clipboard::read_text(self.hwnd).unwrap_or_default();
         let Some(token) = poni_core::applemusic::clean_user_token(&text) else {
-            self.st.notify(Icon::Lyrics, palette::ORANGE, "No Apple Music token copied", "Copy media-user-token first", 6.0, None);
+            self.st.notify(
+                Icon::Lyrics,
+                palette::ORANGE,
+                "No Apple Music token copied",
+                "Copy media-user-token first",
+                6.0,
+                None,
+            );
             return;
         };
         if let Err(e) = services::secret::save(&paths::apple_music_token_path(), &token) {
             pwarn!("apple music: cannot save the token ({e})");
-            self.st.notify(Icon::Lyrics, palette::ORANGE, "Couldn't save the token", "Details in poni.log", 5.0, None);
+            self.st.notify(
+                Icon::Lyrics,
+                palette::ORANGE,
+                "Couldn't save the token",
+                "Details in poni.log",
+                5.0,
+                None,
+            );
             return;
         }
         pinfo!("apple music: token saved");
@@ -1854,13 +2118,27 @@ impl App {
             s.apple_music_token_changed();
         }
         self.refetch_lyrics();
-        self.st.notify(Icon::Lyrics, palette::BLUE, "Checking the Apple Music token", "One moment", 4.0, None);
+        self.st.notify(
+            Icon::Lyrics,
+            palette::BLUE,
+            "Checking the Apple Music token",
+            "One moment",
+            4.0,
+            None,
+        );
     }
 
     fn forget_apple_music_token(&mut self) {
         if let Err(e) = services::secret::delete(&paths::apple_music_token_path()) {
             pwarn!("apple music: cannot remove the token ({e})");
-            self.st.notify(Icon::Lyrics, palette::ORANGE, "Couldn't remove the token", "Details in poni.log", 5.0, None);
+            self.st.notify(
+                Icon::Lyrics,
+                palette::ORANGE,
+                "Couldn't remove the token",
+                "Details in poni.log",
+                5.0,
+                None,
+            );
             return;
         }
         pinfo!("apple music: token removed");
@@ -1868,17 +2146,41 @@ impl App {
             s.apple_music_token_changed();
         }
         self.refetch_lyrics();
-        self.st.notify(Icon::Lyrics, palette::BLUE, "Apple Music lyrics off", "Lyrics are unavailable during Apple Music playback", 4.0, None);
+        self.st.notify(
+            Icon::Lyrics,
+            palette::BLUE,
+            "Apple Music lyrics off",
+            "Lyrics are unavailable during Apple Music playback",
+            4.0,
+            None,
+        );
     }
 
     fn on_apple_music(&mut self, status: AppleMusicStatus) {
         let (color, title, subtitle) = match status {
-            AppleMusicStatus::Accepted => (palette::GREEN, "Apple Music lyrics on", "Only for songs played in Apple Music"),
-            AppleMusicStatus::Rejected => (palette::ORANGE, "Apple Music token not accepted", "Copy a fresh one from music.apple.com"),
-            AppleMusicStatus::Unreachable => (palette::ORANGE, "Can't reach Apple Music", "Token saved; trying again later"),
-            AppleMusicStatus::NoAccess => (palette::ORANGE, "No lyrics from Apple Music", "They need an Apple Music subscription"),
+            AppleMusicStatus::Accepted => (
+                palette::GREEN,
+                "Apple Music lyrics on",
+                "Only for songs played in Apple Music",
+            ),
+            AppleMusicStatus::Rejected => (
+                palette::ORANGE,
+                "Apple Music token not accepted",
+                "Copy a fresh one from music.apple.com",
+            ),
+            AppleMusicStatus::Unreachable => (
+                palette::ORANGE,
+                "Can't reach Apple Music",
+                "Token saved; trying again later",
+            ),
+            AppleMusicStatus::NoAccess => (
+                palette::ORANGE,
+                "No lyrics from Apple Music",
+                "They need an Apple Music subscription",
+            ),
         };
-        self.st.notify(Icon::Lyrics, color, title, subtitle, 6.0, None);
+        self.st
+            .notify(Icon::Lyrics, color, title, subtitle, 6.0, None);
     }
 
     // ------------------------------------------------------------ Oyenza
@@ -1930,10 +2232,17 @@ impl App {
         match ev {
             OyenzaEvent::Restored { account } => {
                 self.st.oyenza.link = OyenzaLink::Connected { account };
-
             }
-            OyenzaEvent::Connecting { code, url, expires_in_s } => {
-                self.st.oyenza.link = OyenzaLink::Connecting { code, url, until: now + expires_in_s as f64 };
+            OyenzaEvent::Connecting {
+                code,
+                url,
+                expires_in_s,
+            } => {
+                self.st.oyenza.link = OyenzaLink::Connecting {
+                    code,
+                    url,
+                    until: now + expires_in_s as f64,
+                };
                 // Keep the code on screen while the person goes to oyenza.app.
                 if self.st.oyenza.pinned_before.is_none() {
                     self.st.oyenza.pinned_before = Some(self.st.pinned);
@@ -1943,7 +2252,14 @@ impl App {
             }
             OyenzaEvent::Connected { account } => {
                 self.end_sign_in();
-                self.st.notify(Icon::Check, palette::GREEN, "Connected to Oyenza", format!("as {account}"), 6.0, None);
+                self.st.notify(
+                    Icon::Check,
+                    palette::GREEN,
+                    "Connected to Oyenza",
+                    format!("as {account}"),
+                    6.0,
+                    None,
+                );
                 self.st.oyenza.link = OyenzaLink::Connected { account };
 
                 // Signed in from the Today page: back to it, where the day comes in.
@@ -1957,7 +2273,8 @@ impl App {
                 self.end_sign_in();
                 self.st.oyenza.link = OyenzaLink::Off;
                 let (title, subtitle) = oyenza::connect_failure_text(&code);
-                self.st.notify(Icon::Unlink, palette::ORANGE, title, subtitle, 6.0, None);
+                self.st
+                    .notify(Icon::Unlink, palette::ORANGE, title, subtitle, 6.0, None);
             }
             OyenzaEvent::ConnectCancelled => {
                 self.st.oyenza.from_today = false;
@@ -1985,7 +2302,11 @@ impl App {
             }
             OyenzaEvent::ActivityChecked => self.st.oyenza.updated_unix = Some(self.st.unix),
             OyenzaEvent::Bills { today, bills } => {
-                let day = if today.is_empty() { self.st.day_key() } else { today };
+                let day = if today.is_empty() {
+                    self.st.day_key()
+                } else {
+                    today
+                };
                 self.st.oyenza.bills = bills;
                 self.st.oyenza.bills_today = day.clone();
                 self.st.oyenza.updated_unix = Some(self.st.unix);
@@ -2001,7 +2322,9 @@ impl App {
                 self.st.oyenza.agenda = None;
                 self.st.oyenza.agenda_state = crate::state::AgendaState::Unavailable;
             }
-            OyenzaEvent::DayFailed => self.st.oyenza.agenda_state = crate::state::AgendaState::Failed,
+            OyenzaEvent::DayFailed => {
+                self.st.oyenza.agenda_state = crate::state::AgendaState::Failed
+            }
             OyenzaEvent::NoteSaved(saved) => {
                 let o = &mut self.st.oyenza;
                 o.saving = false;
@@ -2019,15 +2342,23 @@ impl App {
             }
             OyenzaEvent::Undone => self.st.oyenza.flash = Some(("Taken back".into(), now + 3.0)),
             OyenzaEvent::UndoFailed(code) => {
-                let line = if code == "too_late" { "Too late to undo here. Change it in oyenza.app" } else { "Couldn't undo. Change it in oyenza.app" };
+                let line = if code == "too_late" {
+                    "Too late to undo here. Change it in oyenza.app"
+                } else {
+                    "Couldn't undo. Change it in oyenza.app"
+                };
                 self.st.oyenza.flash = Some((line.into(), now + 5.0));
             }
             OyenzaEvent::Disconnected { by_server } => {
                 self.end_sign_in();
                 self.st.oyenza = crate::state::OyenzaState::default();
-                let (title, subtitle) =
-                    if by_server { ("Oyenza 连接已断开", "此版本已停用账户连接") } else { ("已断开 Oyenza", "此版本已停用账户连接") };
-                self.st.notify(Icon::Unlink, palette::TEXT_DIM, title, subtitle, 6.0, None);
+                let (title, subtitle) = if by_server {
+                    ("Oyenza 连接已断开", "此版本已停用账户连接")
+                } else {
+                    ("已断开 Oyenza", "此版本已停用账户连接")
+                };
+                self.st
+                    .notify(Icon::Unlink, palette::TEXT_DIM, title, subtitle, 6.0, None);
             }
         }
         // Signed in or out, the Oyenza page's height changes: the window fits the tallest page again.
@@ -2051,7 +2382,14 @@ impl App {
     /// amounts on the island" is on (`hidden` None: nothing to hide). While a
     /// full-screen app hides the island it waits, and shows when the island
     /// is back if it isn't old by then.
-    fn oyenza_notice(&mut self, icon: Icon, color: Color, title: String, shown: String, hidden: Option<String>) {
+    fn oyenza_notice(
+        &mut self,
+        icon: Icon,
+        color: Color,
+        title: String,
+        shown: String,
+        hidden: Option<String>,
+    ) {
         let now = self.st.now;
         let hide = hidden.is_some() && !self.st.settings.oyenza_show_amounts;
         let notice = Notice {
@@ -2059,7 +2397,11 @@ impl App {
             color,
             title,
             title_dim: String::new(),
-            subtitle: if hide { hidden.unwrap_or_default() } else { shown.clone() },
+            subtitle: if hide {
+                hidden.unwrap_or_default()
+            } else {
+                shown.clone()
+            },
             until: now + oyenza::NOTICE_S,
             action: None,
             inline: hide.then_some(InlineAction::ShowAmount),
@@ -2078,7 +2420,11 @@ impl App {
                 return;
             }
             if let Some(NoticeAction::OpenWeChat(handle)) = &n.action {
-                if !self.wechat.as_ref().is_some_and(|watcher| watcher.can_restore(*handle)) {
+                if !self
+                    .wechat
+                    .as_ref()
+                    .is_some_and(|watcher| watcher.can_restore(*handle))
+                {
                     return;
                 }
             }
@@ -2095,12 +2441,27 @@ impl App {
         if st.local.hour < oyenza::BILL_HOUR {
             return;
         }
-        let Some(b) = oyenza::bills_to_remind(&st.oyenza.bills, today, &st.store.oyenza_noticed).first().map(|b| (*b).clone()) else { return };
+        let Some(b) = oyenza::bills_to_remind(&st.oyenza.bills, today, &st.store.oyenza_noticed)
+            .first()
+            .map(|b| (*b).clone())
+        else {
+            return;
+        };
         st.store.oyenza_noticed.push(oyenza::notice_key(&b));
         st.save();
         let (shown, hidden) = oyenza::bill_subtitles(&b);
-        let icon = if b.is_card() { Icon::Card } else { Icon::Calendar };
-        self.oyenza_notice(icon, palette::ORANGE, oyenza::bill_title(&b, today), shown, hidden);
+        let icon = if b.is_card() {
+            Icon::Card
+        } else {
+            Icon::Calendar
+        };
+        self.oyenza_notice(
+            icon,
+            palette::ORANGE,
+            oyenza::bill_title(&b, today),
+            shown,
+            hidden,
+        );
     }
 
     /// Start a fresh lookup and remember exactly which request the UI accepts.
@@ -2108,14 +2469,27 @@ impl App {
         if !self.st.settings.lyrics {
             return;
         }
-        let Some(m) = self.st.media.as_ref().filter(|m| !m.title.is_empty()) else { return };
-        self.st.lyrics = LyricsState { track_key: m.track_key.clone(), request_duration_s: m.duration_secs(), ..Default::default() };
+        let Some(m) = self.st.media.as_ref().filter(|m| !m.title.is_empty()) else {
+            return;
+        };
+        self.st.lyrics = LyricsState {
+            track_key: m.track_key.clone(),
+            request_duration_s: m.duration_secs(),
+            ..Default::default()
+        };
         if let Some(generation) = self.services.as_ref().and_then(|svc| svc.request_lyrics(m)) {
             self.st.lyrics.request_generation = generation;
             self.st.lyrics.status = LyricsStatus::Loading;
-            crate::pinfo!("lyrics: UI requested generation={generation} app={:?} duration={}s", m.app_id, m.duration_secs());
+            crate::pinfo!(
+                "lyrics: UI requested generation={generation} app={:?} duration={}s",
+                m.app_id,
+                m.duration_secs()
+            );
         } else {
-            crate::pwarn!("lyrics: UI could not queue request app={:?}; lyrics service unavailable", m.app_id);
+            crate::pwarn!(
+                "lyrics: UI could not queue request app={:?}; lyrics service unavailable",
+                m.app_id
+            );
         }
     }
 
@@ -2124,7 +2498,14 @@ impl App {
         if before.ui_font != self.st.settings.ui_font {
             if !self.gfx.set_font_family(&self.st.settings.ui_font) {
                 self.st.settings.ui_font.clear();
-                self.st.notify(Icon::Gear, palette::TEXT_DIM, "字体不适合界面", "已恢复主题默认字体，请选择普通文字字体", 5.0, None);
+                self.st.notify(
+                    Icon::Gear,
+                    palette::TEXT_DIM,
+                    "字体不适合界面",
+                    "已恢复主题默认字体，请选择普通文字字体",
+                    5.0,
+                    None,
+                );
                 self.st.cmd(Command::SaveSettings);
             }
             if let Some(window) = self.settings_win.as_mut() {
@@ -2174,11 +2555,15 @@ impl App {
         }
         // Notifications switched on in Settings' tabs row: listen, Windows'
         // question first; off: stop.
-        let notify_was = !before.hidden_tabs.iter().any(|k| k == PageKind::Notifications.key());
+        let notify_was = !before
+            .hidden_tabs
+            .iter()
+            .any(|k| k == PageKind::Notifications.key());
         if before.wechat_reminders != self.st.settings.wechat_reminders {
             self.sync_wechat();
         }
-        if self.st.notify_can && notify_was != self.st.notifications_on() && self.selftest.is_none() {
+        if self.st.notify_can && notify_was != self.st.notifications_on() && self.selftest.is_none()
+        {
             if self.st.notifications_on() {
                 self.start_notify(true);
             } else {
@@ -2198,7 +2583,11 @@ impl App {
             unsafe {
                 let _ = KillTimer(self.hwnd, TIMER_PEEK);
             }
-            self.peek_game(if self.st.settings.game_peek { "peeks picked" } else { "picked to stay" });
+            self.peek_game(if self.st.settings.game_peek {
+                "peeks picked"
+            } else {
+                "picked to stay"
+            });
         }
         // The display the island hangs on, or its width when open (the
         // Settings window has both).
@@ -2261,7 +2650,10 @@ impl App {
                 // Never move the user's file aside or reset on a typo: keep the
                 // current settings and say what's wrong.
                 let path = paths::settings_path();
-                match std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| parse_json::<Settings>(&t)) {
+                match std::fs::read_to_string(&path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|t| parse_json::<Settings>(&t))
+                {
                     Ok(s2) => {
                         let s2 = s2.sanitized();
                         let monitor_changed = s2.monitor != self.st.settings.monitor;
@@ -2279,7 +2671,14 @@ impl App {
                     }
                     Err(e) => {
                         pwarn!("settings.json not reloaded: {e}");
-                        self.st.notify(crate::icons::Icon::Sliders, palette::ORANGE, "Settings not reloaded", "settings.json has an error; see poni.log", 5.0, None);
+                        self.st.notify(
+                            crate::icons::Icon::Sliders,
+                            palette::ORANGE,
+                            "Settings not reloaded",
+                            "settings.json has an error; see poni.log",
+                            5.0,
+                            None,
+                        );
                     }
                 }
             }
@@ -2309,11 +2708,15 @@ impl App {
     pub fn on_event(&mut self, ev: AppEvent) {
         let now = clock::mono();
         self.st.now = now;
-        let media_before = matches!(ev, AppEvent::Media(_) | AppEvent::MediaTimeline { .. }).then(|| self.media_snapshot());
+        let media_before = matches!(ev, AppEvent::Media(_) | AppEvent::MediaTimeline { .. })
+            .then(|| self.media_snapshot());
         // What the Settings window shows that a service reports.
         let shown = matches!(
             ev,
-            AppEvent::Autostart(_) | AppEvent::Update(_) | AppEvent::Oyenza(_) | AppEvent::Notify(_)
+            AppEvent::Autostart(_)
+                | AppEvent::Update(_)
+                | AppEvent::Oyenza(_)
+                | AppEvent::Notify(_)
         );
         if let Some(w) = self.settings_win.as_mut().filter(|_| shown) {
             w.view.dirty = true;
@@ -2324,8 +2727,10 @@ impl App {
             AppEvent::MailAction(action) => self.st.cmd(Command::Mail(action)),
             AppEvent::MailEditorError(error) => {
                 self.st.mail.account_error = Some(error);
-                if let Some(w) = self.settings_win.as_mut() { w.view.dirty = true; }
-            },
+                if let Some(w) = self.settings_win.as_mut() {
+                    w.view.dirty = true;
+                }
+            }
             AppEvent::Backdrop => {
                 if self.glass.on_backdrop(self.hwnd, &mut self.gfx) {
                     self.request_frame();
@@ -2343,10 +2748,18 @@ impl App {
                                 }
                             }
                         }
-                        let changed = self.st.media.as_ref().map_or(true, |prev| prev.track_key != s.track_key || prev.app_id != s.app_id);
-                        let refetch = changed || self.st.media.as_ref().is_some_and(|prev| self.st.lyrics.needs_refetch(&s, prev.is_playing()));
+                        let changed = self.st.media.as_ref().map_or(true, |prev| {
+                            prev.track_key != s.track_key || prev.app_id != s.app_id
+                        });
+                        let refetch = changed
+                            || self.st.media.as_ref().is_some_and(|prev| {
+                                self.st.lyrics.needs_refetch(&s, prev.is_playing())
+                            });
                         if changed {
-                            self.st.lyrics = LyricsState { track_key: s.track_key.clone(), ..Default::default() };
+                            self.st.lyrics = LyricsState {
+                                track_key: s.track_key.clone(),
+                                ..Default::default()
+                            };
                         }
                         self.st.media = Some(s);
                         if refetch {
@@ -2362,7 +2775,10 @@ impl App {
                     }
                 }
             }
-            AppEvent::MediaTimeline { track_key, timeline } => {
+            AppEvent::MediaTimeline {
+                track_key,
+                timeline,
+            } => {
                 let mut refetch = false;
                 if let Some(m) = self.st.media.as_mut() {
                     if m.track_key == track_key {
@@ -2383,11 +2799,20 @@ impl App {
                     }
                 }
             }
-            AppEvent::Lyrics { track_key, app_id, generation, result } => {
+            AppEvent::Lyrics {
+                track_key,
+                app_id,
+                generation,
+                result,
+            } => {
                 if self.st.settings.lyrics
                     && self.st.lyrics.track_key == track_key
                     && self.st.lyrics.request_generation == generation
-                    && self.st.media.as_ref().is_some_and(|m| m.track_key == track_key && m.app_id == app_id)
+                    && self
+                        .st
+                        .media
+                        .as_ref()
+                        .is_some_and(|m| m.track_key == track_key && m.app_id == app_id)
                 {
                     match result {
                         crate::events::LyricsResult::Found { lyrics } => {
@@ -2426,7 +2851,13 @@ impl App {
                 self.st.volume = state;
                 self.st.ui.volume_error = false;
                 if !first && !switched && state.known && self.st.settings.hud_volume {
-                    self.st.show_hud(HudKind::Volume { level: state.level, muted: state.muted }, 1.6);
+                    self.st.show_hud(
+                        HudKind::Volume {
+                            level: state.level,
+                            muted: state.muted,
+                        },
+                        1.6,
+                    );
                 }
             }
             AppEvent::VolumeControlFailed => self.st.ui.volume_error = true,
@@ -2441,7 +2872,9 @@ impl App {
                 if request_id == self.st.weather.request_id {
                     self.location = None;
                     match result {
-                        Ok((latitude, longitude, place)) => self.set_weather_city(place, (latitude, longitude)),
+                        Ok((latitude, longitude, place)) => {
+                            self.set_weather_city(place, (latitude, longitude))
+                        }
                         Err(message) => {
                             self.st.weather.loading = false;
                             self.st.weather.message = message;
@@ -2488,20 +2921,46 @@ impl App {
                 }
                 if self.st.settings.hud_power && p.has_battery {
                     if p.on_ac != old.on_ac {
-                        self.st.show_hud(HudKind::Charging { percent: p.percent, plugged: p.on_ac }, 2.2);
-                    } else if !p.on_ac && ((old.percent > 20 && p.percent <= 20) || (old.percent > 10 && p.percent <= 10)) {
-                        self.st.show_hud(HudKind::LowBattery { percent: p.percent }, 4.0);
+                        self.st.show_hud(
+                            HudKind::Charging {
+                                percent: p.percent,
+                                plugged: p.on_ac,
+                            },
+                            2.2,
+                        );
+                    } else if !p.on_ac
+                        && ((old.percent > 20 && p.percent <= 20)
+                            || (old.percent > 10 && p.percent <= 10))
+                    {
+                        self.st
+                            .show_hud(HudKind::LowBattery { percent: p.percent }, 4.0);
                     }
                 }
             }
-            AppEvent::Bluetooth { name, connected, battery, audio } => {
+            AppEvent::Bluetooth {
+                name,
+                connected,
+                battery,
+                audio,
+            } => {
                 if self.st.settings.hud_bluetooth {
-                    self.st.show_hud(HudKind::Bluetooth { name, connected, battery, audio }, 2.6);
+                    self.st.show_hud(
+                        HudKind::Bluetooth {
+                            name,
+                            connected,
+                            battery,
+                            audio,
+                        },
+                        2.6,
+                    );
                 }
             }
-            AppEvent::BluetoothDevicesStarted(generation) => self.bluetooth.started(generation, &mut self.st.bluetooth),
+            AppEvent::BluetoothDevicesStarted(generation) => {
+                self.bluetooth.started(generation, &mut self.st.bluetooth)
+            }
             AppEvent::BluetoothDevices { generation, result } => {
-                self.bluetooth.receive(generation, result, &mut self.st.bluetooth, now);
+                self.bluetooth
+                    .receive(generation, result, &mut self.st.bluetooth, now);
             }
             AppEvent::Fullscreen(on) => {
                 self.fullscreen_on = on;
@@ -2523,7 +2982,11 @@ impl App {
                 self.expand();
                 self.start_shelf_check(paths);
             }
-            AppEvent::ShelfPrepared { before, requested, result } => {
+            AppEvent::ShelfPrepared {
+                before,
+                requested,
+                result,
+            } => {
                 self.shelf_checking = false;
                 if self.st.store.shelf.items != before {
                     // 校验期间发生了删除、清空或撤销，用当前状态重新比较后提交。
@@ -2541,9 +3004,15 @@ impl App {
                     if n > 0 {
                         self.st.tick(SoundSource::Shelf);
                     }
-                    pinfo!("shelf: {n} new item(s), {} duplicate(s) skipped", result.duplicates);
+                    pinfo!(
+                        "shelf: {n} new item(s), {} duplicate(s) skipped",
+                        result.duplicates
+                    );
                     if result.unreadable > 0 {
-                        pwarn!("shelf: {} file content check(s) failed; kept the file references", result.unreadable);
+                        pwarn!(
+                            "shelf: {} file content check(s) failed; kept the file references",
+                            result.unreadable
+                        );
                     }
                     let pending = std::mem::take(&mut self.shelf_pending);
                     self.start_shelf_check(pending);
@@ -2566,7 +3035,10 @@ impl App {
                 let for_shelf = !ours || self.st.shelf_thumbs.contains_key(&path);
                 if ours {
                     let px = pages::system::icon_px(self.gfx.scale());
-                    self.st.app_icons.insert(path.clone(), image.as_ref().map(|i| pages::system::shrink_icon(i, px)));
+                    self.st.app_icons.insert(
+                        path.clone(),
+                        image.as_ref().map(|i| pages::system::shrink_icon(i, px)),
+                    );
                 }
                 if for_shelf {
                     self.st.shelf_thumbs.insert(path, image);
@@ -2586,7 +3058,10 @@ impl App {
                     // Peeks only: a sharp drop shows the readout (at most every half minute).
                     let now = clock::mono();
                     if let Some(fps) = fps.filter(|_| self.st.settings.game_peek) {
-                        if now >= self.game_peek_until && now - self.game_drop_at >= DROP_PEEK_EVERY_S && poni_core::frames::sharp_drop(&before, fps) {
+                        if now >= self.game_peek_until
+                            && now - self.game_drop_at >= DROP_PEEK_EVERY_S
+                            && poni_core::frames::sharp_drop(&before, fps)
+                        {
                             self.game_drop_at = now;
                             self.peek_game("the frame rate dropped");
                         }
@@ -2606,8 +3081,12 @@ impl App {
             AppEvent::AppleMusic(status) => self.on_apple_music(status),
             AppEvent::Oyenza(ev) => self.on_oyenza(ev),
             AppEvent::Autostart(on) => self.st.ui.autostart = Some(on),
-            AppEvent::Update(services::update::UpdateEvent::Checked(result)) => self.on_update_checked(result),
-            AppEvent::Update(services::update::UpdateEvent::Downloaded(result)) => self.on_update_downloaded(result),
+            AppEvent::Update(services::update::UpdateEvent::Checked(result)) => {
+                self.on_update_checked(result)
+            }
+            AppEvent::Update(services::update::UpdateEvent::Downloaded(result)) => {
+                self.on_update_downloaded(result)
+            }
             AppEvent::Notify(ev) => self.on_notify(ev),
             AppEvent::Log(s) => pinfo!("{s}"),
         }
@@ -2620,7 +3099,10 @@ impl App {
 
     /// (player, track, playing) of the current media session.
     fn media_snapshot(&self) -> Option<(String, String, bool)> {
-        self.st.media.as_ref().map(|m| (m.app_id.clone(), m.track_key.clone(), m.is_playing()))
+        self.st
+            .media
+            .as_ref()
+            .map(|m| (m.app_id.clone(), m.track_key.clone(), m.is_playing()))
     }
 
     /// Track the pause grace period and the title peek after a media update.
@@ -2664,10 +3146,8 @@ impl App {
             }
             if self.st.page == PageKind::Oyenza {
                 self.oyenza(OyenzaCmd::Refresh);
-
             } else if self.st.page == PageKind::Notifications {
                 self.notify_cmd(NotifyCmd::Check);
-
             }
         }
         self.refresh_weather(false);
@@ -2676,13 +3156,24 @@ impl App {
 
     /// (Re)start the hover dwell from `p`.
     fn arm_hover(&mut self, p: Point) {
-        if self.codex_notice_shown() && self.st.notice.as_ref().is_some_and(|notice| notice.inline == Some(InlineAction::CodexConfirm)) {
+        if self.codex_notice_shown()
+            && self
+                .st
+                .notice
+                .as_ref()
+                .is_some_and(|notice| notice.inline == Some(InlineAction::CodexConfirm))
+        {
             self.cancel_hover();
             return;
         }
         self.hover_arm = Some(p);
         unsafe {
-            SetTimer(self.hwnd, TIMER_HOVER, self.st.settings.hover_delay_ms.max(1), None);
+            SetTimer(
+                self.hwnd,
+                TIMER_HOVER,
+                self.st.settings.hover_delay_ms.max(1),
+                None,
+            );
         }
     }
 
@@ -2720,7 +3211,12 @@ impl App {
     /// Nothing holds the open island: no pointer on it, no pin, typing,
     /// file drag, press or a page activity.
     fn free_to_collapse(&self) -> bool {
-        !self.hovering && !self.st.pinned && !self.text_focus && !self.drag_hover && !self.menu_open && self.input.pressed_id.is_none()
+        !self.hovering
+            && !self.st.pinned
+            && !self.text_focus
+            && !self.drag_hover
+            && !self.menu_open
+            && self.input.pressed_id.is_none()
     }
 
     /// The right-click menu closed: the island stays open with the pointer
@@ -2730,7 +3226,10 @@ impl App {
             return;
         }
         let mut pt = POINT::default();
-        let on_island = unsafe { GetCursorPos(&mut pt).is_ok() && windows::Win32::Graphics::Gdi::ScreenToClient(self.hwnd, &mut pt).as_bool() } && {
+        let on_island = unsafe {
+            GetCursorPos(&mut pt).is_ok()
+                && windows::Win32::Graphics::Gdi::ScreenToClient(self.hwnd, &mut pt).as_bool()
+        } && {
             let s = self.gfx.scale();
             self.hovering_inside(Point::new(pt.x as f32 / s, pt.y as f32 / s))
         };
@@ -2738,7 +3237,12 @@ impl App {
             // As a move onto it would: watch for the pointer leaving again.
             self.hovering = true;
             unsafe {
-                let mut tme = TRACKMOUSEEVENT { cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32, dwFlags: TME_LEAVE, hwndTrack: self.hwnd, dwHoverTime: 0 };
+                let mut tme = TRACKMOUSEEVENT {
+                    cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                    dwFlags: TME_LEAVE,
+                    hwndTrack: self.hwnd,
+                    dwHoverTime: 0,
+                };
                 let _ = TrackMouseEvent(&mut tme);
             }
         } else {
@@ -2765,9 +3269,20 @@ impl App {
 
     /// A hold ended (see [`HOLD_GRACE_MS`]): close soon unless the pointer is on the island.
     fn maybe_schedule_collapse(&mut self) {
-        if self.expanded && !self.hovering && !self.st.pinned && !self.text_focus && !self.drag_hover && !self.menu_open {
+        if self.expanded
+            && !self.hovering
+            && !self.st.pinned
+            && !self.text_focus
+            && !self.drag_hover
+            && !self.menu_open
+        {
             unsafe {
-                SetTimer(self.hwnd, TIMER_COLLAPSE, HOLD_GRACE_MS.max(self.st.settings.collapse_delay_ms), None);
+                SetTimer(
+                    self.hwnd,
+                    TIMER_COLLAPSE,
+                    HOLD_GRACE_MS.max(self.st.settings.collapse_delay_ms),
+                    None,
+                );
             }
         }
     }
@@ -2798,7 +3313,11 @@ impl App {
 
     fn start_sysmon(&mut self) {
         self.sysmon_rest = self.rest_now();
-        match services::sysmon::SysMon::start(self.sink.clone(), self.st.settings.system_history_on(), self.sysmon_rest) {
+        match services::sysmon::SysMon::start(
+            self.sink.clone(),
+            self.st.settings.system_history_on(),
+            self.sysmon_rest,
+        ) {
             Ok(s) => self.sysmon = Some(s),
             Err(e) => pwarn!("sysmon: couldn't start ({e})"),
         }
@@ -2813,7 +3332,10 @@ impl App {
 
     /// Nobody at the PC (locked, or the display off) and battery saver.
     fn rest_now(&self) -> poni_core::sysmon::Rest {
-        poni_core::sysmon::Rest { away: self.locked || self.display_off, saver: self.st.power.saver }
+        poni_core::sysmon::Rest {
+            away: self.locked || self.display_off,
+            saver: self.st.power.saver,
+        }
     }
 
     /// The System reader rests while nobody is at the PC, and its kept minute
@@ -2829,7 +3351,12 @@ impl App {
         if let Some(s) = &self.sysmon {
             s.rest(rest);
         }
-        if !poni_core::sysmon::reads(self.sysmon_on, self.st.game.active, self.st.settings.system_history_on(), rest) {
+        if !poni_core::sysmon::reads(
+            self.sysmon_on,
+            self.st.game.active,
+            self.st.settings.system_history_on(),
+            rest,
+        ) {
             self.st.system.clear();
         }
     }
@@ -2844,7 +3371,8 @@ impl App {
             && !self.st.power.saver
             && !self.fullscreen_hidden
             && self.selftest.is_none();
-        self.bluetooth.set_active(on, &mut self.st.bluetooth, &self.sink);
+        self.bluetooth
+            .set_active(on, &mut self.st.bluetooth, &self.sink);
     }
 
     /// Over a full-screen app the island hides when the setting says Hide, and
@@ -2852,7 +3380,9 @@ impl App {
     /// (peeks only), or once Alt+Shift+F hid it. Then nothing covers the game,
     /// and Windows sends its frames straight to the screen.
     fn fullscreen_hides(&self, now: f64) -> bool {
-        self.fullscreen_on && (self.st.settings.hide_in_fullscreen || (self.st.game.active && self.readout_away(now)))
+        self.fullscreen_on
+            && (self.st.settings.hide_in_fullscreen
+                || (self.st.game.active && self.readout_away(now)))
     }
 
     /// Show over games: the readout is off the screen. It stays unless the
@@ -2883,8 +3413,23 @@ impl App {
                 self.hovering = false;
                 self.input.mouse = None;
             }
-            let why = if self.fullscreen_on && !self.st.settings.hide_in_fullscreen && self.st.game.active { " (show over games)" } else { "" };
-            pinfo!("fullscreen app {}: island {}{why}", if self.fullscreen_on { "in front" } else { "gone" }, if hide { "hidden" } else { "shown" });
+            let why = if self.fullscreen_on
+                && !self.st.settings.hide_in_fullscreen
+                && self.st.game.active
+            {
+                " (show over games)"
+            } else {
+                ""
+            };
+            pinfo!(
+                "fullscreen app {}: island {}{why}",
+                if self.fullscreen_on {
+                    "in front"
+                } else {
+                    "gone"
+                },
+                if hide { "hidden" } else { "shown" }
+            );
             // Notices held back wait for the game to leave, not for a peek.
             if !hide && !self.fullscreen_on {
                 self.show_held_notice(now);
@@ -2925,7 +3470,14 @@ impl App {
         let now = clock::mono();
         if !self.st.settings.game_peek {
             self.game_hidden = !self.game_hidden;
-            pinfo!("show over games: readout {} (Alt+Shift+F)", if self.game_hidden { "hidden until the next game" } else { "shows again" });
+            pinfo!(
+                "show over games: readout {} (Alt+Shift+F)",
+                if self.game_hidden {
+                    "hidden until the next game"
+                } else {
+                    "shows again"
+                }
+            );
             self.apply_fullscreen(now);
             return;
         }
@@ -2947,7 +3499,12 @@ impl App {
         }
         unsafe {
             if on {
-                match RegisterHotKey(self.helper, HOTKEY_PEEK, MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, u32::from(b'F')) {
+                match RegisterHotKey(
+                    self.helper,
+                    HOTKEY_PEEK,
+                    MOD_ALT | MOD_SHIFT | MOD_NOREPEAT,
+                    u32::from(b'F'),
+                ) {
                     Ok(()) => self.peek_hotkey = true,
                     Err(e) => pwarn!("show over games: Alt+Shift+F is taken ({e})"),
                 }
@@ -2963,7 +3520,10 @@ impl App {
     /// It follows the full-screen app; the readings and the frame count run
     /// only meanwhile.
     fn sync_game(&mut self) {
-        let want = self.st.settings.game_stats && self.fullscreen_on && !self.st.settings.hide_in_fullscreen && self.selftest.is_none();
+        let want = self.st.settings.game_stats
+            && self.fullscreen_on
+            && !self.st.settings.hide_in_fullscreen
+            && self.selftest.is_none();
         if want != self.st.game.active {
             self.st.game.active = want;
             self.set_peek_hotkey(want);
@@ -2993,7 +3553,10 @@ impl App {
                     self.st.system.clear();
                 }
             }
-            pinfo!("show over games: readout {}", if want { "on" } else { "off" });
+            pinfo!(
+                "show over games: readout {}",
+                if want { "on" } else { "off" }
+            );
         }
         if !want {
             self.apply_fullscreen(clock::mono());
@@ -3008,14 +3571,19 @@ impl App {
             if let (Some(f), Some(p)) = (&self.frames, pid) {
                 f.set_target(p);
             }
-            pinfo!("show over games: {} in front", self.st.game.app.as_deref().unwrap_or("an app"));
+            pinfo!(
+                "show over games: {} in front",
+                self.st.game.app.as_deref().unwrap_or("an app")
+            );
             // A game came to the front: the readout shows for a moment.
             self.peek_game("a game came to the front");
         } else {
             self.apply_fullscreen(clock::mono());
         }
         let Some(pid) = pid else { return };
-        if self.frames.is_none() && matches!(self.st.game.access, FpsAccess::Unknown | FpsAccess::Ready) {
+        if self.frames.is_none()
+            && matches!(self.st.game.access, FpsAccess::Unknown | FpsAccess::Ready)
+        {
             match services::frames::Frames::start(pid) {
                 Ok(f) => {
                     self.frames = Some(f);
@@ -3023,7 +3591,9 @@ impl App {
                 }
                 // Tells the one-time OK apart from a sign-out still to come
                 // (once: a check that said yes isn't asked again).
-                Err(services::frames::StartError::NoAccess) if self.st.game.access == FpsAccess::Ready => {
+                Err(services::frames::StartError::NoAccess)
+                    if self.st.game.access == FpsAccess::Ready =>
+                {
                     self.st.game.access = FpsAccess::NeedsOk;
                 }
                 Err(services::frames::StartError::NoAccess) => self.check_fps(),
@@ -3037,7 +3607,9 @@ impl App {
 
     /// Asks (off the UI thread) whether Windows lets Poni read frames.
     fn check_fps(&mut self) {
-        if self.selftest.is_some() || matches!(self.st.game.access, FpsAccess::Checking | FpsAccess::Asking) {
+        if self.selftest.is_some()
+            || matches!(self.st.game.access, FpsAccess::Checking | FpsAccess::Asking)
+        {
             return;
         }
         self.st.game.access = FpsAccess::Checking;
@@ -3062,12 +3634,17 @@ impl App {
     /// Raises the island when a window sits above it or it lost its topmost
     /// style, and logs each culprit once.
     fn raise_if_covered(&mut self) {
-        let topmost = unsafe { GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) } & WS_EX_TOPMOST.0 as isize != 0;
+        let topmost =
+            unsafe { GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) } & WS_EX_TOPMOST.0 as isize != 0;
         let above = services::fullscreen::window_above(self.hwnd);
         if topmost && above.is_none() {
             return;
         }
-        let key = if topmost { above.clone().unwrap_or_default() } else { String::new() };
+        let key = if topmost {
+            above.clone().unwrap_or_default()
+        } else {
+            String::new()
+        };
         if self.covered_by.insert(key) {
             match (&above, topmost) {
                 (_, false) => pinfo!("island lost its topmost style; raised again"),
@@ -3081,7 +3658,15 @@ impl App {
     /// Top of the topmost band, without taking the focus.
     fn raise_topmost(&self) {
         unsafe {
-            let _ = SetWindowPos(self.hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            let _ = SetWindowPos(
+                self.hwnd,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
         }
     }
 
@@ -3118,7 +3703,10 @@ impl App {
         self.text_focus = false;
         self.set_noactivate(true);
         unsafe {
-            if !self.prev_foreground.is_invalid() && IsWindow(self.prev_foreground).as_bool() && GetForegroundWindow() == self.hwnd {
+            if !self.prev_foreground.is_invalid()
+                && IsWindow(self.prev_foreground).as_bool()
+                && GetForegroundWindow() == self.hwnd
+            {
                 let _ = SetForegroundWindow(self.prev_foreground);
             }
         }
@@ -3127,10 +3715,10 @@ impl App {
 
     fn refresh_monitor(&mut self) {
         let m = match self.st.settings.monitor {
-            MonitorChoice::Cursor => {
-                window::monitor_info(windows::Win32::Graphics::Gdi::HMONITOR(self.monitor.handle as *mut core::ffi::c_void))
-                    .unwrap_or_else(|| window::pick_monitor(MonitorChoice::Primary))
-            }
+            MonitorChoice::Cursor => window::monitor_info(windows::Win32::Graphics::Gdi::HMONITOR(
+                self.monitor.handle as *mut core::ffi::c_void,
+            ))
+            .unwrap_or_else(|| window::pick_monitor(MonitorChoice::Primary)),
             c => window::pick_monitor(c),
         };
         if m != self.monitor {
@@ -3176,7 +3764,8 @@ impl App {
     /// The closed island rests invisible, a strip at the top edge that only
     /// catches the pointer: the Hidden idle look, or stepped aside.
     fn rests_hidden(&self) -> bool {
-        self.mode == Mode::Aside || (self.mode == Mode::Idle && self.st.settings.idle_style == IdleStyle::Hidden)
+        self.mode == Mode::Aside
+            || (self.mode == Mode::Idle && self.st.settings.idle_style == IdleStyle::Hidden)
     }
 
     /// Step aside: where the island rests (what it shows at rest, the clock
@@ -3192,7 +3781,12 @@ impl App {
         let cx = self.surface.x as f32 + self.cx * s;
         let left = (cx - w * s / 2.0).floor() as i32;
         let right = (cx + w * s / 2.0).ceil() as i32;
-        RECT { left, top: self.surface.y, right, bottom: self.surface.y + (h * s).ceil() as i32 }
+        RECT {
+            left,
+            top: self.surface.y,
+            right,
+            bottom: self.surface.y + (h * s).ceil() as i32,
+        }
     }
 
     /// Step aside (off since 0.2.6, see `Settings::step_aside`) while an app window
@@ -3202,11 +3796,18 @@ impl App {
     /// compares a few rects.
     fn sync_aside(&mut self) {
         let r = self.rest_rect();
-        let under = self.top_windows.iter().any(|t| t[0] < r.right && t[2] > r.left && t[1] < r.bottom && t[3] > r.top);
+        let under = self
+            .top_windows
+            .iter()
+            .any(|t| t[0] < r.right && t[2] > r.left && t[1] < r.bottom && t[3] > r.top);
         let aside = self.st.settings.step_aside && !self.fullscreen_on && under;
         if aside != self.st.aside {
             self.st.aside = aside;
-            let why = if aside { "a window is under the island; it rests out of the way" } else { "nothing under the island; it rests as before" };
+            let why = if aside {
+                "a window is under the island; it rests out of the way"
+            } else {
+                "nothing under the island; it rests as before"
+            };
             self.log_queue.push(format!("step aside: {why}"));
         }
     }
@@ -3226,7 +3827,13 @@ impl App {
         if self.island.settled() {
             return false;
         }
-        let r = if self.expanded { self.island.canvas_rect_at(self.cx) } else { self.island.hover_rect_at(self.cx).inset(-SHOULDER - 2.0, 0.0) };
+        let r = if self.expanded {
+            self.island.canvas_rect_at(self.cx)
+        } else {
+            self.island
+                .hover_rect_at(self.cx)
+                .inset(-SHOULDER - 2.0, 0.0)
+        };
         !Rect::new(r.x, r.y, r.w, r.h + 2.0).contains(p)
     }
 
@@ -3283,7 +3890,6 @@ impl App {
     }
 
     fn tick(&mut self) {
-
         let now = self.st.now;
         if let Some(h) = &self.st.hud {
             if now >= h.until {
@@ -3305,7 +3911,6 @@ impl App {
         {
             self.st.page = pages::first_tab(&self.st);
         }
-
     }
 
     /// Draw and show one frame. `tick` is the vblank that triggered it (None
@@ -3315,7 +3920,14 @@ impl App {
             // Nothing is drawn, but timers, chimes and commands keep working.
             // Glass stops copying the screen: nobody sees the island.
             let off = RECT::default();
-            self.glass.sync(false, self.hwnd, &self.sink, self.monitor.handle, off, &mut self.gfx);
+            self.glass.sync(
+                false,
+                self.hwnd,
+                &self.sink,
+                self.monitor.handle,
+                off,
+                &mut self.gfx,
+            );
             self.refresh_time();
             self.tick();
             self.run_commands(deferred, self.hwnd);
@@ -3332,11 +3944,17 @@ impl App {
         // animation step is a whole number of refresh periods: even motion at
         // 60, 144 or 240 Hz, whatever the thread's wake-up jitter.
         let period = tick.map_or_else(|| self.clock.period(), |t| t.period);
-        let anim_t = tick.map_or(rendered_at, |t| t.vblank + t.period).max(self.last_frame_t);
+        let anim_t = tick
+            .map_or(rendered_at, |t| t.vblank + t.period)
+            .max(self.last_frame_t);
         let resumed = tick.is_some_and(|t| t.resumed) || self.last_frame_t == 0.0;
         // Coming out of rest, a motion advances one refresh, not the whole
         // time the clock was parked.
-        let mut dt = if resumed { period } else { anim_t - self.last_frame_t };
+        let mut dt = if resumed {
+            period
+        } else {
+            anim_t - self.last_frame_t
+        };
         self.last_frame_t = anim_t;
         self.st.now = self.st.now.max(anim_t);
         self.tick();
@@ -3354,26 +3972,39 @@ impl App {
         let target = self.target_mode();
         let mut retarget = false;
         if target != self.mode {
-            let new_content = activities::content_key(&target) != activities::content_key(&self.mode);
+            let new_content =
+                activities::content_key(&target) != activities::content_key(&self.mode);
             // A morph turned around mid-fade (the pointer came back while the
             // island closed): the content coming back is the one still fading
             // out, and it fades back in from where it is, not from nothing.
             let back = self
                 .outgoing
-                .filter(|o| new_content && activities::content_key(&o.0) == activities::content_key(&target))
+                .filter(|o| {
+                    new_content && activities::content_key(&o.0) == activities::content_key(&target)
+                })
                 .map(|(_, t0, _, from)| from * outgoing_left(now - t0));
             if new_content {
                 // The leaving content fades from how visible it is now.
-                self.outgoing = Some((self.mode, now, self.island.target(), self.island.content_alpha()));
+                self.outgoing = Some((
+                    self.mode,
+                    now,
+                    self.island.target(),
+                    self.island.content_alpha(),
+                ));
             }
             if let (Mode::Expanded(a), Mode::Expanded(b)) = (self.mode, target) {
                 if a != b {
-                    let dir = if b.tab_index() > a.tab_index() { 1.0 } else { -1.0 };
+                    let dir = if b.tab_index() > a.tab_index() {
+                        1.0
+                    } else {
+                        -1.0
+                    };
                     self.page_anim = Some((a, now, dir));
                 }
             }
             self.motion_name = motion_name(&self.mode, &target);
-            self.island.set_target(self.geom_for(&target), now, new_content);
+            self.island
+                .set_target(self.geom_for(&target), now, new_content);
             if let Some(a) = back {
                 self.island.resume_content(a);
             }
@@ -3403,7 +4034,8 @@ impl App {
         self.set_today_watch(self.mode == Mode::Expanded(PageKind::Today));
 
         // The Pill theme floats the island below the top edge.
-        self.island.set_floating(pill::on(self.st.settings.theme).then_some(pill::TOP_GAP));
+        self.island
+            .set_floating(pill::on(self.st.settings.theme).then_some(pill::TOP_GAP));
         self.island.step(dt, now);
         self.sync_room();
         self.ensure_room();
@@ -3419,7 +4051,12 @@ impl App {
         let content_alpha = self.island.content_alpha();
         // Clear what the island covered last frame as well as this one.
         let canvas_px = px_rect(canvas_r, scale, 1, sw, sh);
-        let full = RECT { left: 0, top: 0, right: sw, bottom: sh };
+        let full = RECT {
+            left: 0,
+            top: 0,
+            right: sw,
+            bottom: sh,
+        };
         let dirty = px_union(self.prev_canvas_px.unwrap_or(full), canvas_px);
         self.prev_canvas_px = Some(canvas_px);
         if std::mem::take(&mut self.capture_next) {
@@ -3431,11 +4068,16 @@ impl App {
 
         // Stepping aside, the island flattens into the top edge and goes
         // invisible once there; coming back, it drops from the edge.
-        let hidden_idle = self.rests_hidden() && (self.mode != Mode::Aside || self.island.settled());
+        let hidden_idle =
+            self.rests_hidden() && (self.mode != Mode::Aside || self.island.settled());
         let floating = self.island.floating();
         // Software renderer: what of the floating island's hit area isn't
         // drawn (the gap above it) is painted at 1/255 (see hit_mask_for).
-        let float_hit = if floating && !self.expanded { self.hit_mask().rect } else { None };
+        let float_hit = if floating && !self.expanded {
+            self.hit_mask().rect
+        } else {
+            None
+        };
         // Content is masked to the island silhouette only while the outline
         // or the content moves. At rest every layout fits inside the body,
         // and skipping the mask layer keeps ambient frames cheap.
@@ -3465,7 +4107,12 @@ impl App {
         // self-test brings its own backdrop), then draw this frame's glass
         // before the frame starts. The look follows the glass, light or dark.
         let glass_theme = self.st.settings.theme == Theme::Glass;
-        let window_px = RECT { left: self.surface.x, top: self.surface.y, right: self.surface.x + sw, bottom: self.surface.y + sh };
+        let window_px = RECT {
+            left: self.surface.x,
+            top: self.surface.y,
+            right: self.surface.x + sw,
+            bottom: self.surface.y + sh,
+        };
         // Only while someone can see it: not while hidden, locked or the display
         // is off. Not over a full-screen app either: copying a game's screen
         // every frame costs the game (Glass draws smoked glass there).
@@ -3476,18 +4123,28 @@ impl App {
             && !self.display_off
             && !self.fullscreen_on
             && matches!(self.gfx.renderer(), crate::gfx::Renderer::Gpu { .. });
-        self.glass.sync(copy_on, self.hwnd, &self.sink, self.monitor.handle, window_px, &mut self.gfx);
+        self.glass.sync(
+            copy_on,
+            self.hwnd,
+            &self.sink,
+            self.monitor.handle,
+            window_px,
+            &mut self.gfx,
+        );
 
         let mut glass_moving = false;
         let glass = if glass_theme && !hidden_idle {
             let small = !matches!(mode, Mode::Expanded(_));
-            let (light, p, moving) = self.glass.frame(body, geom.r, SHOULDER, small, now, dt, scale, &mut self.gfx);
+            let (light, p, moving) =
+                self.glass
+                    .frame(body, geom.r, SHOULDER, small, now, dt, scale, &mut self.gfx);
             glass_moving = moving;
             self.gfx.set_look(poni_core::look::glass(light));
             self.gfx.prepare_glass(&p, canvas_px);
             Some(p)
         } else {
-            self.gfx.set_look(poni_core::look::of(self.st.settings.theme));
+            self.gfx
+                .set_look(poni_core::look::of(self.st.settings.theme));
             None
         };
         let (repaint, anim, focus, ui_live) = match self.gfx.begin(dirty) {
@@ -3505,8 +4162,16 @@ impl App {
                 if let Some(p) = glass.as_ref() {
                     canvas.glass(p, canvas_r);
                 } else {
-                    let island_color = if hidden_idle { Color::black(1.0 / 255.0) } else { palette::ISLAND };
-                    let border = if hidden_idle { None } else { Some(canvas.look().border) };
+                    let island_color = if hidden_idle {
+                        Color::black(1.0 / 255.0)
+                    } else {
+                        palette::ISLAND
+                    };
+                    let border = if hidden_idle {
+                        None
+                    } else {
+                        Some(canvas.look().border)
+                    };
                     if floating {
                         // Hidden floats nothing: its band takes the mouse.
                         if !hidden_idle {
@@ -3519,7 +4184,11 @@ impl App {
 
                 // Content scales about the top centre, where the island hangs
                 // (floating, about the middle of the pill end of the morph).
-                let pivot = if floating { pill::motion::pivot(body, self.island.target()) } else { Point::new(body.center().x, body.y) };
+                let pivot = if floating {
+                    pill::motion::pivot(body, self.island.target())
+                } else {
+                    Point::new(body.center().x, body.y)
+                };
                 if morphing {
                     canvas.clip(body);
                     if floating {
@@ -3539,7 +4208,11 @@ impl App {
                     } else {
                         let old_body = Rect::new(body.center().x - g.w / 2.0, body.y, g.w, g.h);
                         let alpha = from * outgoing_left(now - t0);
-                        let shrink = if floating { pill::motion::ghost_scale(geom, g, GHOST_MIN_SCALE) } else { (geom.w / g.w.max(1.0)).clamp(GHOST_MIN_SCALE, 1.0) };
+                        let shrink = if floating {
+                            pill::motion::ghost_scale(geom, g, GHOST_MIN_SCALE)
+                        } else {
+                            (geom.w / g.w.max(1.0)).clamp(GHOST_MIN_SCALE, 1.0)
+                        };
                         let xf = scale_about(pivot, shrink);
                         let st = &mut self.st;
                         canvas.layered(old_body, alpha, xf, |c| {
@@ -3547,7 +4220,9 @@ impl App {
                             let mut ghost_hits = Vec::new();
                             let mut ghost = Ui::new(c, &mut ghost_input, &mut ghost_hits, now);
                             match m {
-                                Mode::Expanded(page) => pages::draw_expanded(&mut ghost, st, old_body, page, None),
+                                Mode::Expanded(page) => {
+                                    pages::draw_expanded(&mut ghost, st, old_body, page, None)
+                                }
                                 _ => activities::draw(&mut ghost, st, &m, old_body),
                             }
                         });
@@ -3557,13 +4232,32 @@ impl App {
                 // Incoming content settles down from the bezel as it fades in,
                 // as one layer, so its text doesn't re-hint every frame.
                 let out = if content_alpha < 1.0 {
-                    let grow = scale_about(pivot, CONTENT_SCALE_FROM + (1.0 - CONTENT_SCALE_FROM) * content_alpha);
-                    let drop_by = if floating { pill::motion::CONTENT_DROP } else { CONTENT_DROP };
+                    let grow = scale_about(
+                        pivot,
+                        CONTENT_SCALE_FROM + (1.0 - CONTENT_SCALE_FROM) * content_alpha,
+                    );
+                    let drop_by = if floating {
+                        pill::motion::CONTENT_DROP
+                    } else {
+                        CONTENT_DROP
+                    };
                     let xf = grow * Matrix3x2::translation(0.0, -drop_by * (1.0 - content_alpha));
                     let (input, st) = (&mut self.input, &mut self.st);
-                    canvas.layered(union_rect(lay, body), content_alpha, xf, |c| draw_content(c, input, &mut hits, st, mode, lay, body, transition, now))
+                    canvas.layered(union_rect(lay, body), content_alpha, xf, |c| {
+                        draw_content(c, input, &mut hits, st, mode, lay, body, transition, now)
+                    })
                 } else {
-                    draw_content(&mut canvas, &mut self.input, &mut hits, &mut self.st, mode, lay, body, transition, now)
+                    draw_content(
+                        &mut canvas,
+                        &mut self.input,
+                        &mut hits,
+                        &mut self.st,
+                        mode,
+                        lay,
+                        body,
+                        transition,
+                        now,
+                    )
                 };
                 wheel_left = self.input.wheel;
                 if morphing {
@@ -3589,7 +4283,10 @@ impl App {
         // page content a wheel the page didn't use does nothing (a short list
         // must not jump pages where a long one would scroll).
         if let Mode::Expanded(p) = self.mode {
-            let over_header = self.input.mouse.is_some_and(|m| m.y < body.y + pages::HEADER_H);
+            let over_header = self
+                .input
+                .mouse
+                .is_some_and(|m| m.y < body.y + pages::HEADER_H);
             if wheel_left != 0.0 && over_header {
                 if now - self.wheel_t > 0.25 || wheel_left.signum() != self.wheel_acc.signum() {
                     self.wheel_acc = 0.0;
@@ -3623,15 +4320,34 @@ impl App {
         if self.gfx.needs_hit_mask() {
             self.update_hit_mask(now);
         }
-        if let (Some(t), true) = (tick, self.motion.is_some() && self.motions_logged < 6 && self.trace.len() < 200) {
+        if let (Some(t), true) = (
+            tick,
+            self.motion.is_some() && self.motions_logged < 6 && self.trace.len() < 200,
+        ) {
             let ms = |a: f64, b: f64| ((b - a) * 1000.0) as f32;
-            self.trace.push((t.periods, [ms(t.vblank, draw_from), ms(draw_from, drawn_at), ms(drawn_at, presented_at), ms(presented_at, clock::mono())]));
+            self.trace.push((
+                t.periods,
+                [
+                    ms(t.vblank, draw_from),
+                    ms(draw_from, drawn_at),
+                    ms(drawn_at, presented_at),
+                    ms(presented_at, clock::mono()),
+                ],
+            ));
         }
         if !self.shown {
             self.shown = true;
             unsafe {
                 let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
-                let _ = SetWindowPos(self.hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                let _ = SetWindowPos(
+                    self.hwnd,
+                    HWND_TOPMOST,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
             }
             self.gfx.set_shown(true);
         }
@@ -3641,7 +4357,8 @@ impl App {
             Some(false) => self.blur_text(),
             None => {}
         }
-        self.text_input.sync(self.hwnd, &mut self.input, self.gfx.scale());
+        self.text_input
+            .sync(self.hwnd, &mut self.input, self.gfx.scale());
         self.run_commands(deferred, self.hwnd);
         self.paint_settings_if_dirty(deferred);
 
@@ -3693,7 +4410,10 @@ impl App {
             return;
         }
         let prev = self.mask.map(|(m, _)| m);
-        match self.gfx.push_hit_mask(self.surface.x, self.surface.y, &mask, prev.as_ref()) {
+        match self
+            .gfx
+            .push_hit_mask(self.surface.x, self.surface.y, &mask, prev.as_ref())
+        {
             Ok(()) => self.mask = Some((mask, now)),
             Err(e) => {
                 pwarn!("hit mask update failed: {e}");
@@ -3715,14 +4435,34 @@ impl App {
                 let early = self.motions_logged < 20;
                 if m.frames >= 4 && (early || (m.hitches > 0 && t - self.hitch_logged_at > 60.0)) {
                     let dwm = match (self.dwm_at_start, dwm_counters()) {
-                        (Some(a), Some(b)) => format!(", dwm {} refreshes / {} composed / {} missed", b.0.wrapping_sub(a.0), b.1.wrapping_sub(a.1), b.2.wrapping_sub(a.2)),
+                        (Some(a), Some(b)) => format!(
+                            ", dwm {} refreshes / {} composed / {} missed",
+                            b.0.wrapping_sub(a.0),
+                            b.1.wrapping_sub(a.1),
+                            b.2.wrapping_sub(a.2)
+                        ),
                         _ => String::new(),
                     };
-                    self.log_queue.push(format!("{} ({}{dwm})", m.summary(), self.renderer_name()));
+                    self.log_queue
+                        .push(format!("{} ({}{dwm})", m.summary(), self.renderer_name()));
                     if self.motions_logged < 6 && !self.trace.is_empty() {
-                        let col = |i: usize| self.trace.iter().map(|f| format!("{:.1}", f.1[i])).collect::<Vec<_>>().join(" ");
-                        let periods: Vec<String> = self.trace.iter().map(|f| f.0.to_string()).collect();
-                        self.log_queue.push(format!("  vblanks {}; late ms {}; draw ms {}; present ms {}; mask ms {}", periods.join(" "), col(0), col(1), col(2), col(3)));
+                        let col = |i: usize| {
+                            self.trace
+                                .iter()
+                                .map(|f| format!("{:.1}", f.1[i]))
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        };
+                        let periods: Vec<String> =
+                            self.trace.iter().map(|f| f.0.to_string()).collect();
+                        self.log_queue.push(format!(
+                            "  vblanks {}; late ms {}; draw ms {}; present ms {}; mask ms {}",
+                            periods.join(" "),
+                            col(0),
+                            col(1),
+                            col(2),
+                            col(3)
+                        ));
                     }
                     self.motions_logged += 1;
                     if !early {
@@ -3761,7 +4501,9 @@ impl App {
             }
         };
         if !self.locked && !self.display_off && !self.st.power.saver {
-            if let Some(at) = self.mail_notice_at { consider(at); }
+            if let Some(at) = self.mail_notice_at {
+                consider(at);
+            }
         }
         if let Some(h) = &self.st.hud {
             consider(h.until);
@@ -3771,7 +4513,12 @@ impl App {
         }
         // While hidden for a full-screen app only the phase end matters.
         let visible = !self.fullscreen_hidden;
-        if let Some(b) = self.st.pomodoro.next_second_boundary(now).filter(|_| visible) {
+        if let Some(b) = self
+            .st
+            .pomodoro
+            .next_second_boundary(now)
+            .filter(|_| visible)
+        {
             consider(now + b + 0.005);
         }
         if let poni_core::pomodoro::RunState::Running { ends_at } = self.st.pomodoro.run {
@@ -3785,7 +4532,9 @@ impl App {
         // locked or the display is off, so they rest then (the lock and
         // display events ask for a frame, which picks them up again).
         let singing = self.mode == Mode::Activity(activities::Activity::Media);
-        let watched = visible && !((pill::on(self.st.settings.theme) || singing) && (self.locked || self.display_off));
+        let watched = visible
+            && !((pill::on(self.st.settings.theme) || singing)
+                && (self.locked || self.display_off));
         if let Some(t) = activities::next_wake(&self.mode, &self.st).filter(|_| watched) {
             consider(t);
         }
@@ -3828,7 +4577,11 @@ impl App {
         // 仅在添加文件时计算摘要，结束后退出；大文件不会阻塞界面。
         std::thread::spawn(move || {
             let result = shelf.prepare_paths(paths.clone());
-            sink.send(AppEvent::ShelfPrepared { before: shelf.items, requested: paths, result });
+            sink.send(AppEvent::ShelfPrepared {
+                before: shelf.items,
+                requested: paths,
+                result,
+            });
         });
     }
 
@@ -3837,10 +4590,14 @@ impl App {
     fn run_inline_action(&mut self, a: InlineAction) {
         self.refresh_time();
         if a == InlineAction::CodexConfirm {
-            let id = self.st.notice.as_ref().and_then(|notice| match &notice.action {
-                Some(NoticeAction::OpenCodex(id)) => Some(id.clone()),
-                _ => None,
-            });
+            let id = self
+                .st
+                .notice
+                .as_ref()
+                .and_then(|notice| match &notice.action {
+                    Some(NoticeAction::OpenCodex(id)) => Some(id.clone()),
+                    _ => None,
+                });
             if let Some(id) = id {
                 if self.confirm_codex(&id) {
                     if let Some(notice) = self.st.notice.as_mut() {
@@ -3852,10 +4609,14 @@ impl App {
         }
 
         if a == InlineAction::Open {
-            let id = self.st.notice.as_ref().and_then(|notice| match &notice.action {
-                Some(NoticeAction::OpenCodex(id)) => Some(id.clone()),
-                _ => None,
-            });
+            let id = self
+                .st
+                .notice
+                .as_ref()
+                .and_then(|notice| match &notice.action {
+                    Some(NoticeAction::OpenCodex(id)) => Some(id.clone()),
+                    _ => None,
+                });
             if let Some(id) = id {
                 self.st.notice = None;
                 self.st.hud = None;
@@ -3867,7 +4628,11 @@ impl App {
 
         if a == InlineAction::Open {
             // Another app's notification: that app opens and the notice goes.
-            if let Some(Notice { action: Some(NoticeAction::OpenApp(id)), .. }) = self.st.notice.take() {
+            if let Some(Notice {
+                action: Some(NoticeAction::OpenApp(id)),
+                ..
+            }) = self.st.notice.take()
+            {
                 shell::open_app(&id);
             }
             return;
@@ -3883,7 +4648,13 @@ impl App {
             }
             return;
         }
-        if a == InlineAction::WhatsNew && self.st.notice.as_ref().is_some_and(|n| n.icon != Icon::Check) {
+        if a == InlineAction::WhatsNew
+            && self
+                .st
+                .notice
+                .as_ref()
+                .is_some_and(|n| n.icon != Icon::Check)
+        {
             shell::open(&crate::version::notes_url());
         }
         let st = &mut self.st;
@@ -3905,7 +4676,11 @@ impl App {
         }
         match a {
             InlineAction::StartFocus => st.pomodoro.start(st.now),
-            InlineAction::ShowAmount | InlineAction::Hide | InlineAction::WhatsNew | InlineAction::Open | InlineAction::CodexConfirm => {}
+            InlineAction::ShowAmount
+            | InlineAction::Hide
+            | InlineAction::WhatsNew
+            | InlineAction::Open
+            | InlineAction::CodexConfirm => {}
         }
         let until = st.now + INLINE_DONE_S;
         if let Some(n) = st.notice.as_mut() {
@@ -3918,9 +4693,17 @@ impl App {
     // ------------------------------------------------------------ Navigation
 
     fn set_page(&mut self, requested: PageKind) {
-        let p = if requested == PageKind::Oyenza { pages::first_tab(&self.st) } else { requested };
-        if p == PageKind::Mail { self.st.mail.unseen.clear(); }
-        if p != self.st.page && self.st.page == PageKind::Mail { self.st.mail.account_filter_open = false; }
+        let p = if requested == PageKind::Oyenza {
+            pages::first_tab(&self.st)
+        } else {
+            requested
+        };
+        if p == PageKind::Mail {
+            self.st.mail.unseen.clear();
+        }
+        if p != self.st.page && self.st.page == PageKind::Mail {
+            self.st.mail.account_filter_open = false;
+        }
         if p != self.st.page {
             if self.st.page == PageKind::Today {
                 self.cancel_weather_location(true);
@@ -3945,16 +4728,16 @@ impl App {
                 self.st.update.said = None;
             }
             self.set_sysmon(p == PageKind::System && self.expanded);
-            if p == PageKind::Codex { self.refresh_codex_conversation(); }
+            if p == PageKind::Codex {
+                self.refresh_codex_conversation();
+            }
             if self.text_focus {
                 self.blur_text();
             }
             if p == PageKind::Oyenza {
                 self.oyenza(OyenzaCmd::Refresh);
-
             } else if p == PageKind::Notifications {
                 self.notify_cmd(NotifyCmd::Check);
-
             }
         }
     }
@@ -3981,26 +4764,54 @@ impl App {
                 }
                 Command::CodexGuide => {
                     let path = paths::cache_dir().join("Codex接入说明.md");
-                    let result = std::fs::create_dir_all(paths::cache_dir()).and_then(|_| std::fs::write(&path, include_str!("../../../docs/codex-integration-windows.md")));
+                    let result = std::fs::create_dir_all(paths::cache_dir()).and_then(|_| {
+                        std::fs::write(
+                            &path,
+                            include_str!("../../../docs/codex-integration-windows.md"),
+                        )
+                    });
                     match result {
                         Ok(()) => shell::open(&path.to_string_lossy()),
-                        Err(error) => self.st.notify(Icon::Bell, palette::RED, "无法打开接入说明", error.to_string(), 5.0, None),
+                        Err(error) => self.st.notify(
+                            Icon::Bell,
+                            palette::RED,
+                            "无法打开接入说明",
+                            error.to_string(),
+                            5.0,
+                            None,
+                        ),
                     }
                 }
                 Command::CodexOpen(_) => {
                     if let Some(path) = crate::codex_client::desktop_path() {
                         shell::open(&path.to_string_lossy());
                     } else {
-                        self.st.notify(Icon::Codex, self.st.accent, "请打开 Codex", "请从开始菜单打开 Codex 并选择原会话", 5.0, None);
+                        self.st.notify(
+                            Icon::Codex,
+                            self.st.accent,
+                            "请打开 Codex",
+                            "请从开始菜单打开 Codex 并选择原会话",
+                            5.0,
+                            None,
+                        );
                     }
                 }
                 Command::CodexPreviewAttachment(path) => {
                     self.blur_text();
-                    if std::path::Path::new(&path).is_absolute() && std::fs::metadata(&path).is_ok_and(|file| file.is_file()) {
+                    if std::path::Path::new(&path).is_absolute()
+                        && std::fs::metadata(&path).is_ok_and(|file| file.is_file())
+                    {
                         // 在资源管理器中定位，绝不通过默认关联执行附件。
                         shell::reveal(&path);
                     } else {
-                        self.st.notify(Icon::File, palette::ORANGE, "附件暂不可用", "本地文件不存在或路径无效", 5.0, None);
+                        self.st.notify(
+                            Icon::File,
+                            palette::ORANGE,
+                            "附件暂不可用",
+                            "本地文件不存在或路径无效",
+                            5.0,
+                            None,
+                        );
                     }
                 }
                 Command::CodexReply { id, text } => self.reply_codex(&id, Some(text)),
@@ -4010,9 +4821,15 @@ impl App {
                     self.st.codex.compact = false;
                     self.blur_text();
                 }
-                Command::CodexHistory { thread_id, older } => self.load_codex(&thread_id, older, true),
-                Command::CodexSend { thread_id, text } => { self.send_codex(&thread_id, text, None); }
-                Command::CodexConfirm(id) => { self.confirm_codex(&id); }
+                Command::CodexHistory { thread_id, older } => {
+                    self.load_codex(&thread_id, older, true)
+                }
+                Command::CodexSend { thread_id, text } => {
+                    self.send_codex(&thread_id, text, None);
+                }
+                Command::CodexConfirm(id) => {
+                    self.confirm_codex(&id);
+                }
                 Command::CodexConfirmQueue(thread_id) => {
                     if let Some(chat) = self.st.codex.conversations.get_mut(&thread_id) {
                         chat.send_uncertain = false;
@@ -4027,16 +4844,42 @@ impl App {
                     let conversations = &self.st.codex.conversations;
                     self.st.codex.entries.retain(|entry| {
                         matches!(entry.status, ReplyState::Waiting | ReplyState::Sending)
-                            || conversations.get(&entry.message.thread_id).is_some_and(|chat| !chat.draft.is_empty() || chat.sending.is_some() || chat.send_uncertain)
+                            || conversations
+                                .get(&entry.message.thread_id)
+                                .is_some_and(|chat| {
+                                    !chat.draft.is_empty()
+                                        || chat.sending.is_some()
+                                        || chat.send_uncertain
+                                })
                     });
                     self.codex_notices.retain(|id| {
-                        self.st.codex.entries.iter().any(|entry| entry.message.id == *id)
+                        self.st
+                            .codex
+                            .entries
+                            .iter()
+                            .any(|entry| entry.message.id == *id)
                     });
                     self.st.codex.list_scroll = 0.0;
-                    let retained_threads: std::collections::HashSet<_> = self.st.codex.entries.iter().map(|entry| entry.message.thread_id.clone()).collect();
-                    self.st.codex.conversations.retain(|id, chat| retained_threads.contains(id) || !chat.draft.is_empty() || chat.sending.is_some() || chat.send_uncertain);
+                    let retained_threads: std::collections::HashSet<_> = self
+                        .st
+                        .codex
+                        .entries
+                        .iter()
+                        .map(|entry| entry.message.thread_id.clone())
+                        .collect();
+                    self.st.codex.conversations.retain(|id, chat| {
+                        retained_threads.contains(id)
+                            || !chat.draft.is_empty()
+                            || chat.sending.is_some()
+                            || chat.send_uncertain
+                    });
                     if self.st.codex.selected.as_ref().is_some_and(|id| {
-                        !self.st.codex.entries.iter().any(|entry| entry.message.id == *id)
+                        !self
+                            .st
+                            .codex
+                            .entries
+                            .iter()
+                            .any(|entry| entry.message.id == *id)
                     }) {
                         self.st.codex.selected = None;
                         self.st.codex.message_scroll = 0.0;
@@ -4070,28 +4913,44 @@ impl App {
                     }
                 }
                 Command::SetOutputVolume(level) => {
-                    self.st.ui.volume_error = !self.services.as_ref().is_some_and(|services| services.set_output_volume(level));
+                    self.st.ui.volume_error = !self
+                        .services
+                        .as_ref()
+                        .is_some_and(|services| services.set_output_volume(level));
                 }
                 Command::SetOutputMute(muted) => {
-                    self.st.ui.volume_error = !self.services.as_ref().is_some_and(|services| services.set_output_mute(muted));
+                    self.st.ui.volume_error = !self
+                        .services
+                        .as_ref()
+                        .is_some_and(|services| services.set_output_mute(muted));
                 }
                 Command::ChooseLyricsColor => {
                     if self.picker_open {
                         continue;
                     }
                     self.picker_open = true;
-                    let color = crate::text::lyrics_color(self.st.settings.lyrics_color, self.gfx.look());
-                    let rgb = ((color.r * 255.0).round() as u32) << 16 | ((color.g * 255.0).round() as u32) << 8 | (color.b * 255.0).round() as u32;
+                    let color =
+                        crate::text::lyrics_color(self.st.settings.lyrics_color, self.gfx.look());
+                    let rgb = ((color.r * 255.0).round() as u32) << 16
+                        | ((color.g * 255.0).round() as u32) << 8
+                        | (color.b * 255.0).round() as u32;
                     deferred.push(Deferred::ChooseLyricsColor { owner, rgb });
                 }
                 Command::SearchWeatherCities { query, search_id } => {
-                    if search_id == self.st.weather.city_search_id && self.st.ui.weather_city_editing && !self.locked && !self.display_off && !self.st.power.saver {
+                    if search_id == self.st.weather.city_search_id
+                        && self.st.ui.weather_city_editing
+                        && !self.locked
+                        && !self.display_off
+                        && !self.st.power.saver
+                    {
                         services::weather::search_cities(query, search_id, self.sink.clone());
                     } else if search_id == self.st.weather.city_search_id {
                         self.st.weather.city_search_loading = false;
                     }
                 }
-                Command::SetWeatherCity { city, coordinates } => self.set_weather_city(city, coordinates),
+                Command::SetWeatherCity { city, coordinates } => {
+                    self.set_weather_city(city, coordinates)
+                }
                 Command::LocateWeather => self.locate_weather(),
                 Command::RefreshWeather => self.refresh_weather(true),
                 Command::RefreshBluetooth => {
@@ -4114,7 +4973,10 @@ impl App {
                 }
                 Command::OpenSettings => self.show_settings(deferred),
                 Command::Mail(action) => self.mail_action(action, deferred),
-                Command::MailSetup => { self.collapse(); self.open_settings_window(Some(Section::Mail), deferred); },
+                Command::MailSetup => {
+                    self.collapse();
+                    self.open_settings_window(Some(Section::Mail), deferred);
+                }
                 Command::SaveStore => unsafe {
                     SetTimer(self.hwnd, TIMER_SAVE, 800, None);
                 },
@@ -4158,7 +5020,11 @@ impl App {
                 Command::OpenUrl(u) => shell::open(&u),
                 Command::Update => self.check_for_updates(),
                 Command::CheckForUpdates => self.check_for_updates(),
-                Command::InstallOnNextStart => self.update_feedback("请通过右键菜单检查更新", "安装前需要重新验证签名，并在本次运行中确认安装。", false),
+                Command::InstallOnNextStart => self.update_feedback(
+                    "请通过右键菜单检查更新",
+                    "安装前需要重新验证签名，并在本次运行中确认安装。",
+                    false,
+                ),
                 Command::SetAutostart(on) => {
                     self.st.ui.autostart = Some(on);
                     crate::autostart::report(self.sink.clone(), Some(on));
@@ -4176,10 +5042,21 @@ impl App {
         if !self.st.settings.wechat_reminders || self.selftest.is_some() {
             self.wechat = None;
             // 关闭时一并撤回当前和全屏暂存的微信提醒，保留其他类型的通知。
-            if self.st.notice.as_ref().is_some_and(|n| matches!(n.action, Some(NoticeAction::OpenWeChat(_)))) {
+            if self
+                .st
+                .notice
+                .as_ref()
+                .is_some_and(|n| matches!(n.action, Some(NoticeAction::OpenWeChat(_))))
+            {
                 self.st.notice = None;
             }
-            if self.st.oyenza.held.as_ref().is_some_and(|(n, _)| matches!(n.action, Some(NoticeAction::OpenWeChat(_)))) {
+            if self
+                .st
+                .oyenza
+                .held
+                .as_ref()
+                .is_some_and(|(n, _)| matches!(n.action, Some(NoticeAction::OpenWeChat(_))))
+            {
                 self.st.oyenza.held = None;
             }
             return;
@@ -4191,7 +5068,14 @@ impl App {
             Ok(w) => self.wechat = Some(w),
             Err(e) => {
                 pwarn!("wechat: attention listener unavailable ({e})");
-                self.st.notify(Icon::Message, palette::TEXT_DIM, "微信提醒暂不可用", "请重新开启右键菜单中的微信消息提醒", 6.0, None);
+                self.st.notify(
+                    Icon::Message,
+                    palette::TEXT_DIM,
+                    "微信提醒暂不可用",
+                    "请重新开启右键菜单中的微信消息提醒",
+                    6.0,
+                    None,
+                );
                 self.request_frame();
             }
         }
@@ -4199,7 +5083,13 @@ impl App {
 
     fn on_wechat(&mut self, kind: usize, hwnd: HWND) {
         let allow_new = !self.locked && !self.display_off;
-        let Some(attention) = self.wechat.as_mut().and_then(|watcher| watcher.attention(kind, hwnd, allow_new)) else { return };
+        let Some(attention) = self
+            .wechat
+            .as_mut()
+            .and_then(|watcher| watcher.attention(kind, hwnd, allow_new))
+        else {
+            return;
+        };
         if let services::wechat::Attention::Dismissed(handles) = attention {
             let current = self.st.notice.as_ref().is_some_and(|notice| {
                 matches!(notice.action, Some(NoticeAction::OpenWeChat(handle)) if handles.contains(&handle))
@@ -4223,18 +5113,28 @@ impl App {
         if self.st.settings.wechat_sound && !self.fullscreen_hidden {
             services::sound::play(crate::commands::Sound::WeChat, &self.st.settings);
         }
-        pinfo!("wechat: new attention notice {}", if self.fullscreen_hidden { "held for full-screen app" } else { "shown" });
-        self.st.show_or_hold(Notice {
-            icon: Icon::Message,
-            color: Color::hex(0x07C160),
-            title: "微信有新消息".into(),
-            title_dim: String::new(),
-            subtitle: "点击打开微信".into(),
-            until: self.st.now + poni_core::notifications::NOTICE_S,
-            action: Some(NoticeAction::OpenWeChat(hwnd.0 as isize)),
-            inline: None,
-            reveal: None,
-        }, self.fullscreen_hidden);
+        pinfo!(
+            "wechat: new attention notice {}",
+            if self.fullscreen_hidden {
+                "held for full-screen app"
+            } else {
+                "shown"
+            }
+        );
+        self.st.show_or_hold(
+            Notice {
+                icon: Icon::Message,
+                color: Color::hex(0x07C160),
+                title: "微信有新消息".into(),
+                title_dim: String::new(),
+                subtitle: "点击打开微信".into(),
+                until: self.st.now + poni_core::notifications::NOTICE_S,
+                action: Some(NoticeAction::OpenWeChat(hwnd.0 as isize)),
+                inline: None,
+                reveal: None,
+            },
+            self.fullscreen_hidden,
+        );
         self.request_frame();
     }
 
@@ -4292,7 +5192,11 @@ impl App {
                 }
             }
             NotifyEvent::Seen(seen) => {
-                let (shows, changed) = self.st.settings.notifications.remember(&seen.app_id, &seen.app);
+                let (shows, changed) = self
+                    .st
+                    .settings
+                    .notifications
+                    .remember(&seen.app_id, &seen.app);
                 if changed {
                     self.st.cmd(Command::SaveSettings);
                 }
@@ -4300,7 +5204,12 @@ impl App {
                 if !shows || self.locked || self.display_off {
                     return;
                 }
-                if let Some(n) = pages::notifications::message_notice(&seen, &self.st.settings.notifications, self.st.accent, self.st.now) {
+                if let Some(n) = pages::notifications::message_notice(
+                    &seen,
+                    &self.st.settings.notifications,
+                    self.st.accent,
+                    self.st.now,
+                ) {
                     self.st.show_or_hold(n, self.fullscreen_hidden);
                 }
             }
@@ -4308,11 +5217,16 @@ impl App {
     }
 
     fn save_now(&mut self) {
-        let result = crate::persistence::save(&paths::store_path(), &self.st.store, self.store_writable);
+        let result =
+            crate::persistence::save(&paths::store_path(), &self.st.store, self.store_writable);
         self.saved(crate::persistence::SaveFile::Store, result);
     }
 
-    fn saved(&mut self, file: crate::persistence::SaveFile, result: std::result::Result<(), crate::persistence::SaveError>) {
+    fn saved(
+        &mut self,
+        file: crate::persistence::SaveFile,
+        result: std::result::Result<(), crate::persistence::SaveError>,
+    ) {
         if self.st.saved(file, result) {
             self.layout_surface();
             if let Some(window) = self.settings_win.as_mut() {
@@ -4350,7 +5264,11 @@ impl App {
     pub fn selftest_window_under(&mut self, under: bool) {
         let m = &self.monitor;
         let px = (TOP_BAND * self.gfx.scale()).ceil() as i32;
-        self.top_windows = if under { vec![[m.rect.left, m.top(), m.rect.right, m.top() + px]] } else { Vec::new() };
+        self.top_windows = if under {
+            vec![[m.rect.left, m.top(), m.rect.right, m.top() + px]]
+        } else {
+            Vec::new()
+        };
     }
 
     /// Self-test: what the closed island shows now, and whether it stepped aside.
@@ -4373,7 +5291,9 @@ impl App {
         }
         self.st.now = self.st.now.max(clock::mono());
         let now = self.st.now;
-        let Some(w) = self.settings_win.as_mut() else { return (0, 0, Vec::new()) };
+        let Some(w) = self.settings_win.as_mut() else {
+            return (0, 0, Vec::new());
+        };
         w.view.show_section(section);
         w.view.input.mouse = None;
         w.set_light(light);
@@ -4393,7 +5313,9 @@ impl App {
         for _ in 0..n {
             self.st.now = self.st.now.max(clock::mono());
             let now = self.st.now;
-            let Some(w) = self.settings_win.as_mut() else { break };
+            let Some(w) = self.settings_win.as_mut() else {
+                break;
+            };
             let t = std::time::Instant::now();
             let _ = w.paint(&mut self.st, now, only, false);
             out.push(t.elapsed().as_secs_f64() * 1000.0);
@@ -4405,13 +5327,26 @@ impl App {
     /// Film the Settings window as a person uses it (`settings_host::film`)
     /// on this monitor, at `hz`. Its clicks change a setting: it goes back
     /// as it was, unsaved, afterwards.
-    pub fn selftest_settings_film(&mut self, hz: f64, on_frame: impl FnMut(usize, i32, i32, &[u8], Option<RECT>)) -> Option<settings_host::Film> {
+    pub fn selftest_settings_film(
+        &mut self,
+        hz: f64,
+        on_frame: impl FnMut(usize, i32, i32, &[u8], Option<RECT>),
+    ) -> Option<settings_host::Film> {
         let (before, queued) = (self.st.settings.clone(), self.st.cmds.len());
-        let film = settings_host::film(&mut self.st, self.monitor.work, self.gfx.dpi.round() as u32, hz, on_frame);
+        let film = settings_host::film(
+            &mut self.st,
+            self.monitor.work,
+            self.gfx.dpi.round() as u32,
+            hz,
+            on_frame,
+        );
         self.st.settings = before;
         self.st.cmds.truncate(queued);
         self.st.now = clock::mono();
-        film.inspect_err(|e| pwarn!("selftest: the Settings window's film couldn't open its windows ({e})")).ok()
+        film.inspect_err(|e| {
+            pwarn!("selftest: the Settings window's film couldn't open its windows ({e})")
+        })
+        .ok()
     }
 
     /// The scale the Settings window draws at.
@@ -4421,11 +5356,18 @@ impl App {
 
     /// Where its card is in its window (DIPs).
     pub fn selftest_settings_card(&self) -> Rect {
-        self.settings_win.as_ref().map_or(settings_host::card_rect(crate::settings_window::CARD_H), |w| w.card())
+        self.settings_win.as_ref().map_or(
+            settings_host::card_rect(crate::settings_window::CARD_H),
+            |w| w.card(),
+        )
     }
 
     pub fn selftest_settled(&self) -> bool {
-        self.island.settled() && self.target_mode() == self.mode && self.page_anim.is_none() && self.outgoing.is_none() && !self.glass_moving
+        self.island.settled()
+            && self.target_mode() == self.mode
+            && self.page_anim.is_none()
+            && self.outgoing.is_none()
+            && !self.glass_moving
     }
 
     /// Self-test: the frame just drawn left the frame clock running, so
@@ -4456,7 +5398,11 @@ impl App {
     /// Self-test: the last frame's glass came from the shader, the backdrop
     /// is on the GPU, and the look content was painted in.
     pub fn selftest_glass_state(&self) -> (bool, bool, &'static poni_core::look::Look) {
-        (self.gfx.glass_drew(), self.gfx.glass_has_copy(), self.gfx.look())
+        (
+            self.gfx.glass_drew(),
+            self.gfx.glass_has_copy(),
+            self.gfx.look(),
+        )
     }
 
     /// Self-test: the captured rectangle (surface pixels).
@@ -4477,12 +5423,22 @@ impl App {
         self.capture_next = true;
         self.frame(&mut d, None);
         let r = self.capture_rect;
-        (r.right - r.left, r.bottom - r.top, self.gfx.take_capture(), (self.surface.x + r.left, self.surface.y + r.top))
+        (
+            r.right - r.left,
+            r.bottom - r.top,
+            self.gfx.take_capture(),
+            (self.surface.x + r.left, self.surface.y + r.top),
+        )
     }
 
     /// The window's screen rectangle as laid out (left, top, width, height).
     pub fn selftest_surface(&self) -> (i32, i32, i32, i32) {
-        (self.surface.x, self.surface.y, self.surface.w, self.surface.h)
+        (
+            self.surface.x,
+            self.surface.y,
+            self.surface.w,
+            self.surface.h,
+        )
     }
 
     pub fn renderer(&self) -> &'static str {
@@ -4496,7 +5452,10 @@ impl App {
 
     /// The middle of a widget drawn in the last frame, found by its id.
     pub fn selftest_hit_center(&self, id: crate::ui::WidgetId) -> Option<Point> {
-        self.hits.iter().find(|h| h.id == id).map(|h| h.rect.center())
+        self.hits
+            .iter()
+            .find(|h| h.id == id)
+            .map(|h| h.rect.center())
     }
 
     pub fn selftest_click(&mut self, p: Point) {
@@ -4511,7 +5470,10 @@ impl App {
     /// click). Returns whether the island opened.
     pub fn selftest_press(&mut self, p: Point) -> bool {
         let s = self.gfx.scale();
-        let (x, y) = ((p.x * s).round() as i32 & 0xffff, (p.y * s).round() as i32 & 0xffff);
+        let (x, y) = (
+            (p.x * s).round() as i32 & 0xffff,
+            (p.y * s).round() as i32 & 0xffff,
+        );
         let lp = LPARAM(((y << 16) | x) as isize);
         // Nothing a left press defers (the right button's menu is what does).
         let mut deferred = Vec::new();
@@ -4525,7 +5487,12 @@ impl App {
     /// whether the island opened.
     pub fn selftest_drag(&mut self, p: Point, dx: f32) -> bool {
         let s = self.gfx.scale();
-        let lp = |p: Point| LPARAM(((((p.y * s).round() as i32 & 0xffff) << 16) | ((p.x * s).round() as i32 & 0xffff)) as isize);
+        let lp = |p: Point| {
+            LPARAM(
+                ((((p.y * s).round() as i32 & 0xffff) << 16) | ((p.x * s).round() as i32 & 0xffff))
+                    as isize,
+            )
+        };
         let to = Point::new(p.x + dx, p.y);
         let mut deferred = Vec::new();
         self.handle_island(WM_LBUTTONDOWN, WPARAM(0), lp(p), &mut deferred);
@@ -4558,7 +5525,9 @@ impl App {
     pub fn island_body_in_capture(&self) -> Rect {
         let s = self.gfx.scale();
         let r = self.capture_rect;
-        self.island.body_rect_at(self.cx).offset(-(r.left as f32) / s, -(r.top as f32) / s)
+        self.island
+            .body_rect_at(self.cx)
+            .offset(-(r.left as f32) / s, -(r.top as f32) / s)
     }
 
     pub fn scale(&self) -> f32 {
@@ -4600,13 +5569,21 @@ fn draw_content(
         Mode::Expanded(page) => pages::draw_expanded(&mut ui, st, lay, page, transition),
         _ => activities::draw(&mut ui, st, &mode, body),
     }
-    (ui.repaint_requested(), ui.anim_requested(), ui.focus_request(), ui.live_requested())
+    (
+        ui.repaint_requested(),
+        ui.anim_requested(),
+        ui.focus_request(),
+        ui.live_requested(),
+    )
 }
 
 /// DWM's (refreshes, frames composed, frames missed) counters, if available.
 fn dwm_counters() -> Option<(u64, u64, u64)> {
     use windows::Win32::Graphics::Dwm::{DwmGetCompositionTimingInfo, DWM_TIMING_INFO};
-    let mut info = DWM_TIMING_INFO { cbSize: std::mem::size_of::<DWM_TIMING_INFO>() as u32, ..Default::default() };
+    let mut info = DWM_TIMING_INFO {
+        cbSize: std::mem::size_of::<DWM_TIMING_INFO>() as u32,
+        ..Default::default()
+    };
     unsafe { DwmGetCompositionTimingInfo(HWND::default(), &mut info) }.ok()?;
     Some((info.cRefresh, info.cFrame, info.cFramesMissed))
 }
@@ -4624,7 +5601,11 @@ fn surface_size(island: &Island, body_w: f32, body_h: f32, scale: f32, mon_w: i3
     }
     // The gap the island rests at, not where an outline sliding into or out
     // of it is now: the window never resizes during that motion.
-    let top = if island.floating() { pill::TOP_GAP } else { 0.0 };
+    let top = if island.floating() {
+        pill::TOP_GAP
+    } else {
+        0.0
+    };
     let h = ((body_h * OVERSHOOT + island.bottom_room() + top) * scale).ceil() as i32;
     (w, h)
 }
@@ -4641,17 +5622,38 @@ fn surface_size(island: &Island, body_w: f32, body_h: f32, scale: f32, mon_w: i3
 /// software renderer paints it at alpha 1/255 under the island.
 fn hit_mask_for(island: &Island, cx: f32, expanded: bool, hidden: bool) -> HitMask {
     if expanded {
-        return HitMask { rect: Some(island.canvas_rect_at(cx)), notch: None, pill: None };
+        return HitMask {
+            rect: Some(island.canvas_rect_at(cx)),
+            notch: None,
+            pill: None,
+        };
     }
     let body = island.body_rect_at(cx);
     if !island.floating() {
-        return HitMask { rect: None, notch: Some((body, island.current().r, SHOULDER)), pill: None };
+        return HitMask {
+            rect: None,
+            notch: Some((body, island.current().r, SHOULDER)),
+            pill: None,
+        };
     }
     if hidden {
-        return HitMask { rect: Some(Rect::new(body.x, 0.0, body.w, body.h)), notch: None, pill: None };
+        return HitMask {
+            rect: Some(Rect::new(body.x, 0.0, body.w, body.h)),
+            notch: None,
+            pill: None,
+        };
     }
     let gap = island.hover_rect_at(cx);
-    HitMask { rect: Some(Rect::new(gap.x, gap.y, gap.w, body.y + body.h / 2.0 - gap.y)), notch: None, pill: Some((body, island.current().r)) }
+    HitMask {
+        rect: Some(Rect::new(
+            gap.x,
+            gap.y,
+            gap.w,
+            body.y + body.h / 2.0 - gap.y,
+        )),
+        notch: None,
+        pill: Some((body, island.current().r)),
+    }
 }
 
 /// Name of a morph for the motion log.
@@ -4697,29 +5699,71 @@ mod tests {
         assert_eq!(body, Rect::new(CX - 42.0, 0.0, 84.0, 30.0));
         assert_eq!(i.hover_rect_at(CX), body, "Classic hovers on its body");
         let side = SHOULDER + HIT_MARGIN;
-        assert_eq!(i.canvas_rect_at(CX), Rect::new(CX - 42.0 - side, 0.0, 84.0 + 2.0 * side, 30.0 + HIT_MARGIN));
-        assert_eq!((i.top(), i.side_room(), i.bottom_room()), (0.0, side, HIT_MARGIN));
+        assert_eq!(
+            i.canvas_rect_at(CX),
+            Rect::new(CX - 42.0 - side, 0.0, 84.0 + 2.0 * side, 30.0 + HIT_MARGIN)
+        );
+        assert_eq!(
+            (i.top(), i.side_room(), i.bottom_room()),
+            (0.0, side, HIT_MARGIN)
+        );
     }
 
     #[test]
     fn pill_floats_below_the_edge() {
         let i = island(Geom::new(152.0, 32.0, 16.0), true);
         let (gap, side, below) = (pill::TOP_GAP, i.side_room(), i.bottom_room());
-        assert!(i.floating() && i.top() == gap && side > 0.0 && below > 0.0, "room for the gap and the shadow");
+        assert!(
+            i.floating() && i.top() == gap && side > 0.0 && below > 0.0,
+            "room for the gap and the shadow"
+        );
         let body = i.body_rect_at(CX);
         assert_eq!(body, Rect::new(CX - 76.0, gap, 152.0, 32.0));
-        assert_eq!(i.hover_rect_at(CX), Rect::new(CX - 76.0, 0.0, 152.0, gap + 32.0), "the gap above it and the body");
-        assert_eq!(i.canvas_rect_at(CX), Rect::new(CX - 76.0 - side, 0.0, 152.0 + 2.0 * side, gap + 32.0 + below));
+        assert_eq!(
+            i.hover_rect_at(CX),
+            Rect::new(CX - 76.0, 0.0, 152.0, gap + 32.0),
+            "the gap above it and the body"
+        );
+        assert_eq!(
+            i.canvas_rect_at(CX),
+            Rect::new(
+                CX - 76.0 - side,
+                0.0,
+                152.0 + 2.0 * side,
+                gap + 32.0 + below
+            )
+        );
     }
 
     #[test]
     fn classic_masks_are_unchanged() {
         let i = island(Geom::new(84.0, 30.0, 14.0), false);
         let body = i.body_rect_at(CX);
-        assert_eq!(hit_mask_for(&i, CX, false, false), HitMask { rect: None, notch: Some((body, 14.0, SHOULDER)), pill: None });
+        assert_eq!(
+            hit_mask_for(&i, CX, false, false),
+            HitMask {
+                rect: None,
+                notch: Some((body, 14.0, SHOULDER)),
+                pill: None
+            }
+        );
         // Hidden is Classic's own strip there, with its shoulders.
-        assert_eq!(hit_mask_for(&i, CX, false, true), HitMask { rect: None, notch: Some((body, 14.0, SHOULDER)), pill: None });
-        assert_eq!(hit_mask_for(&i, CX, true, false), HitMask { rect: Some(i.canvas_rect_at(CX)), notch: None, pill: None });
+        assert_eq!(
+            hit_mask_for(&i, CX, false, true),
+            HitMask {
+                rect: None,
+                notch: Some((body, 14.0, SHOULDER)),
+                pill: None
+            }
+        );
+        assert_eq!(
+            hit_mask_for(&i, CX, true, false),
+            HitMask {
+                rect: Some(i.canvas_rect_at(CX)),
+                notch: None,
+                pill: None
+            }
+        );
     }
 
     #[test]
@@ -4731,18 +5775,36 @@ mod tests {
         // A pointer thrown at the top edge: anywhere above the pill.
         for x in [body.x + 0.1, CX, body.right() - 0.1] {
             assert!(m.contains(pt(x, 0.0)), "top edge at x {x}");
-            assert!(m.contains(pt(x, pill::TOP_GAP - 0.1)), "just above the pill at x {x}");
+            assert!(
+                m.contains(pt(x, pill::TOP_GAP - 0.1)),
+                "just above the pill at x {x}"
+            );
         }
-        assert!(m.contains(pt(body.x + 0.5, body.y + 0.5)), "the top corners: the gap reaches the pill's middle");
-        assert!(m.contains(pt(CX, body.bottom() - 0.5)), "the pill's bottom edge");
+        assert!(
+            m.contains(pt(body.x + 0.5, body.y + 0.5)),
+            "the top corners: the gap reaches the pill's middle"
+        );
+        assert!(
+            m.contains(pt(CX, body.bottom() - 0.5)),
+            "the pill's bottom edge"
+        );
         // Beside it at the top edge, beside and below it (its shadow): through.
         assert!(!m.contains(pt(body.x - 0.5, 0.0)) && !m.contains(pt(body.right() + 0.5, 0.0)));
         for d in [0.5, 3.0, 8.0] {
-            assert!(!m.contains(pt(body.x - d, body.center().y)), "beside, {d} out");
-            assert!(!m.contains(pt(body.right() + d, body.center().y)), "beside, {d} out");
+            assert!(
+                !m.contains(pt(body.x - d, body.center().y)),
+                "beside, {d} out"
+            );
+            assert!(
+                !m.contains(pt(body.right() + d, body.center().y)),
+                "beside, {d} out"
+            );
             assert!(!m.contains(pt(CX, body.bottom() + d)), "below, {d} down");
         }
-        assert!(!m.contains(pt(body.x + 1.0, body.bottom() - 1.0)), "the round bottom corners");
+        assert!(
+            !m.contains(pt(body.x + 1.0, body.bottom() - 1.0)),
+            "the round bottom corners"
+        );
     }
 
     #[test]
@@ -4750,12 +5812,28 @@ mod tests {
         let i = island(Geom::new(620.0, 216.0, 40.0), true);
         let canvas = i.canvas_rect_at(CX);
         let m = hit_mask_for(&i, CX, true, false);
-        assert_eq!(m, HitMask { rect: Some(canvas), notch: None, pill: None });
+        assert_eq!(
+            m,
+            HitMask {
+                rect: Some(canvas),
+                notch: None,
+                pill: None
+            }
+        );
         let body = i.body_rect_at(CX);
         assert!(m.contains(pt(CX, 0.0)), "the gap above the card");
-        assert!(m.contains(pt(body.x - i.side_room() + 0.5, body.center().y)), "the margin beside it");
-        assert!(m.contains(pt(CX, body.bottom() + i.bottom_room() - 0.5)), "the margin below it");
-        assert!(!m.contains(pt(canvas.right() + 0.5, body.center().y)) && !m.contains(pt(CX, canvas.bottom() + 0.5)));
+        assert!(
+            m.contains(pt(body.x - i.side_room() + 0.5, body.center().y)),
+            "the margin beside it"
+        );
+        assert!(
+            m.contains(pt(CX, body.bottom() + i.bottom_room() - 0.5)),
+            "the margin below it"
+        );
+        assert!(
+            !m.contains(pt(canvas.right() + 0.5, body.center().y))
+                && !m.contains(pt(CX, canvas.bottom() + 0.5))
+        );
     }
 
     #[test]
@@ -4767,9 +5845,19 @@ mod tests {
         let classic = island(Geom::new(150.0, 5.0, 2.5), false).body_rect_at(CX);
         let body = i.body_rect_at(CX);
         let m = hit_mask_for(&i, CX, false, true);
-        assert_eq!(m, HitMask { rect: Some(Rect::new(classic.x, 0.0, classic.w, classic.h)), notch: None, pill: None });
+        assert_eq!(
+            m,
+            HitMask {
+                rect: Some(Rect::new(classic.x, 0.0, classic.w, classic.h)),
+                notch: None,
+                pill: None
+            }
+        );
         assert!(m.contains(pt(CX, 0.0)) && m.contains(pt(body.x + 0.1, classic.h - 0.1)));
-        assert!(!m.contains(pt(CX, classic.h)) && !m.contains(pt(CX, body.center().y)), "below the band, the invisible body included");
+        assert!(
+            !m.contains(pt(CX, classic.h)) && !m.contains(pt(CX, body.center().y)),
+            "below the band, the invisible body included"
+        );
     }
 
     #[test]
@@ -4783,17 +5871,30 @@ mod tests {
         for s in SCALES {
             let x = (CX * s) as i32;
             let top_px = (pill::TOP_GAP * s).round() as i32;
-            assert_eq!(top_px as f32, pill::TOP_GAP * s, "the gap is whole pixels at {s}");
+            assert_eq!(
+                top_px as f32,
+                pill::TOP_GAP * s,
+                "the gap is whole pixels at {s}"
+            );
             for y in 0..top_px {
                 assert!(m.contains(px_centre(x, y, s)), "gap row {y} at {s}");
             }
             let mid = ((body.y + body.h / 2.0) * s) as i32;
             let left = (body.x * s).floor() as i32 - 1;
             let right = (body.right() * s).ceil() as i32;
-            assert!(!m.contains(px_centre(left, mid, s)) && !m.contains(px_centre(right, mid, s)), "beside at {s}");
-            assert!(m.contains(px_centre(left + 2, mid, s)) && m.contains(px_centre(right - 2, mid, s)), "inside the ends at {s}");
+            assert!(
+                !m.contains(px_centre(left, mid, s)) && !m.contains(px_centre(right, mid, s)),
+                "beside at {s}"
+            );
+            assert!(
+                m.contains(px_centre(left + 2, mid, s)) && m.contains(px_centre(right - 2, mid, s)),
+                "inside the ends at {s}"
+            );
             let below = (body.bottom() * s).ceil() as i32;
-            assert!(!m.contains(px_centre(x, below, s)) && m.contains(px_centre(x, below - 1, s)), "the bottom edge at {s}");
+            assert!(
+                !m.contains(px_centre(x, below, s)) && m.contains(px_centre(x, below - 1, s)),
+                "the bottom edge at {s}"
+            );
             assert!(m.contains(px_centre(x, 0, s)), "the top edge at {s}");
         }
     }
@@ -4812,16 +5913,25 @@ mod tests {
                 if (mon_w - w) % 2 != 0 {
                     w += 1;
                 }
-                assert_eq!(classic, (w, ((400.0 * OVERSHOOT + HIT_MARGIN) * s).ceil() as i32), "Classic at {s} on {mon_w}");
+                assert_eq!(
+                    classic,
+                    (w, ((400.0 * OVERSHOOT + HIT_MARGIN) * s).ceil() as i32),
+                    "Classic at {s} on {mon_w}"
+                );
                 assert_eq!((mon_w - classic.0) % 2, 0, "centred on whole pixels");
 
                 i.set_floating(Some(pill::TOP_GAP));
                 let floating = surface_size(&i, 620.0, 400.0, s, mon_w);
-                let want_h = ((400.0 * OVERSHOOT + i.bottom_room() + pill::TOP_GAP) * s).ceil() as i32;
+                let want_h =
+                    ((400.0 * OVERSHOOT + i.bottom_room() + pill::TOP_GAP) * s).ceil() as i32;
                 assert_eq!(floating.1, want_h, "Pill has room for the gap at {s}");
                 assert_eq!((mon_w - floating.0) % 2, 0);
                 i.set_floating(None);
-                assert_eq!(surface_size(&i, 620.0, 400.0, s, mon_w), classic, "back to Classic at {s} on {mon_w}");
+                assert_eq!(
+                    surface_size(&i, 620.0, 400.0, s, mon_w),
+                    classic,
+                    "back to Classic at {s} on {mon_w}"
+                );
             }
         }
     }

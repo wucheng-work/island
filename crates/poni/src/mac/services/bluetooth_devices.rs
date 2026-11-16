@@ -27,13 +27,24 @@ extern "C" {
     fn IOServiceGetMatchingServices(port: u32, matching: CFTypeRef, iterator: *mut u32) -> i32;
     fn IOIteratorNext(iterator: u32) -> u32;
     fn IOObjectRelease(object: u32) -> i32;
-    fn IORegistryEntryCreateCFProperties(entry: u32, properties: *mut CFTypeRef, allocator: CFTypeRef, options: u32) -> i32;
+    fn IORegistryEntryCreateCFProperties(
+        entry: u32,
+        properties: *mut CFTypeRef,
+        allocator: CFTypeRef,
+        options: u32,
+    ) -> i32;
     fn IORegistryEntryGetRegistryEntryID(entry: u32, id: *mut u64) -> i32;
 }
 
 extern "C" {
     fn CFDataCreate(allocator: CFTypeRef, bytes: *const u8, length: isize) -> CFTypeRef;
-    fn CFPropertyListCreateWithData(allocator: CFTypeRef, data: CFTypeRef, options: usize, format: *mut isize, error: *mut CFTypeRef) -> CFTypeRef;
+    fn CFPropertyListCreateWithData(
+        allocator: CFTypeRef,
+        data: CFTypeRef,
+        options: usize,
+        format: *mut isize,
+        error: *mut CFTypeRef,
+    ) -> CFTypeRef;
     fn CFGetTypeID(value: CFTypeRef) -> usize;
     fn CFDictionaryGetTypeID() -> usize;
     fn CFArrayGetTypeID() -> usize;
@@ -66,8 +77,13 @@ pub fn fetch_devices(cancel: &AtomicBool) -> Result<BluetoothSnapshot, String> {
         return Err(CANCELLED.into());
     }
 
-    let report = run_command("/usr/sbin/system_profiler", &["SPBluetoothDataType", "-json"], PROFILE_TIMEOUT, cancel)
-        .and_then(|bytes| parse_report(&bytes));
+    let report = run_command(
+        "/usr/sbin/system_profiler",
+        &["SPBluetoothDataType", "-json"],
+        PROFILE_TIMEOUT,
+        cancel,
+    )
+    .and_then(|bytes| parse_report(&bytes));
     if cancel.load(Ordering::Acquire) {
         return Err(CANCELLED.into());
     }
@@ -80,13 +96,18 @@ pub fn fetch_devices(cancel: &AtomicBool) -> Result<BluetoothSnapshot, String> {
                 warnings.push("系统蓝牙报告暂时不可用，当前仅显示已读取的键鼠".to_string());
                 Vec::new()
             }
-            _ => return Err(format!("无法读取蓝牙设备：{reason}。请稍后重试或查看系统蓝牙设置")),
+            _ => {
+                return Err(format!(
+                    "无法读取蓝牙设备：{reason}。请稍后重试或查看系统蓝牙设置"
+                ))
+            }
         },
     };
     match hid {
         Ok(hid_devices) => {
             for device in hid_devices {
-                if let Some(existing) = devices.iter_mut().find(|existing| existing.id == device.id) {
+                if let Some(existing) = devices.iter_mut().find(|existing| existing.id == device.id)
+                {
                     existing.battery = device.battery.or(existing.battery);
                     if device.kind != DeviceKind::Other {
                         existing.kind = device.kind;
@@ -102,8 +123,13 @@ pub fn fetch_devices(cancel: &AtomicBool) -> Result<BluetoothSnapshot, String> {
 
     // 没有已连接设备就无需再启动附件查询；附件缓存本身不作为连接依据。
     if !devices.is_empty() {
-        let accessories = run_command("/usr/bin/pmset", &["-g", "accps", "-xml"], ACCESSORY_TIMEOUT, cancel)
-            .and_then(|bytes| parse_accessories(&bytes));
+        let accessories = run_command(
+            "/usr/bin/pmset",
+            &["-g", "accps", "-xml"],
+            ACCESSORY_TIMEOUT,
+            cancel,
+        )
+        .and_then(|bytes| parse_accessories(&bytes));
         match accessories {
             Ok(accessories) => apply_accessories(&mut devices, accessories),
             Err(_) if cancel.load(Ordering::Acquire) => return Err(CANCELLED.into()),
@@ -113,12 +139,24 @@ pub fn fetch_devices(cancel: &AtomicBool) -> Result<BluetoothSnapshot, String> {
     if cancel.load(Ordering::Acquire) {
         return Err(CANCELLED.into());
     }
-    devices.sort_by(|left, right| left.name.cmp(&right.name).then_with(|| left.id.cmp(&right.id)));
-    Ok(BluetoothSnapshot { devices, warning: (!warnings.is_empty()).then(|| warnings.join("；")) })
+    devices.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    Ok(BluetoothSnapshot {
+        devices,
+        warning: (!warnings.is_empty()).then(|| warnings.join("；")),
+    })
 }
 
 /// 非阻塞读取两条管道，避免大输出堵住子进程；取消、超时或格式失败都会回收进程。
-fn run_command(path: &str, args: &[&str], timeout: Duration, cancel: &AtomicBool) -> Result<Vec<u8>, String> {
+fn run_command(
+    path: &str,
+    args: &[&str],
+    timeout: Duration,
+    cancel: &AtomicBool,
+) -> Result<Vec<u8>, String> {
     if cancel.load(Ordering::Acquire) {
         return Err(CANCELLED.into());
     }
@@ -131,7 +169,10 @@ fn run_command(path: &str, args: &[&str], timeout: Duration, cancel: &AtomicBool
         .process_group(0)
         .spawn()
         .map_err(|error| {
-            crate::pwarn!("bluetooth devices: {path} could not start ({})", error.kind());
+            crate::pwarn!(
+                "bluetooth devices: {path} could not start ({})",
+                error.kind()
+            );
             "无法启动系统查询".to_string()
         })?;
     let pid = child.id() as i32;
@@ -161,7 +202,10 @@ fn run_command(path: &str, args: &[&str], timeout: Duration, cancel: &AtomicBool
                 read_available(&mut stdout, &mut output)?;
                 read_available(&mut stderr, &mut errors)?;
                 if !status.success() {
-                    crate::pwarn!("bluetooth devices: {path} failed ({status}, stderr {} bytes)", errors.len());
+                    crate::pwarn!(
+                        "bluetooth devices: {path} failed ({status}, stderr {} bytes)",
+                        errors.len()
+                    );
                     return Err("系统查询失败".to_string());
                 }
                 return Ok(output);
@@ -199,10 +243,15 @@ fn read_available(pipe: &mut impl Read, output: &mut Vec<u8>) -> Result<(), Stri
 
 fn parse_report(bytes: &[u8]) -> Result<Vec<BluetoothDevice>, String> {
     let report: Value = serde_json::from_slice(bytes).map_err(|_| "系统蓝牙报告格式异常")?;
-    let sections = report.get("SPBluetoothDataType").and_then(Value::as_array).ok_or("系统蓝牙报告缺少设备信息")?;
+    let sections = report
+        .get("SPBluetoothDataType")
+        .and_then(Value::as_array)
+        .ok_or("系统蓝牙报告缺少设备信息")?;
     let mut devices: Vec<BluetoothDevice> = Vec::new();
     for (section_index, section) in sections.iter().enumerate() {
-        let Some(connected) = section.get("device_connected") else { continue };
+        let Some(connected) = section.get("device_connected") else {
+            continue;
+        };
         let groups = connected.as_array().ok_or("系统蓝牙连接列表格式异常")?;
         for (group_index, group) in groups.iter().enumerate() {
             let entries = group.as_object().ok_or("系统蓝牙设备格式异常")?;
@@ -210,12 +259,22 @@ fn parse_report(bytes: &[u8]) -> Result<Vec<BluetoothDevice>, String> {
                 if !fields.is_object() {
                     return Err("系统蓝牙设备属性格式异常".into());
                 }
-                let address = fields.get("device_address").and_then(Value::as_str).filter(|address| !address.trim().is_empty());
-                let id = address.map(normalize_id).unwrap_or_else(|| format!("report:{section_index}:{group_index}:{name}"));
+                let address = fields
+                    .get("device_address")
+                    .and_then(Value::as_str)
+                    .filter(|address| !address.trim().is_empty());
+                let id = address
+                    .map(normalize_id)
+                    .unwrap_or_else(|| format!("report:{section_index}:{group_index}:{name}"));
                 let mut device = BluetoothDevice {
                     id,
                     name: display_name(name),
-                    kind: device_kind(fields.get("device_minorType").and_then(Value::as_str).unwrap_or_default()),
+                    kind: device_kind(
+                        fields
+                            .get("device_minorType")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default(),
+                    ),
                     battery: fields.get("device_batteryLevelMain").and_then(json_percent),
                     components: Vec::new(),
                 };
@@ -224,7 +283,10 @@ fn parse_report(bytes: &[u8]) -> Result<Vec<BluetoothDevice>, String> {
                     (["device_batteryLevelRight", "Right Battery Level"], "右耳"),
                     (["device_batteryLevelCase", "Case Battery Level"], "充电盒"),
                 ] {
-                    if let Some(percent) = keys.iter().find_map(|key| fields.get(*key).and_then(json_percent)) {
+                    if let Some(percent) = keys
+                        .iter()
+                        .find_map(|key| fields.get(*key).and_then(json_percent))
+                    {
                         set_component(&mut device, label, percent);
                     }
                 }
@@ -241,7 +303,13 @@ fn json_percent(value: &Value) -> Option<u8> {
     let number = if let Some(number) = value.as_i64() {
         number
     } else {
-        value.as_str()?.trim().trim_end_matches('%').trim().parse().ok()?
+        value
+            .as_str()?
+            .trim()
+            .trim_end_matches('%')
+            .trim()
+            .parse()
+            .ok()?
     };
     percent(number)
 }
@@ -255,12 +323,19 @@ fn normalize_id(value: &str) -> String {
 }
 
 fn display_name(value: &str) -> String {
-    if value.trim().is_empty() { "蓝牙设备".into() } else { value.trim().into() }
+    if value.trim().is_empty() {
+        "蓝牙设备".into()
+    } else {
+        value.trim().into()
+    }
 }
 
 fn device_kind(value: &str) -> DeviceKind {
     let value = value.to_ascii_lowercase();
-    if ["headphone", "headset", "earbud", "speaker", "audio"].iter().any(|word| value.contains(word)) {
+    if ["headphone", "headset", "earbud", "speaker", "audio"]
+        .iter()
+        .any(|word| value.contains(word))
+    {
         DeviceKind::Audio
     } else if value.contains("keyboard") {
         DeviceKind::Keyboard
@@ -310,7 +385,8 @@ fn fetch_hid(cancel: &AtomicBool) -> Result<Vec<BluetoothDevice>, String> {
         }
         let entry = IoObject(entry);
         let mut properties = ptr::null();
-        let status = unsafe { IORegistryEntryCreateCFProperties(entry.0, &mut properties, ptr::null(), 0) };
+        let status =
+            unsafe { IORegistryEntryCreateCFProperties(entry.0, &mut properties, ptr::null(), 0) };
         let properties = OwnedCf(properties);
         if status != 0 || !is_dictionary(properties.0) {
             crate::pwarn!("bluetooth devices: HID properties unavailable ({status})");
@@ -319,8 +395,11 @@ fn fetch_hid(cancel: &AtomicBool) -> Result<Vec<BluetoothDevice>, String> {
         if cf::dict_bool(properties.0, "BluetoothDevice") != Some(true) {
             continue;
         }
-        let address = ["DeviceAddress", "SerialNumber", "BD_ADDR"].iter()
-            .find_map(|key| dictionary_text(properties.0, key).filter(|value| !value.trim().is_empty()));
+        let address = ["DeviceAddress", "SerialNumber", "BD_ADDR"]
+            .iter()
+            .find_map(|key| {
+                dictionary_text(properties.0, key).filter(|value| !value.trim().is_empty())
+            });
         let id = if let Some(address) = address {
             normalize_id(&address)
         } else {
@@ -374,7 +453,9 @@ fn parse_accessories(bytes: &[u8]) -> Result<Vec<AccessoryBattery>, String> {
             return Err("无法读取附件电量数据".into());
         }
         let mut error = ptr::null();
-        let properties = OwnedCf(unsafe { CFPropertyListCreateWithData(ptr::null(), data.0, 0, ptr::null_mut(), &mut error) });
+        let properties = OwnedCf(unsafe {
+            CFPropertyListCreateWithData(ptr::null(), data.0, 0, ptr::null_mut(), &mut error)
+        });
         let _error = OwnedCf(error);
         if !is_dictionary(properties.0) {
             return Err("附件电量数据格式异常".into());
@@ -383,7 +464,9 @@ fn parse_accessories(bytes: &[u8]) -> Result<Vec<AccessoryBattery>, String> {
             continue;
         }
         let mut accessory = AccessoryBattery {
-            id: dictionary_text(properties.0, "Accessory Identifier").map(|id| normalize_id(&id)).unwrap_or_default(),
+            id: dictionary_text(properties.0, "Accessory Identifier")
+                .map(|id| normalize_id(&id))
+                .unwrap_or_default(),
             group: dictionary_text(properties.0, "Group Identifier"),
             name: dictionary_text(properties.0, "Name").unwrap_or_default(),
             battery: None,
@@ -392,7 +475,10 @@ fn parse_accessories(bytes: &[u8]) -> Result<Vec<AccessoryBattery>, String> {
         let part = dictionary_text(properties.0, "Part Identifier").unwrap_or_default();
         if let Some(value) = cf::dict_i64(properties.0, "Current Capacity").and_then(percent) {
             match part_label(&part) {
-                Some(label) => accessory.components.push(BatteryComponent { label: label.into(), percent: value }),
+                Some(label) => accessory.components.push(BatteryComponent {
+                    label: label.into(),
+                    percent: value,
+                }),
                 None => accessory.battery = Some(value),
             }
         }
@@ -403,9 +489,16 @@ fn parse_accessories(bytes: &[u8]) -> Result<Vec<AccessoryBattery>, String> {
                 if !is_dictionary(part) {
                     continue;
                 }
-                let label = dictionary_text(part, "Part Identifier").and_then(|part| part_label(&part));
-                if let (Some(label), Some(value)) = (label, cf::dict_i64(part, "Current Capacity").and_then(percent)) {
-                    accessory.components.push(BatteryComponent { label: label.into(), percent: value });
+                let label =
+                    dictionary_text(part, "Part Identifier").and_then(|part| part_label(&part));
+                if let (Some(label), Some(value)) = (
+                    label,
+                    cf::dict_i64(part, "Current Capacity").and_then(percent),
+                ) {
+                    accessory.components.push(BatteryComponent {
+                        label: label.into(),
+                        percent: value,
+                    });
                 }
             }
         }
@@ -429,13 +522,18 @@ fn part_label(part: &str) -> Option<&'static str> {
 fn apply_accessories(devices: &mut [BluetoothDevice], accessories: Vec<AccessoryBattery>) {
     let mut groups = HashMap::new();
     for accessory in &accessories {
-        if let (Some(group), Some(index)) = (&accessory.group, accessory_device(devices, accessory)) {
+        if let (Some(group), Some(index)) = (&accessory.group, accessory_device(devices, accessory))
+        {
             groups.insert(group.clone(), index);
         }
     }
     for accessory in accessories {
-        let index = accessory_device(devices, &accessory)
-            .or_else(|| accessory.group.as_ref().and_then(|group| groups.get(group).copied()));
+        let index = accessory_device(devices, &accessory).or_else(|| {
+            accessory
+                .group
+                .as_ref()
+                .and_then(|group| groups.get(group).copied())
+        });
         let Some(index) = index else { continue };
         let device = &mut devices[index];
         device.battery = accessory.battery.or(device.battery);
@@ -455,15 +553,25 @@ fn accessory_device(devices: &[BluetoothDevice], accessory: &AccessoryBattery) -
     if accessory.name.trim().is_empty() {
         return None;
     }
-    let mut matches = devices.iter().enumerate().filter(|(_, device)| device.name == accessory.name.trim());
+    let mut matches = devices
+        .iter()
+        .enumerate()
+        .filter(|(_, device)| device.name == accessory.name.trim());
     let first = matches.next()?.0;
     matches.next().is_none().then_some(first)
 }
 
 fn set_component(device: &mut BluetoothDevice, label: &str, percent: u8) {
-    if let Some(component) = device.components.iter_mut().find(|component| component.label == label) {
+    if let Some(component) = device
+        .components
+        .iter_mut()
+        .find(|component| component.label == label)
+    {
         component.percent = percent;
     } else {
-        device.components.push(BatteryComponent { label: label.into(), percent });
+        device.components.push(BatteryComponent {
+            label: label.into(),
+            percent,
+        });
     }
 }

@@ -5,12 +5,12 @@
 //! Collapsed pills are sized to their content: Windows has no camera
 //! cut-out to work around, so empty black would only cover the browser tabs.
 
+use crate::focus::phase_color;
 use crate::gfx::{TextStyle, Weight};
 use crate::icons::Icon;
 use crate::island::Geom;
 use crate::oyen;
 use crate::pages::{self, PageKind};
-use crate::focus::phase_color;
 use crate::state::{AppState, FpsAccess, HudKind, InlineAction, Notice, NoticeAction};
 use crate::ui::{wid, PillStyle, Ui, PILL_SMALL};
 use poni_core::datetime::{fmt_clock, fmt_countdown};
@@ -130,7 +130,10 @@ pub fn current_activity(st: &AppState) -> Option<Activity> {
         return Some(Activity::Game);
     }
     let media = st.settings.show_media_activity
-        && st.media.as_ref().is_some_and(|m| m.is_playing() || media_grace_end(st).is_some_and(|end| st.now < end));
+        && st
+            .media
+            .as_ref()
+            .is_some_and(|m| m.is_playing() || media_grace_end(st).is_some_and(|end| st.now < end));
     let timer = st.pomodoro.is_active();
     match (media, timer) {
         (true, true) => Some(Activity::MediaTimer),
@@ -143,7 +146,8 @@ pub fn current_activity(st: &AppState) -> Option<Activity> {
 pub fn collapsed_mode(st: &AppState) -> Mode {
     // A notice that stays (a new version's) waits under a volume or
     // brightness change and a game's readout, and shows again after.
-    let waits = st.notice.as_ref().is_some_and(|n| n.stays()) && (st.hud.is_some() || st.game.active);
+    let waits =
+        st.notice.as_ref().is_some_and(|n| n.stays()) && (st.hud.is_some() || st.game.active);
     if st.notice.is_some() && !waits {
         Mode::Notice
     } else if let Some(h) = &st.hud {
@@ -165,7 +169,11 @@ pub fn resting_mode(st: &AppState) -> Mode {
 
 /// A new song's title is showing for its few seconds (`st.ui.peek_until`).
 fn new_song_peek(st: &AppState) -> bool {
-    st.now < st.ui.peek_until && matches!(current_activity(st), Some(Activity::Media | Activity::MediaTimer))
+    st.now < st.ui.peek_until
+        && matches!(
+            current_activity(st),
+            Some(Activity::Media | Activity::MediaTimer)
+        )
 }
 
 /// What sits beside the idle clock: a bolt while charging, the percentage
@@ -203,7 +211,11 @@ pub fn geom(m: &Mode, st: &AppState) -> Geom {
                     Some(ClockBadge::Low(_)) => 34.0,
                     None => 0.0,
                 };
-                let lead = if oyen::on(st.settings.theme) { OYEN_CLOCK_LEAD } else { 0.0 };
+                let lead = if oyen::on(st.settings.theme) {
+                    OYEN_CLOCK_LEAD
+                } else {
+                    0.0
+                };
                 Geom::new(base + badge + lead, 30.0, 14.0)
             }
             IdleStyle::Minimal => Geom::new(150.0, 26.0, 12.0),
@@ -229,12 +241,24 @@ pub fn geom(m: &Mode, st: &AppState) -> Geom {
             let long = fmt_countdown(st.pomodoro.remaining(st.now)).len() > 5;
             Geom::new(if long { 112.0 } else { 96.0 }, 32.0, 15.0)
         }
-        Mode::Activity(Activity::MediaTimer) => Geom::new(crate::pill::live::media_timer_width(st, 132.0), 32.0, 15.0),
-        Mode::Activity(Activity::Game) => Geom::new(if game_temp(st).is_some() { GAME_W } else { GAME_NO_TEMP_W }, 32.0, 15.0),
+        Mode::Activity(Activity::MediaTimer) => {
+            Geom::new(crate::pill::live::media_timer_width(st, 132.0), 32.0, 15.0)
+        }
+        Mode::Activity(Activity::Game) => Geom::new(
+            if game_temp(st).is_some() {
+                GAME_W
+            } else {
+                GAME_NO_TEMP_W
+            },
+            32.0,
+            15.0,
+        ),
         Mode::Hud(HudTag::Volume) => Geom::new(316.0, 40.0, 19.0),
         Mode::Hud(HudTag::Charging) | Mode::Hud(HudTag::LowBattery) => Geom::new(300.0, 40.0, 19.0),
         Mode::Hud(HudTag::Bluetooth) => Geom::new(336.0, 46.0, 22.0),
-        Mode::Notice if st.notice.as_ref().is_some_and(is_codex_notice) => Geom::new(500.0, 68.0, 28.0),
+        Mode::Notice if st.notice.as_ref().is_some_and(is_codex_notice) => {
+            Geom::new(500.0, 68.0, 28.0)
+        }
         Mode::Notice => Geom::new(372.0, 52.0, 24.0),
         Mode::Expanded(p) => {
             let h = pages::HEADER_H + pages::content_height(*p, st) + pages::PAD;
@@ -256,7 +280,9 @@ pub fn is_live(m: &Mode, st: &AppState) -> bool {
     if let Some(live) = crate::pill::is_live(m, st) {
         return live;
     }
-    let Some(media) = st.media.as_ref() else { return false };
+    let Some(media) = st.media.as_ref() else {
+        return false;
+    };
     match m {
         Mode::Activity(Activity::Media) if oyen::on(st.settings.theme) => {
             oyen::music_moving(st.now, media.is_playing(), st.media_paused_at, &st.ui.notes)
@@ -282,10 +308,17 @@ pub fn next_wake(m: &Mode, st: &AppState) -> Option<f64> {
         if !night(st) {
             consider(oyen::next_rest_move(now));
         }
-    } else if *m == Mode::Idle && st.settings.idle_style == IdleStyle::Eyes && !crate::pill::diorama::shows(st) {
+    } else if *m == Mode::Idle
+        && st.settings.idle_style == IdleStyle::Eyes
+        && !crate::pill::diorama::shows(st)
+    {
         // (The Diorama theme rests as its picture, which has no eyes to blink.)
         let phase = now % BLINK_PERIOD;
-        consider(if phase < BLINK_LEN { now - phase + BLINK_LEN } else { now - phase + BLINK_PERIOD });
+        consider(if phase < BLINK_LEN {
+            now - phase + BLINK_LEN
+        } else {
+            now - phase + BLINK_PERIOD
+        });
     }
     if !matches!(m, Mode::Expanded(_)) {
         if let Some(end) = media_grace_end(st) {
@@ -311,7 +344,11 @@ const BLINK_LEN: f64 = 0.14;
 
 /// Oyen shows in the idle pill (the clock and "Oyen" looks of his theme).
 fn oyen_idle(st: &AppState) -> bool {
-    oyen::on(st.settings.theme) && matches!(st.settings.idle_style, IdleStyle::Clock | IdleStyle::Status | IdleStyle::Eyes)
+    oyen::on(st.settings.theme)
+        && matches!(
+            st.settings.idle_style,
+            IdleStyle::Clock | IdleStyle::Status | IdleStyle::Eyes
+        )
 }
 
 /// Oyen sleeps from midnight to five.
@@ -321,7 +358,10 @@ pub(crate) fn night(st: &AppState) -> bool {
 
 /// Oyen at rest in the idle pill; he follows the cursor while it hovers.
 fn draw_oyen_rest(ui: &mut Ui, st: &AppState, body: Rect, cx: f32, w: f32, bar_y: f32) {
-    let look = ui.input.mouse.map(|p| (p.x - body.center().x) / (body.w / 2.0));
+    let look = ui
+        .input
+        .mouse
+        .map(|p| (p.x - body.center().x) / (body.w / 2.0));
     let (frame, moving) = oyen::rest(st.now, night(st), look);
     if moving {
         ui.request_anim();
@@ -355,8 +395,20 @@ fn draw_idle(ui: &mut Ui, st: &mut AppState, body: Rect) {
         IdleStyle::Clock | IdleStyle::Status => {
             // Oyen theme: he peeks on the left and the clock centres in the rest.
             let body = if oyen::on(st.settings.theme) {
-                draw_oyen_rest(ui, st, body, body.x + 11.0 + OYEN_CLOCK_W / 2.0, OYEN_CLOCK_W, body.bottom() - 5.0);
-                Rect::new(body.x + OYEN_CLOCK_LEAD, body.y, body.w - OYEN_CLOCK_LEAD, body.h)
+                draw_oyen_rest(
+                    ui,
+                    st,
+                    body,
+                    body.x + 11.0 + OYEN_CLOCK_W / 2.0,
+                    OYEN_CLOCK_W,
+                    body.bottom() - 5.0,
+                );
+                Rect::new(
+                    body.x + OYEN_CLOCK_LEAD,
+                    body.y,
+                    body.w - OYEN_CLOCK_LEAD,
+                    body.h,
+                )
             } else {
                 body
             };
@@ -368,7 +420,10 @@ fn draw_idle(ui: &mut Ui, st: &mut AppState, body: Rect) {
             };
             // Badge + gap + time, centred as one group.
             let (tw, _) = ui.c.measure(&time, &ts, 400.0);
-            let pct_ts = TextStyle::footnote().weight(Weight::Semibold).tabular().color(palette::RED);
+            let pct_ts = TextStyle::footnote()
+                .weight(Weight::Semibold)
+                .tabular()
+                .color(palette::RED);
             let (bw, pct) = match badge {
                 ClockBadge::Charging => (BOLT_VISIBLE, String::new()),
                 ClockBadge::Low(p) => {
@@ -382,16 +437,33 @@ fn draw_idle(ui: &mut Ui, st: &mut AppState, body: Rect) {
                     let r = Rect::new(x0 - BOLT_INSET, cy - BOLT / 2.0, BOLT, BOLT);
                     ui.c.icon(Icon::Bolt, r, palette::GREEN);
                 }
-                ClockBadge::Low(_) => ui.c.text(&pct, Rect::new(x0, body.y, bw + 2.0, body.h), &pct_ts),
+                ClockBadge::Low(_) => {
+                    ui.c.text(&pct, Rect::new(x0, body.y, bw + 2.0, body.h), &pct_ts)
+                }
             }
-            ui.c.text(&time, Rect::new(x0 + bw + BADGE_GAP, body.y, tw + 2.0, body.h), &ts);
+            ui.c.text(
+                &time,
+                Rect::new(x0 + bw + BADGE_GAP, body.y, tw + 2.0, body.h),
+                &ts,
+            );
         }
         IdleStyle::Eyes if oyen::on(st.settings.theme) => {
-            draw_oyen_rest(ui, st, body, body.center().x, OYEN_IDLE_W, body.bottom() - 7.0);
+            draw_oyen_rest(
+                ui,
+                st,
+                body,
+                body.center().x,
+                OYEN_IDLE_W,
+                body.bottom() - 7.0,
+            );
         }
         IdleStyle::Eyes => {
             // Eyes glance toward the cursor while hovering.
-            let look = ui.input.mouse.map(|p| ((p.x - body.center().x) / body.w).clamp(-0.5, 0.5) * 6.0).unwrap_or(0.0);
+            let look = ui
+                .input
+                .mouse
+                .map(|p| ((p.x - body.center().x) / body.w).clamp(-0.5, 0.5) * 6.0)
+                .unwrap_or(0.0);
             draw_eyes(ui, st, body.center().x, cy, look);
         }
         IdleStyle::Minimal | IdleStyle::Hidden => {}
@@ -417,7 +489,11 @@ fn equalizer(ui: &mut Ui, r: Rect, color: Color, playing: bool, t: f64) {
     let bw = (r.w - gap * (n as f32 - 1.0)) / n as f32;
     for i in 0..n {
         let phase = t * (5.0 + i as f64 * 1.3) + i as f64 * 1.7;
-        let amp = if playing { 0.35 + 0.65 * (0.5 + 0.5 * phase.sin()) as f32 } else { 0.25 };
+        let amp = if playing {
+            0.35 + 0.65 * (0.5 + 0.5 * phase.sin()) as f32
+        } else {
+            0.25
+        };
         let h = (r.h * amp).max(3.0);
         let x = r.x + i as f32 * (bw + gap);
         ui.c.fill_rrect(Rect::new(x, r.center().y - h / 2.0, bw, h), bw / 2.0, color);
@@ -437,7 +513,10 @@ fn art_or_icon(ui: &mut Ui, st: &AppState, r: Rect, playing: bool) {
 }
 
 fn countdown_style(col: Color, paused: bool) -> TextStyle {
-    TextStyle::body().weight(Weight::Semibold).tabular().color(if paused { palette::TEXT_DIM } else { col })
+    TextStyle::body()
+        .weight(Weight::Semibold)
+        .tabular()
+        .color(if paused { palette::TEXT_DIM } else { col })
 }
 
 /// Alpha of the title peek: it grows with the pill (so the growing body
@@ -454,7 +533,11 @@ fn peek_alpha(st: &AppState, w: f32) -> f32 {
 /// when there is room for more than an ellipsis.
 fn draw_peek(ui: &mut Ui, st: &AppState, x0: f32, x1: f32, body: Rect, alpha: f32) {
     let Some(m) = st.media.as_ref() else { return };
-    let (main, rest) = if m.title.trim().is_empty() { (m.artist.trim(), "") } else { (m.title.trim(), m.artist.trim()) };
+    let (main, rest) = if m.title.trim().is_empty() {
+        (m.artist.trim(), "")
+    } else {
+        (m.title.trim(), m.artist.trim())
+    };
     let avail = x1 - x0;
     if main.is_empty() || avail < 20.0 {
         return;
@@ -470,7 +553,11 @@ fn draw_peek(ui: &mut Ui, st: &AppState, x0: f32, x1: f32, body: Rect, alpha: f3
         c.text_raw(main, Rect::new(x0, body.y, tw + 2.0, body.h), &title_st);
         let room = avail - tw;
         if !rest.is_empty() && room >= 32.0 {
-            c.text_raw(&format!(" \u{b7} {rest}"), Rect::new(x0 + tw, body.y, room, body.h), &artist_st);
+            c.text_raw(
+                &format!(" \u{b7} {rest}"),
+                Rect::new(x0 + tw, body.y, room, body.h),
+                &artist_st,
+            );
         }
     });
 }
@@ -506,7 +593,14 @@ pub fn draw_music(ui: &mut Ui, st: &mut AppState, body: Rect, words: bool) {
     }
     if sings {
         use crate::pill::media::{middle, PAUSED_TEXT, TEXT_CLEAR};
-        middle(ui, st, body, art.right() + TEXT_CLEAR, eq.x - TEXT_CLEAR, if playing { 1.0 } else { PAUSED_TEXT });
+        middle(
+            ui,
+            st,
+            body,
+            art.right() + TEXT_CLEAR,
+            eq.x - TEXT_CLEAR,
+            if playing { 1.0 } else { PAUSED_TEXT },
+        );
     } else if alpha > 0.01 {
         draw_peek(ui, st, art.right() + 10.0, eq.x - 10.0, body, alpha);
     }
@@ -530,7 +624,11 @@ fn draw_activity(ui: &mut Ui, st: &mut AppState, a: Activity, body: Rect) {
                 ui.c.icon(Icon::Coffee, glyph, col);
             }
             let text = fmt_countdown(p.remaining(st.now));
-            ui.c.text(&text, Rect::new(body.x + 40.0, body.y, 64.0, body.h), &countdown_style(col, paused));
+            ui.c.text(
+                &text,
+                Rect::new(body.x + 40.0, body.y, 64.0, body.h),
+                &countdown_style(col, paused),
+            );
         }
         Activity::Game => draw_game(ui, st, body),
         Activity::MediaTimer => {
@@ -555,9 +653,14 @@ fn draw_game(ui: &mut Ui, st: &AppState, body: Rect) {
     let dash = || "\u{2013}".to_string();
     let fps = match (st.game.rate, &st.game.access) {
         (Some(r), _) => [(fmt_fps(r.fps), big), (" fps".into(), label)],
-        (None, FpsAccess::Ready | FpsAccess::Unknown | FpsAccess::Checking) => [(dash(), big), (" fps".into(), label)],
+        (None, FpsAccess::Ready | FpsAccess::Unknown | FpsAccess::Checking) => {
+            [(dash(), big), (" fps".into(), label)]
+        }
         // Waiting for the one-time OK: the slot stays, dimmer.
-        (None, _) => [(dash(), big.color(palette::DISABLED)), (" fps".into(), label.color(palette::DISABLED))],
+        (None, _) => [
+            (dash(), big.color(palette::DISABLED)),
+            (" fps".into(), label.color(palette::DISABLED)),
+        ],
     };
     let gpu = match reading.and_then(|r| r.gpu.as_ref()) {
         Some(g) => match g.temp_c {
@@ -566,12 +669,22 @@ fn draw_game(ui: &mut Ui, st: &AppState, body: Rect) {
         },
         None => dash(),
     };
-    let cpu = reading.and_then(|r| r.cpu.as_ref()).map_or_else(dash, |c| fmt_pct(c.load));
-    let groups = [fps, [("GPU ".into(), label), (gpu, value)], [("CPU ".into(), label), (cpu, value)]];
+    let cpu = reading
+        .and_then(|r| r.cpu.as_ref())
+        .map_or_else(dash, |c| fmt_pct(c.load));
+    let groups = [
+        fps,
+        [("GPU ".into(), label), (gpu, value)],
+        [("CPU ".into(), label), (cpu, value)],
+    ];
 
     const GAP: f32 = 11.0;
-    let widths: Vec<[f32; 2]> = groups.iter().map(|g| g.each_ref().map(|(t, ts)| ui.c.measure(t, ts, 200.0).0)).collect();
-    let total = widths.iter().flatten().sum::<f32>() + (groups.len() - 1) as f32 * (2.0 * GAP + 1.0);
+    let widths: Vec<[f32; 2]> = groups
+        .iter()
+        .map(|g| g.each_ref().map(|(t, ts)| ui.c.measure(t, ts, 200.0).0))
+        .collect();
+    let total =
+        widths.iter().flatten().sum::<f32>() + (groups.len() - 1) as f32 * (2.0 * GAP + 1.0);
     let mut x = (body.center().x - total / 2.0).max(body.x + 12.0);
     let cy = body.center().y;
     for (i, (group, ws)) in groups.iter().zip(&widths).enumerate() {
@@ -623,36 +736,101 @@ fn draw_hud(ui: &mut Ui, st: &mut AppState, body: Rect) {
                     Some(a) => a,
                     None => Color::white(0.95),
                 };
-                ui.c.fill_rrect(Rect::new(bar.x, bar.y, (bar.w * shown).max(6.0), bar.h), 3.0, level);
+                ui.c.fill_rrect(
+                    Rect::new(bar.x, bar.y, (bar.w * shown).max(6.0), bar.h),
+                    3.0,
+                    level,
+                );
             }
-            let pct = if muted { "Muted".to_string() } else { format!("{}%", (level * 100.0).round() as i32) };
-            ui.c.text(&pct, Rect::new(body.right() - HUD_PAD - 48.0, body.y, 48.0, body.h), &label_st.tabular().right());
+            let pct = if muted {
+                "Muted".to_string()
+            } else {
+                format!("{}%", (level * 100.0).round() as i32)
+            };
+            ui.c.text(
+                &pct,
+                Rect::new(body.right() - HUD_PAD - 48.0, body.y, 48.0, body.h),
+                &label_st.tabular().right(),
+            );
         }
         HudKind::Charging { percent, plugged } => {
-            let (icon, color, label) = if plugged { (Icon::Bolt, palette::GREEN, "Charging") } else { (Icon::Battery, palette::TEXT, "On battery") };
+            let (icon, color, label) = if plugged {
+                (Icon::Bolt, palette::GREEN, "Charging")
+            } else {
+                (Icon::Battery, palette::TEXT, "On battery")
+            };
             ui.c.icon(icon, icon_r, color);
-            ui.c.text(label, Rect::new(body.x + 46.0, body.y, 140.0, body.h), &label_st);
+            ui.c.text(
+                label,
+                Rect::new(body.x + 46.0, body.y, 140.0, body.h),
+                &label_st,
+            );
             battery_badge(ui, body.right() - HUD_PAD, cy, percent, color);
         }
         HudKind::LowBattery { percent } => {
             ui.c.icon(Icon::Battery, icon_r, palette::RED);
-            ui.c.text("Low battery", Rect::new(body.x + 46.0, body.y, 140.0, body.h), &label_st);
+            ui.c.text(
+                "Low battery",
+                Rect::new(body.x + 46.0, body.y, 140.0, body.h),
+                &label_st,
+            );
             battery_badge(ui, body.right() - HUD_PAD, cy, percent, palette::RED);
         }
-        HudKind::Bluetooth { name, connected, battery, audio } => {
+        HudKind::Bluetooth {
+            name,
+            connected,
+            battery,
+            audio,
+        } => {
             let c = Point::new(body.x + 30.0, cy);
-            ui.c.fill_circle(c, 15.0, if connected { palette::BLUE } else { Color::white(0.16) });
-            let glyph = if connected { palette::ON_ACCENT } else { palette::TEXT };
-            ui.c.icon(if audio { Icon::Headphones } else { Icon::Bluetooth }, Rect::from_center(c, 17.0, 17.0), glyph);
+            ui.c.fill_circle(
+                c,
+                15.0,
+                if connected {
+                    palette::BLUE
+                } else {
+                    Color::white(0.16)
+                },
+            );
+            let glyph = if connected {
+                palette::ON_ACCENT
+            } else {
+                palette::TEXT
+            };
+            ui.c.icon(
+                if audio {
+                    Icon::Headphones
+                } else {
+                    Icon::Bluetooth
+                },
+                Rect::from_center(c, 17.0, 17.0),
+                glyph,
+            );
             let text_x = body.x + 54.0;
             let text_right = match battery {
-                Some(b) => battery_badge(ui, body.right() - HUD_PAD, cy, b, if b <= 20 { palette::RED } else { palette::GREEN }) - 12.0,
+                Some(b) => {
+                    battery_badge(
+                        ui,
+                        body.right() - HUD_PAD,
+                        cy,
+                        b,
+                        if b <= 20 {
+                            palette::RED
+                        } else {
+                            palette::GREEN
+                        },
+                    ) - 12.0
+                }
                 None => body.right() - HUD_PAD,
             };
             let tw = text_right - text_x;
             ui.c.text_raw(&name, Rect::new(text_x, cy - 17.0, tw, 18.0), &label_st);
             ui.c.text(
-                if connected { "Connected" } else { "Disconnected" },
+                if connected {
+                    "Connected"
+                } else {
+                    "Disconnected"
+                },
                 Rect::new(text_x, cy + 1.0, tw, 16.0),
                 &TextStyle::footnote().color(palette::TEXT_DIM),
             );
@@ -672,10 +850,18 @@ fn battery_badge(ui: &mut Ui, right: f32, cy: f32, percent: u8, color: Color) ->
     let x = snap(ui, tx - 6.0 - 1.5 - 20.0);
     let y = snap(ui, cy - 5.0);
     ui.c.stroke_rrect(Rect::new(x, y, 20.0, 10.0), 3.0, palette::TEXT_DIM, 1.3);
-    ui.c.fill_rrect(Rect::new(x + 20.0, y + 3.0, 1.5, 4.0), 0.75, palette::TEXT_DIM);
+    ui.c.fill_rrect(
+        Rect::new(x + 20.0, y + 3.0, 1.5, 4.0),
+        0.75,
+        palette::TEXT_DIM,
+    );
     let p = (percent as f32 / 100.0).clamp(0.0, 1.0);
     if p > 0.0 {
-        ui.c.fill_rrect(Rect::new(x + 2.0, y + 2.0, (16.0 * p).max(3.0), 6.0), 1.5, color);
+        ui.c.fill_rrect(
+            Rect::new(x + 2.0, y + 2.0, (16.0 * p).max(3.0), 6.0),
+            1.5,
+            color,
+        );
     }
     x
 }
@@ -706,20 +892,38 @@ fn draw_notice(ui: &mut Ui, st: &mut AppState, body: Rect) {
 
     let inline = n.inline.map(|a| {
         let (label, icon, color) = inline_look(st, &n, a);
-        let w = ui.pill_width(label, icon.is_some(), true).max(if icon.is_some() { 76.0 } else { 0.0 });
+        let w = ui
+            .pill_width(label, icon.is_some(), true)
+            .max(if icon.is_some() { 76.0 } else { 0.0 });
         #[cfg(any(windows, target_os = "macos"))]
-        let w = if a == InlineAction::CodexConfirm { w.max(CODEX_CONFIRM_W) } else { w };
-        let r = Rect::new(body.right() - 16.0 - w, cy - PILL_SMALL / 2.0, w, PILL_SMALL);
+        let w = if a == InlineAction::CodexConfirm {
+            w.max(CODEX_CONFIRM_W)
+        } else {
+            w
+        };
+        let r = Rect::new(
+            body.right() - 16.0 - w,
+            cy - PILL_SMALL / 2.0,
+            w,
+            PILL_SMALL,
+        );
         (a, label, icon, color, r)
     });
 
     let tx = c.x + 16.0 + 10.0;
-    let text_right = inline.as_ref().map_or(body.right() - 22.0, |(.., r)| r.x - 12.0);
+    let text_right = inline
+        .as_ref()
+        .map_or(body.right() - 22.0, |(.., r)| r.x - 12.0);
     let tw = (text_right - tx).max(0.0);
     if is_codex_notice(&n) {
         draw_codex_notice_text(ui, &n, Rect::new(tx, cy - 26.0, tw, 52.0));
     } else {
-        notice_title(ui, &n, Rect::new(tx, cy - 18.0, tw, 20.0), TextStyle::headline());
+        notice_title(
+            ui,
+            &n,
+            Rect::new(tx, cy - 18.0, tw, 20.0),
+            TextStyle::headline(),
+        );
         let subtitle = Rect::new(tx, cy + 1.0, tw, 16.0);
         let subtitle_style = TextStyle::footnote().color(palette::TEXT_DIM);
         if matches!(&n.action, Some(NoticeAction::OpenApp(_))) {
@@ -736,15 +940,26 @@ fn draw_notice(ui: &mut Ui, st: &mut AppState, body: Rect) {
         #[cfg(any(windows, target_os = "macos"))]
         if a == InlineAction::CodexConfirm {
             // 成功后仍保留并消费该位置的点击，不能穿透成打开面板。
-            ui.button(wid("notice.act"), r.inset(-CODEX_CONFIRM_HIT_PAD, -CODEX_CONFIRM_HIT_PAD));
+            ui.button(
+                wid("notice.act"),
+                r.inset(-CODEX_CONFIRM_HIT_PAD, -CODEX_CONFIRM_HIT_PAD),
+            );
             ui.pill(wid("notice.act"), r, label, icon, PillStyle::Primary(color));
             return;
         }
         if inline_done(st, a) {
             ui.c.fill_rrect(r, r.h / 2.0, color.with_alpha(0.20));
-            ui.c.icon(Icon::Check, Rect::from_center(r.center(), 14.0, 14.0), color);
+            ui.c.icon(
+                Icon::Check,
+                Rect::from_center(r.center(), 14.0, 14.0),
+                color,
+            );
         } else {
-            let style = if icon.is_some() { PillStyle::Primary(color) } else { PillStyle::Utility };
+            let style = if icon.is_some() {
+                PillStyle::Primary(color)
+            } else {
+                PillStyle::Utility
+            };
             ui.pill(wid("notice.act"), r, label, icon, style);
         }
     }
@@ -752,7 +967,11 @@ fn draw_notice(ui: &mut Ui, st: &mut AppState, body: Rect) {
 
 /// An inline action's label, icon and colour. Hide is a plain grey pill
 /// beside the notice's own words (no icon, no colour), as in Screen Studio.
-pub(crate) fn inline_look(st: &AppState, n: &Notice, a: InlineAction) -> (&'static str, Option<Icon>, Color) {
+pub(crate) fn inline_look(
+    st: &AppState,
+    n: &Notice,
+    a: InlineAction,
+) -> (&'static str, Option<Icon>, Color) {
     match a {
         // Orange for focus; a break starts in its own green.
         InlineAction::StartFocus => ("Start", Some(Icon::Play), phase_color(st.pomodoro.phase)),
@@ -770,11 +989,15 @@ pub(crate) fn inline_look(st: &AppState, n: &Notice, a: InlineAction) -> (&'stat
         #[cfg(any(windows, target_os = "macos"))]
         InlineAction::CodexConfirm => {
             let entry = match &n.action {
-                Some(NoticeAction::OpenCodex(id)) => st.codex.entries.iter()
+                Some(NoticeAction::OpenCodex(id)) => st
+                    .codex
+                    .entries
+                    .iter()
                     .find(|entry| entry.message.id == *id),
                 _ => None,
             };
-            let sending = entry.and_then(|entry| st.codex.conversations.get(&entry.message.thread_id))
+            let sending = entry
+                .and_then(|entry| st.codex.conversations.get(&entry.message.thread_id))
                 .is_some_and(|chat| chat.sending.is_some());
             let label = if entry.is_some_and(|entry| entry.confirmed) {
                 "已确认"
@@ -801,12 +1024,18 @@ pub(crate) fn is_codex_notice(n: &Notice) -> bool {
 
 /// 两种岛样式共用内容优先排版：弱化会话名，正文保留两行。
 pub(crate) fn draw_codex_notice_text(ui: &mut Ui, n: &Notice, area: Rect) {
-    ui.c.text_raw(&n.title, Rect::new(area.x, area.y, area.w, 14.0),
-        &TextStyle::caption().color(palette::TEXT_FAINT));
+    ui.c.text_raw(
+        &n.title,
+        Rect::new(area.x, area.y, area.w, 14.0),
+        &TextStyle::caption().color(palette::TEXT_FAINT),
+    );
     let summary = Rect::new(area.x, area.y + 18.0, area.w, 34.0);
     ui.c.clip(summary);
-    ui.c.text_raw(&n.subtitle, summary,
-        &TextStyle::body().wrap().top().line_spacing(1.25));
+    ui.c.text_raw(
+        &n.subtitle,
+        summary,
+        &TextStyle::body().wrap().top().line_spacing(1.25),
+    );
     ui.c.unclip();
 }
 
@@ -818,11 +1047,19 @@ pub(crate) fn notice_title(ui: &mut Ui, n: &Notice, r: Rect, style: TextStyle) {
             ui.c.text_raw(&n.title, r, &style);
             return;
         }
-        let w = ui.c.measure_raw(&n.title, &style, r.w.max(1.0)).0.ceil().min(r.w);
+        let w =
+            ui.c.measure_raw(&n.title, &style, r.w.max(1.0))
+                .0
+                .ceil()
+                .min(r.w);
         ui.c.text_raw(&n.title, Rect::new(r.x, r.y, w + 1.0, r.h), &style);
         let x = r.x + w + TITLE_DIM_GAP;
         if r.right() > x {
-            ui.c.text_raw(&n.title_dim, Rect::new(x, r.y, r.right() - x, r.h), &style.color(palette::TEXT_DIM));
+            ui.c.text_raw(
+                &n.title_dim,
+                Rect::new(x, r.y, r.right() - x, r.h),
+                &style.color(palette::TEXT_DIM),
+            );
         }
         return;
     }
@@ -840,7 +1077,11 @@ pub(crate) fn text_with_dim(ui: &mut Ui, text: &str, dim: &str, r: Rect, style: 
     ui.c.text(text, Rect::new(r.x, r.y, w + 1.0, r.h), &style);
     let x = r.x + w + TITLE_DIM_GAP;
     if r.right() > x {
-        ui.c.text(dim, Rect::new(x, r.y, r.right() - x, r.h), &style.color(palette::TEXT_DIM));
+        ui.c.text(
+            dim,
+            Rect::new(x, r.y, r.right() - x, r.h),
+            &style.color(palette::TEXT_DIM),
+        );
     }
 }
 
@@ -848,7 +1089,11 @@ pub(crate) fn text_with_dim(ui: &mut Ui, text: &str, dim: &str, r: Rect, style: 
 pub(crate) fn notice_title_width(ui: &mut Ui, n: &Notice, style: &TextStyle) -> f32 {
     if matches!(&n.action, Some(NoticeAction::OpenApp(_))) {
         let w = ui.c.measure_raw(&n.title, style, 2000.0).0;
-        return if n.title_dim.is_empty() { w } else { w.ceil() + TITLE_DIM_GAP + ui.c.measure_raw(&n.title_dim, style, 2000.0).0 };
+        return if n.title_dim.is_empty() {
+            w
+        } else {
+            w.ceil() + TITLE_DIM_GAP + ui.c.measure_raw(&n.title_dim, style, 2000.0).0
+        };
     }
     text_with_dim_width(ui, &n.title, &n.title_dim, style)
 }
@@ -893,7 +1138,12 @@ mod tests {
             track_key: key.clone(),
         });
         if let Some(l) = lrc {
-            st.lyrics = LyricsState { track_key: key, status: LyricsStatus::Found, lyrics: Some(parse_lrc(l)), ..Default::default() };
+            st.lyrics = LyricsState {
+                track_key: key,
+                status: LyricsStatus::Found,
+                lyrics: Some(parse_lrc(l)),
+                ..Default::default()
+            };
         }
         st
     }
@@ -904,31 +1154,50 @@ mod tests {
         // No lyrics: Classic's compact pill, art and bars.
         assert_eq!(geom(&media, &playing(None)).w, MEDIA_W);
         // Synced lyrics: as wide as its words (what `pill::media` measured).
-        let sung = playing(Some("[00:10.00]Paper lanterns on the line\n[00:14.00]Count the windows\n"));
+        let sung = playing(Some(
+            "[00:10.00]Paper lanterns on the line\n[00:14.00]Count the windows\n",
+        ));
         assert!(crate::pill::lyric::sings(&sung));
         assert_eq!(geom(&media, &sung).w, crate::pill::media::fit_w());
         // Lyrics switched off, or words without timings: compact again.
         let mut off = playing(Some("[00:10.00]Paper lanterns on the line\n"));
         off.settings.lyrics = false;
         assert_eq!(geom(&media, &off).w, MEDIA_W);
-        assert_eq!(geom(&media, &playing(Some("plain words\nno stamps\n"))).w, MEDIA_W);
+        assert_eq!(
+            geom(&media, &playing(Some("plain words\nno stamps\n"))).w,
+            MEDIA_W
+        );
         // Paused, a singing pill keeps its size (the title shows after a while).
         let mut paused = sung;
         paused.media.as_mut().unwrap().timeline = Timeline::new(12.0, 200.0, 0.0, false);
         assert!(crate::pill::lyric::sings(&paused));
 
         // 音乐与计时共存时保留歌词区域，暂停计时也不挤掉歌词；结束后回到音乐胶囊。
-        let mut timed = playing(Some("[00:10.00]Paper lanterns on the line\n[00:14.00]Count the windows\n"));
-        for theme in [poni_core::settings::Theme::Classic, poni_core::settings::Theme::Oyen, poni_core::settings::Theme::Glass, poni_core::settings::Theme::Pill, poni_core::settings::Theme::Diorama] {
+        let mut timed = playing(Some(
+            "[00:10.00]Paper lanterns on the line\n[00:14.00]Count the windows\n",
+        ));
+        for theme in [
+            poni_core::settings::Theme::Classic,
+            poni_core::settings::Theme::Oyen,
+            poni_core::settings::Theme::Glass,
+            poni_core::settings::Theme::Pill,
+            poni_core::settings::Theme::Diorama,
+        ] {
             timed.settings.theme = theme;
             timed.pomodoro.start(timed.now);
             assert_eq!(current_activity(&timed), Some(Activity::MediaTimer));
             let combined = Mode::Activity(Activity::MediaTimer);
-            assert_eq!(geom(&combined, &timed).w, crate::pill::media::fit_w() + 96.0);
+            assert_eq!(
+                geom(&combined, &timed).w,
+                crate::pill::media::fit_w() + 96.0
+            );
             assert!(next_wake(&combined, &timed).is_some());
             timed.pomodoro.pause(timed.now);
             assert_eq!(current_activity(&timed), Some(Activity::MediaTimer));
-            assert_eq!(geom(&combined, &timed).w, crate::pill::media::fit_w() + 96.0);
+            assert_eq!(
+                geom(&combined, &timed).w,
+                crate::pill::media::fit_w() + 96.0
+            );
             timed.pomodoro.reset();
             assert_eq!(current_activity(&timed), Some(Activity::Media));
         }
@@ -937,19 +1206,42 @@ mod tests {
     #[test]
     fn a_notice_that_stays_waits_under_a_volume_change_and_a_games_readout() {
         let mut st = AppState::new(Settings::default(), Store::default());
-        st.notify(Icon::Download, palette::GREEN, "Update available", "", f64::INFINITY, None);
+        st.notify(
+            Icon::Download,
+            palette::GREEN,
+            "Update available",
+            "",
+            f64::INFINITY,
+            None,
+        );
         assert!(st.notice.as_ref().is_some_and(|n| n.stays()));
         assert_eq!(collapsed_mode(&st), Mode::Notice);
-        st.hud = Some(crate::state::Hud { kind: HudKind::Volume { level: 0.5, muted: false }, until: st.now + 2.0 });
+        st.hud = Some(crate::state::Hud {
+            kind: HudKind::Volume {
+                level: 0.5,
+                muted: false,
+            },
+            until: st.now + 2.0,
+        });
         assert_eq!(collapsed_mode(&st), Mode::Hud(HudTag::Volume));
         st.hud = None;
         st.game.active = true;
         assert_eq!(collapsed_mode(&st), Mode::Activity(Activity::Game));
         st.game.active = false;
-        assert_eq!(collapsed_mode(&st), Mode::Notice, "and back once they're gone");
+        assert_eq!(
+            collapsed_mode(&st),
+            Mode::Notice,
+            "and back once they're gone"
+        );
         // A notice with a time limit still shows over both.
         st.notify(Icon::Download, palette::GREEN, "Saved", "", 5.0, None);
-        st.hud = Some(crate::state::Hud { kind: HudKind::Volume { level: 0.5, muted: false }, until: st.now + 2.0 });
+        st.hud = Some(crate::state::Hud {
+            kind: HudKind::Volume {
+                level: 0.5,
+                muted: false,
+            },
+            until: st.now + 2.0,
+        });
         st.game.active = true;
         assert_eq!(collapsed_mode(&st), Mode::Notice);
     }
@@ -961,7 +1253,11 @@ mod tests {
         assert_eq!(collapsed_mode(&idle), Mode::Idle);
         idle.aside = true;
         assert_eq!(collapsed_mode(&idle), Mode::Aside);
-        assert_eq!(resting_mode(&idle), Mode::Idle, "where it would rest doesn't change");
+        assert_eq!(
+            resting_mode(&idle),
+            Mode::Idle,
+            "where it would rest doesn't change"
+        );
         // The strip is the Hidden look's, whatever the idle look.
         assert_eq!(geom(&Mode::Aside, &idle), hidden_strip());
         idle.settings.idle_style = IdleStyle::Hidden;
@@ -977,7 +1273,13 @@ mod tests {
         song.now += 3.0;
         assert_eq!(collapsed_mode(&song), Mode::Aside);
         // Pop-ups and notices show over the window as before.
-        song.hud = Some(crate::state::Hud { kind: HudKind::Volume { level: 0.5, muted: false }, until: song.now + 2.0 });
+        song.hud = Some(crate::state::Hud {
+            kind: HudKind::Volume {
+                level: 0.5,
+                muted: false,
+            },
+            until: song.now + 2.0,
+        });
         assert_eq!(collapsed_mode(&song), Mode::Hud(HudTag::Volume));
         // Nothing moving on the strip: no frames while it waits.
         song.hud = None;
@@ -989,7 +1291,13 @@ mod tests {
     fn diorama_rests_as_its_picture_and_is_pill_in_everything_else() {
         use poni_core::settings::Theme;
         let state = |theme| {
-            let mut st = AppState::new(Settings { theme, ..Settings::default() }, Store::default());
+            let mut st = AppState::new(
+                Settings {
+                    theme,
+                    ..Settings::default()
+                },
+                Store::default(),
+            );
             st.power.has_battery = false;
             st
         };
@@ -997,11 +1305,19 @@ mod tests {
         // Every look but Hidden is the picture, 38 tall where Pill's
         // capsules are 32 and 24: with the time for the clock (and the
         // status bar, which is Pill's), alone for Minimal (and Eyes).
-        for (look, w) in [(IdleStyle::Clock, 100.0), (IdleStyle::Status, 100.0), (IdleStyle::Minimal, 80.0), (IdleStyle::Eyes, 80.0)] {
+        for (look, w) in [
+            (IdleStyle::Clock, 100.0),
+            (IdleStyle::Status, 100.0),
+            (IdleStyle::Minimal, 80.0),
+            (IdleStyle::Eyes, 80.0),
+        ] {
             diorama.settings.idle_style = look;
             let g = geom(&Mode::Idle, &diorama);
             assert_eq!((g.w, g.h, g.r), (w, 38.0, 19.0), "{look:?}");
-            assert!(!is_live(&Mode::Idle, &diorama), "{look:?}: nothing moves at rest");
+            assert!(
+                !is_live(&Mode::Idle, &diorama),
+                "{look:?}: nothing moves at rest"
+            );
         }
         pill.settings.idle_style = IdleStyle::Minimal;
         assert_eq!(geom(&Mode::Idle, &pill).h, 24.0);
@@ -1021,5 +1337,4 @@ mod tests {
             assert_eq!(geom(&m, &diorama), geom(&m, &pill), "{m:?}");
         }
     }
-
 }

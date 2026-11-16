@@ -1,6 +1,9 @@
 //! 原会话阅读、附件预览和回复输入；服务调用仍由父页面返回 Command。
 
-use super::{Conversation, Entry, Command, Icon, TextStyle, Weight, Ui, PillStyle, PILL_SMALL, MAX_REPLY_CHARS};
+use super::{
+    Command, Conversation, Entry, Icon, PillStyle, TextStyle, Ui, Weight, MAX_REPLY_CHARS,
+    PILL_SMALL,
+};
 use crate::codex_client::Role;
 use crate::ui::{wid, wid_n};
 use poni_core::design::radius;
@@ -209,7 +212,14 @@ pub(super) fn draw(
         (composer_y - body_y - 8.0).max(16.0),
     );
     let attachment_command = if compact {
-        draw_message(ui, &entry.message.id, &entry.message.text, &mut conversation.scroll, body, accent)
+        draw_message(
+            ui,
+            &entry.message.id,
+            &entry.message.text,
+            &mut conversation.scroll,
+            body,
+            accent,
+        )
     } else {
         draw_transcript(ui, conversation, body, accent)
     };
@@ -345,7 +355,12 @@ pub(super) fn draw(
     attachment_command
 }
 
-fn draw_transcript(ui: &mut Ui, conversation: &mut Conversation, area: Rect, accent: Color) -> Option<Command> {
+fn draw_transcript(
+    ui: &mut Ui,
+    conversation: &mut Conversation,
+    area: Rect,
+    accent: Color,
+) -> Option<Command> {
     let view = area.inset(3.0, 4.0);
     let regular_style = TextStyle::body().wrap().top().line_spacing(1.4);
     let progress_style = TextStyle::footnote()
@@ -369,7 +384,11 @@ fn draw_transcript(ui: &mut Ui, conversation: &mut Conversation, area: Rect, acc
             &regular_style
         };
         let formatted = item.role == Role::Assistant;
-        let measured_w = if formatted { max_text_w } else { ui.c.measure_raw(&item.text, style, max_text_w).0 };
+        let measured_w = if formatted {
+            max_text_w
+        } else {
+            ui.c.measure_raw(&item.text, style, max_text_w).0
+        };
         let min_width = if !item.attachments.is_empty() {
             240.0
         } else if item.progress {
@@ -378,19 +397,23 @@ fn draw_transcript(ui: &mut Ui, conversation: &mut Conversation, area: Rect, acc
             72.0
         };
         let bubble_w = (measured_w.ceil() + 24.0).max(min_width).min(max_bubble_w);
-        let formatted_layout = formatted.then(|| markdown::layout(ui, &item.markdown, (bubble_w - 24.0).max(1.0), *style));
+        let formatted_layout = formatted
+            .then(|| markdown::layout(ui, &item.markdown, (bubble_w - 24.0).max(1.0), *style));
         let text_h = if let Some(layout) = &formatted_layout {
             layout.height
         } else if item.text.is_empty() {
             0.0
         } else {
-            ui.c.measure_raw(&item.text, style, (bubble_w - 24.0).max(1.0)).1.max(18.0)
+            ui.c.measure_raw(&item.text, style, (bubble_w - 24.0).max(1.0))
+                .1
+                .max(18.0)
         };
         let attachments_h = if item.attachments.is_empty() {
             0.0
         } else {
             let count = item.attachments.len() as f32;
-            count * attachment_h + (count - 1.0) * attachment_gap
+            count * attachment_h
+                + (count - 1.0) * attachment_gap
                 + if text_h > 0.0 { 8.0 } else { 0.0 }
         };
         let bubble_h = text_h + attachments_h + if item.progress { 29.0 } else { 37.0 };
@@ -459,14 +482,32 @@ fn draw_transcript(ui: &mut Ui, conversation: &mut Conversation, area: Rect, acc
                 &regular_style
             };
             if let Some(layout) = formatted_layout {
-                if let Some(command) = markdown::draw(ui, &layout, Point::new(x + 12.0, text_y), view, accent, wid(&item.id)) {
+                if let Some(command) = markdown::draw(
+                    ui,
+                    &layout,
+                    Point::new(x + 12.0, text_y),
+                    view,
+                    accent,
+                    wid(&item.id),
+                ) {
                     preview = Some(command);
                 }
             } else if text_h > 0.0 {
-                ui.c.text_raw(&item.text, Rect::new(x + 12.0, text_y, width - 24.0, text_h), style);
+                ui.c.text_raw(
+                    &item.text,
+                    Rect::new(x + 12.0, text_y, width - 24.0, text_h),
+                    style,
+                );
             }
             let attachment_y = text_y + text_h + if text_h > 0.0 { 8.0 } else { 0.0 };
-            if let Some(command) = draw_attachments(ui, &item.attachments, Point::new(x + 12.0, attachment_y), width - 24.0, view, &item.id) {
+            if let Some(command) = draw_attachments(
+                ui,
+                &item.attachments,
+                Point::new(x + 12.0, attachment_y),
+                width - 24.0,
+                view,
+                &item.id,
+            ) {
                 preview = Some(command);
             }
         }
@@ -486,24 +527,62 @@ fn draw_transcript(ui: &mut Ui, conversation: &mut Conversation, area: Rect, acc
 }
 
 /// 紧凑预览和等待详情共用 Markdown 与附件布局，避免切换模式后又显示原始标记。
-pub(super) fn draw_message(ui: &mut Ui, message: &str, text: &str, scroll: &mut f32, area: Rect, accent: Color) -> Option<Command> {
+pub(super) fn draw_message(
+    ui: &mut Ui,
+    message: &str,
+    text: &str,
+    scroll: &mut f32,
+    area: Rect,
+    accent: Color,
+) -> Option<Command> {
     let view = area.inset(3.0, 2.0);
     let (blocks, attachments) = crate::codex_client::markdown::parse(text);
-    let layout = markdown::layout(ui, &blocks, view.w, TextStyle::footnote().color(palette::TEXT_DIM));
-    let attachments_h = if attachments.is_empty() { 0.0 } else { attachments.len() as f32 * 56.0 - 6.0 + if layout.height > 0.0 { 8.0 } else { 0.0 } };
+    let layout = markdown::layout(
+        ui,
+        &blocks,
+        view.w,
+        TextStyle::footnote().color(palette::TEXT_DIM),
+    );
+    let attachments_h = if attachments.is_empty() {
+        0.0
+    } else {
+        attachments.len() as f32 * 56.0 - 6.0 + if layout.height > 0.0 { 8.0 } else { 0.0 }
+    };
     let total_h = layout.height + attachments_h;
     *scroll = (*scroll - ui.wheel_in(area) * 40.0).clamp(0.0, (total_h - view.h).max(0.0));
     ui.c.clip(view);
     let origin = Point::new(view.x, view.y - *scroll);
     let mut command = markdown::draw(ui, &layout, origin, view, accent, wid(message));
     let attachment_y = origin.y + layout.height + if layout.height > 0.0 { 8.0 } else { 0.0 };
-    if let Some(preview) = draw_attachments(ui, &attachments, Point::new(origin.x, attachment_y), view.w, view, message) { command = Some(preview); }
-    if total_h == 0.0 { ui.c.text("此消息没有正文。", view, &TextStyle::footnote().color(palette::TEXT_FAINT)); }
+    if let Some(preview) = draw_attachments(
+        ui,
+        &attachments,
+        Point::new(origin.x, attachment_y),
+        view.w,
+        view,
+        message,
+    ) {
+        command = Some(preview);
+    }
+    if total_h == 0.0 {
+        ui.c.text(
+            "此消息没有正文。",
+            view,
+            &TextStyle::footnote().color(palette::TEXT_FAINT),
+        );
+    }
     ui.c.unclip();
     command
 }
 
-fn draw_attachments(ui: &mut Ui, attachments: &[crate::codex_client::ChatAttachment], origin: Point, width: f32, view: Rect, message: &str) -> Option<Command> {
+fn draw_attachments(
+    ui: &mut Ui,
+    attachments: &[crate::codex_client::ChatAttachment],
+    origin: Point,
+    width: f32,
+    view: Rect,
+    message: &str,
+) -> Option<Command> {
     let attachment_h = 50.0;
     let attachment_gap = 6.0;
     let mut attachment_y = origin.y;
@@ -520,7 +599,10 @@ fn draw_attachments(ui: &mut Ui, attachments: &[crate::codex_client::ChatAttachm
         if let Some(path) = &attachment.path {
             // 点击区域同样裁到视口，隐藏在输入框或标题下的卡片不能响应。
             let hit = Rect::new(card.x, hit_top, card.w, hit_bottom - hit_top);
-            let id = wid_n("codex.chat-attachment", wid_n(message, attachment_index as u64));
+            let id = wid_n(
+                "codex.chat-attachment",
+                wid_n(message, attachment_index as u64),
+            );
             let response = ui.button(id, hit);
             hovered = response.hovered;
             if response.clicked {
@@ -528,12 +610,33 @@ fn draw_attachments(ui: &mut Ui, attachments: &[crate::codex_client::ChatAttachm
                 preview = Some(Command::CodexPreviewAttachment(path.clone()));
             }
         }
-        ui.c.fill_rrect(card, radius::CONTROL, if hovered { palette::SURFACE_HOVER } else { palette::SURFACE });
-        ui.c.stroke_rrect(card, radius::CONTROL, if hovered { palette::TEXT_FAINT.mul_alpha(0.4) } else { palette::BORDER }, 1.0);
+        ui.c.fill_rrect(
+            card,
+            radius::CONTROL,
+            if hovered {
+                palette::SURFACE_HOVER
+            } else {
+                palette::SURFACE
+            },
+        );
+        ui.c.stroke_rrect(
+            card,
+            radius::CONTROL,
+            if hovered {
+                palette::TEXT_FAINT.mul_alpha(0.4)
+            } else {
+                palette::BORDER
+            },
+            1.0,
+        );
         ui.c.icon(
             Icon::File,
             Rect::new(card.x + 9.0, card.y + 14.0, 22.0, 22.0),
-            if attachment.path.is_some() { palette::TEXT_DIM } else { palette::TEXT_FAINT },
+            if attachment.path.is_some() {
+                palette::TEXT_DIM
+            } else {
+                palette::TEXT_FAINT
+            },
         );
         let text_x = card.x + 39.0;
         let text_w = (card.w - 75.0).max(0.0);
@@ -560,7 +663,11 @@ fn draw_attachments(ui: &mut Ui, attachments: &[crate::codex_client::ChatAttachm
             ui.c.icon(
                 Icon::Eye,
                 Rect::new(card.right() - 27.0, card.y + 17.0, 17.0, 17.0),
-                if hovered { palette::TEXT } else { palette::TEXT_DIM },
+                if hovered {
+                    palette::TEXT
+                } else {
+                    palette::TEXT_DIM
+                },
             );
         }
     }

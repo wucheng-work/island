@@ -12,7 +12,7 @@ use std::time::Duration;
 use windows::core::{w, Error, Result, RuntimeType, HSTRING, PCWSTR};
 use windows::ApplicationModel::{Package, StartupTask, StartupTaskState};
 use windows::Foundation::{AsyncOperationCompletedHandler, IAsyncOperation};
-use windows::Win32::Foundation::{E_FAIL, ERROR_TIMEOUT};
+use windows::Win32::Foundation::{ERROR_TIMEOUT, E_FAIL};
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
 use windows::Win32::System::Registry::*;
 
@@ -34,18 +34,23 @@ pub fn packaged() -> bool {
 /// Store build's startup task may take a moment to answer, and the island
 /// keeps drawing meanwhile.
 pub fn report(sink: EventSink, set: Option<bool>) {
-    let spawned = std::thread::Builder::new().name("autostart".into()).spawn(move || {
-        let hr = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
-        if let Some(on) = set {
-            if let Err(e) = set_enabled(on) {
-                crate::pwarn!("autostart: turning it {} failed: {e}", if on { "on" } else { "off" });
+    let spawned = std::thread::Builder::new()
+        .name("autostart".into())
+        .spawn(move || {
+            let hr = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+            if let Some(on) = set {
+                if let Err(e) = set_enabled(on) {
+                    crate::pwarn!(
+                        "autostart: turning it {} failed: {e}",
+                        if on { "on" } else { "off" }
+                    );
+                }
             }
-        }
-        sink.send(AppEvent::Autostart(is_enabled()));
-        if hr.is_ok() {
-            unsafe { CoUninitialize() };
-        }
-    });
+            sink.send(AppEvent::Autostart(is_enabled()));
+            if hr.is_ok() {
+                unsafe { CoUninitialize() };
+            }
+        });
     if let Err(e) = spawned {
         crate::pwarn!("autostart: no thread to read it on: {e}");
     }
@@ -53,9 +58,13 @@ pub fn report(sink: EventSink, set: Option<bool>) {
 
 pub fn is_enabled() -> bool {
     if packaged() {
-        return task_state().is_ok_and(|s| s == StartupTaskState::Enabled || s == StartupTaskState::EnabledByPolicy);
+        return task_state().is_ok_and(|s| {
+            s == StartupTaskState::Enabled || s == StartupTaskState::EnabledByPolicy
+        });
     }
-    let Ok(key) = open_run_key(KEY_READ) else { return false };
+    let Ok(key) = open_run_key(KEY_READ) else {
+        return false;
+    };
     let mut size = 0u32;
     let ok = unsafe { RegQueryValueExW(key, VALUE, None, None, None, Some(&mut size)) }.is_ok();
     unsafe {
@@ -70,14 +79,19 @@ pub fn set_enabled(on: bool) -> Result<()> {
     }
     let key = open_run_key(KEY_READ | KEY_WRITE)?;
     let res = if on {
-        let exe = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        let exe = std::env::current_exe()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let value = format!("\"{exe}\"");
         let wide: Vec<u16> = value.encode_utf16().chain(Some(0)).collect();
-        let bytes = unsafe { std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2) };
+        let bytes =
+            unsafe { std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2) };
         unsafe { RegSetValueExW(key, VALUE, 0, REG_SZ, Some(bytes)).ok() }
     } else {
         match unsafe { RegDeleteValueW(key, VALUE) }.ok() {
-            Err(e) if e.code() == windows::Win32::Foundation::ERROR_FILE_NOT_FOUND.to_hresult() => Ok(()),
+            Err(e) if e.code() == windows::Win32::Foundation::ERROR_FILE_NOT_FOUND.to_hresult() => {
+                Ok(())
+            }
             r => r,
         }
     };
@@ -95,7 +109,10 @@ pub fn describe() -> std::result::Result<String, String> {
         return Ok(format!("installer build: Run value {set}"));
     }
     match task_state() {
-        Ok(s) => Ok(format!("packaged: startup task {TASK_ID} is {}", state_name(s))),
+        Ok(s) => Ok(format!(
+            "packaged: startup task {TASK_ID} is {}",
+            state_name(s)
+        )),
         Err(e) => Err(format!("packaged: startup task {TASK_ID} unavailable: {e}")),
     }
 }
@@ -129,7 +146,10 @@ fn set_task_enabled(on: bool) -> Result<()> {
             crate::shell::open_startup_settings();
             Ok(())
         }
-        s => Err(Error::new(E_FAIL, format!("startup task stays {}", state_name(s)))),
+        s => Err(Error::new(
+            E_FAIL,
+            format!("startup task stays {}", state_name(s)),
+        )),
     }
 }
 
@@ -148,16 +168,21 @@ fn state_name(s: StartupTaskState) -> &'static str {
 /// on timeout).
 fn wait<T: RuntimeType + 'static>(op: IAsyncOperation<T>) -> Result<T> {
     let (tx, rx) = mpsc::channel();
-    op.SetCompleted(&AsyncOperationCompletedHandler::<T>::new(move |_, status| {
-        let _ = tx.send(status);
-        Ok(())
-    }))?;
+    op.SetCompleted(&AsyncOperationCompletedHandler::<T>::new(
+        move |_, status| {
+            let _ = tx.send(status);
+            Ok(())
+        },
+    ))?;
     match rx.recv_timeout(TASK_TIMEOUT) {
         // A failed or cancelled operation returns its error here.
         Ok(_) => op.GetResults(),
         Err(_) => {
             let _ = op.Cancel();
-            Err(Error::new(ERROR_TIMEOUT.to_hresult(), "no answer from the startup task"))
+            Err(Error::new(
+                ERROR_TIMEOUT.to_hresult(),
+                "no answer from the startup task",
+            ))
         }
     }
 }

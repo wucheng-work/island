@@ -33,20 +33,23 @@ use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{E_UNEXPECTED, HMODULE, HWND, LPARAM, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
 use windows::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, HMONITOR, MONITORINFO, MONITOR_DEFAULTTONULL,
-    MONITOR_DEFAULTTOPRIMARY,
+    GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, HMONITOR, MONITORINFO,
+    MONITOR_DEFAULTTONULL, MONITOR_DEFAULTTOPRIMARY,
 };
 use windows::Win32::System::Threading::GetCurrentProcessId;
 use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
 use windows::Win32::UI::Shell::{
-    SHAppBarMessage, SHQueryUserNotificationState, ABM_NEW, ABM_REMOVE, ABN_FULLSCREENAPP, APPBARDATA,
-    QUERY_USER_NOTIFICATION_STATE, QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
+    SHAppBarMessage, SHQueryUserNotificationState, ABM_NEW, ABM_REMOVE, ABN_FULLSCREENAPP,
+    APPBARDATA, QUERY_USER_NOTIFICATION_STATE, QUNS_BUSY, QUNS_PRESENTATION_MODE,
+    QUNS_RUNNING_D3D_FULL_SCREEN,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowExW, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowLongW, GetWindowRect, GetWindowThreadProcessId,
-    GetDesktopWindow, GetShellWindow, IsIconic, IsWindow, IsWindowVisible, IsZoomed, CHILDID_SELF, EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE,
-    EVENT_OBJECT_LOCATIONCHANGE, EVENT_SYSTEM_FOREGROUND, GWL_EXSTYLE, GWL_STYLE, GW_CHILD, GW_HWNDNEXT, GW_HWNDPREV, OBJID_WINDOW,
-    WINEVENT_OUTOFCONTEXT, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_THICKFRAME,
+    FindWindowExW, GetClassNameW, GetDesktopWindow, GetForegroundWindow, GetShellWindow, GetWindow,
+    GetWindowLongW, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible,
+    IsZoomed, CHILDID_SELF, EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE, EVENT_OBJECT_LOCATIONCHANGE,
+    EVENT_SYSTEM_FOREGROUND, GWL_EXSTYLE, GWL_STYLE, GW_CHILD, GW_HWNDNEXT, GW_HWNDPREV,
+    OBJID_WINDOW, WINEVENT_OUTOFCONTEXT, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_THICKFRAME,
 };
 
 /// Desktop and shell surfaces that cover a whole monitor without being a
@@ -126,8 +129,12 @@ struct Tracked {
 }
 
 impl Tracked {
-    const NONE: Tracked =
-        Tracked { hwnd: HWND(std::ptr::null_mut()), spans: false, covers: false, on_island_monitor: false };
+    const NONE: Tracked = Tracked {
+        hwnd: HWND(std::ptr::null_mut()),
+        spans: false,
+        covers: false,
+        on_island_monitor: false,
+    };
 }
 
 pub struct FullscreenWatcher {
@@ -141,7 +148,10 @@ impl FullscreenWatcher {
     /// delivers the WinEvent callbacks and the AppBar messages).
     pub fn start(helper: HWND, sink: EventSink) -> windows::core::Result<Self> {
         if current().is_some() {
-            return Err(windows::core::Error::new(E_UNEXPECTED, "full-screen watcher already running"));
+            return Err(windows::core::Error::new(
+                E_UNEXPECTED,
+                "full-screen watcher already running",
+            ));
         }
         let appbar = register_appbar(helper);
         let fg_hook = unsafe {
@@ -157,7 +167,10 @@ impl FullscreenWatcher {
         };
         if fg_hook.is_invalid() {
             if !appbar {
-                return Err(windows::core::Error::new(E_UNEXPECTED, "no AppBar and no foreground hook"));
+                return Err(windows::core::Error::new(
+                    E_UNEXPECTED,
+                    "no AppBar and no foreground hook",
+                ));
             }
             crate::pwarn!("fullscreen: foreground hook failed; relying on AppBar notifications");
         }
@@ -175,7 +188,11 @@ impl FullscreenWatcher {
             top_band: Cell::new(None),
             top: RefCell::new(Vec::new()),
         });
-        let me = Self { helper, fg_hook, appbar: Cell::new(appbar) };
+        let me = Self {
+            helper,
+            fg_hook,
+            appbar: Cell::new(appbar),
+        };
         let stored = WATCH.try_with(|w| match w.try_borrow_mut() {
             Ok(mut g) => {
                 *g = Some(watch.clone());
@@ -185,7 +202,10 @@ impl FullscreenWatcher {
         });
         if !matches!(stored, Ok(true)) {
             // `me` is dropped here, which removes the AppBar and the hook.
-            return Err(windows::core::Error::new(E_UNEXPECTED, "full-screen watcher state unavailable"));
+            return Err(windows::core::Error::new(
+                E_UNEXPECTED,
+                "full-screen watcher state unavailable",
+            ));
         }
         // Poni may start while something already runs full screen.
         if let Some(on) = reevaluate(&watch, None) {
@@ -243,7 +263,10 @@ impl FullscreenWatcher {
 
 impl Drop for FullscreenWatcher {
     fn drop(&mut self) {
-        let watch = WATCH.try_with(|w| w.try_borrow_mut().ok().and_then(|mut g| g.take())).ok().flatten();
+        let watch = WATCH
+            .try_with(|w| w.try_borrow_mut().ok().and_then(|mut g| g.take()))
+            .ok()
+            .flatten();
         if let Some(w) = watch {
             // Unhooks every per-thread hook.
             drop(w.thread_hooks.take());
@@ -289,7 +312,10 @@ fn unregister_appbar(helper: HWND) {
 // ------------------------------------------------------------------ WinEvents
 
 fn current() -> Option<Rc<Watch>> {
-    WATCH.try_with(|w| w.try_borrow().ok().and_then(|g| g.clone())).ok().flatten()
+    WATCH
+        .try_with(|w| w.try_borrow().ok().and_then(|g| g.clone()))
+        .ok()
+        .flatten()
 }
 
 unsafe extern "system" fn on_win_event(
@@ -302,7 +328,9 @@ unsafe extern "system" fn on_win_event(
     _time: u32,
 ) {
     // Cheapest filter first: caret and cursor events end here.
-    if event != EVENT_SYSTEM_FOREGROUND && (idobject != OBJID_WINDOW.0 || idchild != CHILDID_SELF as i32) {
+    if event != EVENT_SYSTEM_FOREGROUND
+        && (idobject != OBJID_WINDOW.0 || idchild != CHILDID_SELF as i32)
+    {
         return;
     }
     let Some(w) = current() else { return };
@@ -341,7 +369,9 @@ unsafe extern "system" fn on_win_event(
         // Still full-screen, but the new foreground window (a game often makes
         // itself topmost) may now sit above the island: report it again so the
         // app can raise the island.
-        None if event == EVENT_SYSTEM_FOREGROUND && w.fullscreen.get() => w.sink.send(AppEvent::Fullscreen(true)),
+        None if event == EVENT_SYSTEM_FOREGROUND && w.fullscreen.get() => {
+            w.sink.send(AppEvent::Fullscreen(true))
+        }
         // Any other new foreground window can do the same (a browser left
         // topmost after F11, a tool's "always on top").
         None if event == EVENT_SYSTEM_FOREGROUND => w.sink.send(AppEvent::Foreground),
@@ -360,18 +390,37 @@ struct ThreadHooks {
 impl ThreadHooks {
     fn install(tid: u32, pid: u32, life: bool) -> Option<Self> {
         let hook = |min: u32, max: u32| unsafe {
-            SetWinEventHook(min, max, HMODULE::default(), Some(on_win_event), pid, tid, WINEVENT_OUTOFCONTEXT)
+            SetWinEventHook(
+                min,
+                max,
+                HMODULE::default(),
+                Some(on_win_event),
+                pid,
+                tid,
+                WINEVENT_OUTOFCONTEXT,
+            )
         };
         let loc = hook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE);
         if loc.is_invalid() {
             if !WARNED_THREAD_HOOK.swap(true, Ordering::Relaxed) {
-                crate::pwarn!("fullscreen: location hook failed ({})", windows::core::Error::from_win32());
+                crate::pwarn!(
+                    "fullscreen: location hook failed ({})",
+                    windows::core::Error::from_win32()
+                );
             }
             return None;
         }
         // DESTROY..=HIDE also spans SHOW; the callback filters by window.
-        let gone = if life { hook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE) } else { HWINEVENTHOOK::default() };
-        Some(Self { tid, life, hooks: [loc, gone] })
+        let gone = if life {
+            hook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE)
+        } else {
+            HWINEVENTHOOK::default()
+        };
+        Some(Self {
+            tid,
+            life,
+            hooks: [loc, gone],
+        })
     }
 }
 
@@ -446,14 +495,22 @@ fn reevaluate(w: &Watch, hint: Option<HMONITOR>) -> Option<bool> {
         }
     }
     w.fullscreen.set(verdict.on);
-    w.decided.set(if verdict.on { verdict.hwnd } else { HWND::default() });
+    w.decided.set(if verdict.on {
+        verdict.hwnd
+    } else {
+        HWND::default()
+    });
     update_thread_hooks(w);
     w.busy.set(false);
     if verdict.on == before {
         return None;
     }
     if verdict.on {
-        let class = if verdict.hwnd.is_invalid() { "-".to_string() } else { class_name(verdict.hwnd) };
+        let class = if verdict.hwnd.is_invalid() {
+            "-".to_string()
+        } else {
+            class_name(verdict.hwnd)
+        };
         crate::pinfo!("fullscreen: {} (window class {class})", verdict.why);
     } else {
         crate::pinfo!("fullscreen: monitor uncovered");
@@ -470,10 +527,18 @@ struct Verdict {
 
 impl Verdict {
     fn off() -> Self {
-        Self { on: false, why: "", hwnd: HWND::default() }
+        Self {
+            on: false,
+            why: "",
+            hwnd: HWND::default(),
+        }
     }
     fn on(why: &'static str, hwnd: HWND) -> Self {
-        Self { on: true, why, hwnd }
+        Self {
+            on: true,
+            why,
+            hwnd,
+        }
     }
 }
 
@@ -500,7 +565,8 @@ fn evaluate(w: &Watch, hint: Option<HMONITOR>) -> Verdict {
         w.culprit.set(fg);
         return Verdict::on("the foreground window covers the monitor", fg.hwnd);
     }
-    let quns = unsafe { SHQueryUserNotificationState() }.unwrap_or(QUERY_USER_NOTIFICATION_STATE(0));
+    let quns =
+        unsafe { SHQueryUserNotificationState() }.unwrap_or(QUERY_USER_NOTIFICATION_STATE(0));
     if quns == QUNS_PRESENTATION_MODE {
         return Verdict::on("presentation mode", fg.hwnd);
     }
@@ -527,7 +593,10 @@ fn evaluate(w: &Watch, hint: Option<HMONITOR>) -> Verdict {
 fn track(w: &Watch, hwnd: HWND, mon: HMONITOR, rect: Option<&RECT>) -> Tracked {
     if hwnd.is_invalid() {
         // No foreground window (mid-switch): it is on no other monitor.
-        return Tracked { on_island_monitor: true, ..Tracked::NONE };
+        return Tracked {
+            on_island_monitor: true,
+            ..Tracked::NONE
+        };
     }
     let on_island_monitor = unsafe {
         let m = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL);
@@ -535,7 +604,12 @@ fn track(w: &Watch, hwnd: HWND, mon: HMONITOR, rect: Option<&RECT>) -> Tracked {
     };
     let spans = rect.is_some_and(|r| spans(w, hwnd, r));
     let covers = spans && !is_ordinary_window(hwnd);
-    Tracked { hwnd, spans, covers, on_island_monitor }
+    Tracked {
+        hwnd,
+        spans,
+        covers,
+        on_island_monitor,
+    }
 }
 
 /// True when `hwnd` is a visible, foreign, non-shell window whose rect
@@ -543,7 +617,8 @@ fn track(w: &Watch, hwnd: HWND, mon: HMONITOR, rect: Option<&RECT>) -> Tracked {
 /// per-monitor-v2 DPI aware, so both come back unscaled).
 fn spans(w: &Watch, hwnd: HWND, mon: &RECT) -> bool {
     unsafe {
-        if !IsWindow(hwnd).as_bool() || !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
+        if !IsWindow(hwnd).as_bool() || !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool()
+        {
             return false;
         }
         let mut r = RECT::default();
@@ -570,12 +645,17 @@ fn spans(w: &Watch, hwnd: HWND, mon: &RECT) -> bool {
 fn is_ordinary_window(hwnd: HWND) -> bool {
     unsafe {
         let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
-        IsZoomed(hwnd).as_bool() || style & WS_CAPTION.0 == WS_CAPTION.0 || style & WS_THICKFRAME.0 != 0
+        IsZoomed(hwnd).as_bool()
+            || style & WS_CAPTION.0 == WS_CAPTION.0
+            || style & WS_THICKFRAME.0 != 0
     }
 }
 
 fn contains(outer: &RECT, inner: &RECT) -> bool {
-    outer.left <= inner.left && outer.top <= inner.top && outer.right >= inner.right && outer.bottom >= inner.bottom
+    outer.left <= inner.left
+        && outer.top <= inner.top
+        && outer.right >= inner.right
+        && outer.bottom >= inner.bottom
 }
 
 /// Hidden by DWM (another virtual desktop, a suspended UWP app).
@@ -606,7 +686,14 @@ pub fn fullscreen_pid() -> Option<u32> {
     // A Microsoft Store game's frame belongs to Application Frame Host; the
     // game's own process owns the core window inside it.
     let hwnd = if class_name(hwnd) == "ApplicationFrameWindow" {
-        match unsafe { FindWindowExW(hwnd, HWND::default(), w!("Windows.UI.Core.CoreWindow"), PCWSTR::null()) } {
+        match unsafe {
+            FindWindowExW(
+                hwnd,
+                HWND::default(),
+                w!("Windows.UI.Core.CoreWindow"),
+                PCWSTR::null(),
+            )
+        } {
             Ok(core) if !core.is_invalid() => core,
             _ => hwnd,
         }
@@ -664,7 +751,11 @@ pub fn window_above(island: HWND) -> Option<String> {
 /// when it changed.
 /// With Stay picked, the list empties and nothing is looked at.
 fn rescan_top(w: &Watch) {
-    let found = w.top_band.get().map(|band| scan_top(w, &band)).unwrap_or_default();
+    let found = w
+        .top_band
+        .get()
+        .map(|band| scan_top(w, &band))
+        .unwrap_or_default();
     set_top(w, found);
 }
 
@@ -752,12 +843,18 @@ fn at_top(w: &Watch, hwnd: HWND, band: &RECT) -> Option<[i32; 4]> {
 /// ours), or a tool window without a taskbar button (floating toolbars,
 /// hover cards). Some stay visible across the whole screen all day.
 fn is_overlay(ex: u32) -> bool {
-    ex & (WS_EX_TRANSPARENT.0 | WS_EX_NOACTIVATE.0) != 0 || (ex & WS_EX_TOOLWINDOW.0 != 0 && ex & WS_EX_APPWINDOW.0 == 0)
+    ex & (WS_EX_TRANSPARENT.0 | WS_EX_NOACTIVATE.0) != 0
+        || (ex & WS_EX_TOOLWINDOW.0 != 0 && ex & WS_EX_APPWINDOW.0 == 0)
 }
 
 /// `r` cut to `band` as (left, top, right, bottom); None when they don't meet.
 fn clip(r: &RECT, band: &RECT) -> Option<[i32; 4]> {
-    let c = [r.left.max(band.left), r.top.max(band.top), r.right.min(band.right), r.bottom.min(band.bottom)];
+    let c = [
+        r.left.max(band.left),
+        r.top.max(band.top),
+        r.right.min(band.right),
+        r.bottom.min(band.bottom),
+    ];
     (c[0] < c[2] && c[1] < c[3]).then_some(c)
 }
 
@@ -790,7 +887,10 @@ fn monitor_rect(mon: HMONITOR) -> Option<RECT> {
     if mon.is_invalid() {
         return None;
     }
-    let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+    let mut mi = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
     unsafe { GetMonitorInfoW(mon, &mut mi).as_bool() }.then_some(mi.rcMonitor)
 }
 
@@ -802,7 +902,14 @@ fn island_window(w: &Watch) -> HWND {
     }
     let mut after = HWND::default();
     let found = loop {
-        let next = unsafe { FindWindowExW(HWND::default(), after, crate::window::ISLAND_CLASS, PCWSTR::null()) };
+        let next = unsafe {
+            FindWindowExW(
+                HWND::default(),
+                after,
+                crate::window::ISLAND_CLASS,
+                PCWSTR::null(),
+            )
+        };
         let Ok(h) = next else { break HWND::default() };
         if h.is_invalid() {
             break HWND::default();
@@ -823,7 +930,12 @@ mod tests {
     use super::*;
 
     fn r(left: i32, top: i32, right: i32, bottom: i32) -> RECT {
-        RECT { left, top, right, bottom }
+        RECT {
+            left,
+            top,
+            right,
+            bottom,
+        }
     }
 
     #[test]
@@ -850,15 +962,26 @@ mod tests {
         assert_eq!(clip(&r(1920, 0, 3840, 1040), &band), None);
         // A monitor left of the primary one, its band its own.
         let left = r(-2560, -200, 0, -128);
-        assert_eq!(clip(&r(-2568, -208, 8, 1208), &left), Some([-2560, -200, 0, -128]));
+        assert_eq!(
+            clip(&r(-2568, -208, 8, 1208), &left),
+            Some([-2560, -200, 0, -128])
+        );
     }
 
     #[test]
     fn overlays_are_not_windows_at_the_top() {
         // A browser, File Explorer, a Store app's frame.
         assert!(!is_overlay(0x0000_0100)); // WS_EX_WINDOWEDGE
-        assert!(!is_overlay((WS_EX_TOOLWINDOW | WS_EX_APPWINDOW).0), "a tool window with a taskbar button counts");
-        for ex in [WS_EX_TRANSPARENT, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT] {
+        assert!(
+            !is_overlay((WS_EX_TOOLWINDOW | WS_EX_APPWINDOW).0),
+            "a tool window with a taskbar button counts"
+        );
+        for ex in [
+            WS_EX_TRANSPARENT,
+            WS_EX_NOACTIVATE,
+            WS_EX_TOOLWINDOW,
+            WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT,
+        ] {
             assert!(is_overlay(ex.0), "{:#x}", ex.0);
         }
     }

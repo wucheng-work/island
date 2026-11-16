@@ -16,13 +16,21 @@
 use crate::events::{AppEvent, EventSink};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
-use objc2::{define_class, msg_send, sel, AllocAnyThread, ClassType, DefinedClass, MainThreadMarker, MainThreadOnly};
+use objc2::{
+    define_class, msg_send, sel, AllocAnyThread, ClassType, DefinedClass, MainThreadMarker,
+    MainThreadOnly,
+};
 use objc2_app_kit::{
-    NSAppearance, NSAppearanceCustomization, NSAppearanceNameAqua, NSAppearanceNameDarkAqua, NSApplication, NSBackingStoreType, NSClipView, NSEvent, NSEventModifierFlags, NSGraphicsContext,
-    NSResponder, NSScreen, NSTextView, NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow, NSWindowStyleMask, NSWindowTitleVisibility, NSWorkspace,
+    NSAppearance, NSAppearanceCustomization, NSAppearanceNameAqua, NSAppearanceNameDarkAqua,
+    NSApplication, NSBackingStoreType, NSClipView, NSEvent, NSEventModifierFlags,
+    NSGraphicsContext, NSResponder, NSScreen, NSTextView, NSTrackingArea, NSTrackingAreaOptions,
+    NSView, NSWindow, NSWindowStyleMask, NSWindowTitleVisibility, NSWorkspace,
 };
 use objc2_app_kit::{NSColor, NSColorPanel, NSColorSpace};
-use objc2_foundation::{ns_string, NSArray, NSObject, NSObjectProtocol, NSPoint, NSRect, NSRunLoop, NSRunLoopCommonModes, NSSize};
+use objc2_foundation::{
+    ns_string, NSArray, NSObject, NSObjectProtocol, NSPoint, NSRect, NSRunLoop,
+    NSRunLoopCommonModes, NSSize,
+};
 use objc2_quartz_core::{CADisplayLink, CAFrameRateRange};
 use std::cell::RefCell;
 
@@ -296,13 +304,20 @@ define_class!(
 
 /// 在 app 借用释放后打开，避免 AppKit 的同步回调重入。
 pub fn choose_lyrics_color(color: poni_core::geom::Color, sink: EventSink) {
-    let Some(mtm) = MainThreadMarker::new() else { return };
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
     let panel = NSColorPanel::sharedColorPanel(mtm);
     unsafe {
         panel.setTarget(None);
         panel.setAction(None);
     }
-    panel.setColor(&NSColor::colorWithSRGBRed_green_blue_alpha(color.r as f64, color.g as f64, color.b as f64, 1.0));
+    panel.setColor(&NSColor::colorWithSRGBRed_green_blue_alpha(
+        color.r as f64,
+        color.g as f64,
+        color.b as f64,
+        1.0,
+    ));
     panel.setShowsAlpha(false);
     // 释放鼠标时才保存所选颜色，避免拖动色轮时反复写设置文件。
     panel.setContinuous(false);
@@ -335,8 +350,13 @@ pub fn create(mtm: MainThreadMarker) -> f32 {
         return scale();
     }
     let rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(WIDTH, HEIGHT));
-    let style = NSWindowStyleMask::Titled | NSWindowStyleMask::Closable | NSWindowStyleMask::Miniaturizable | NSWindowStyleMask::FullSizeContentView;
-    let window: Retained<SettingsWindow> = unsafe { msg_send![SettingsWindow::alloc(mtm), initWithContentRect: rect, styleMask: style, backing: NSBackingStoreType::Buffered, defer: false] };
+    let style = NSWindowStyleMask::Titled
+        | NSWindowStyleMask::Closable
+        | NSWindowStyleMask::Miniaturizable
+        | NSWindowStyleMask::FullSizeContentView;
+    let window: Retained<SettingsWindow> = unsafe {
+        msg_send![SettingsWindow::alloc(mtm), initWithContentRect: rect, styleMask: style, backing: NSBackingStoreType::Buffered, defer: false]
+    };
     window.setTitle(ns_string!("Island For Mac · 高级设置"));
     window.setTitleVisibility(NSWindowTitleVisibility::Hidden);
     window.setTitlebarAppearsTransparent(true);
@@ -345,16 +365,29 @@ pub fn create(mtm: MainThreadMarker) -> f32 {
     window.setHidesOnDeactivate(false);
     unsafe { window.setReleasedWhenClosed(false) };
 
-    let view: Retained<SettingsView> = unsafe { msg_send![SettingsView::alloc(mtm), initWithFrame: rect] };
+    let view: Retained<SettingsView> =
+        unsafe { msg_send![SettingsView::alloc(mtm), initWithFrame: rect] };
     // Hover: the pointer's moves over the view and its leaving it.
-    let options = NSTrackingAreaOptions::MouseEnteredAndExited | NSTrackingAreaOptions::MouseMoved | NSTrackingAreaOptions::ActiveAlways | NSTrackingAreaOptions::InVisibleRect;
+    let options = NSTrackingAreaOptions::MouseEnteredAndExited
+        | NSTrackingAreaOptions::MouseMoved
+        | NSTrackingAreaOptions::ActiveAlways
+        | NSTrackingAreaOptions::InVisibleRect;
     let owner: &AnyObject = view.as_ref();
-    let area = unsafe { NSTrackingArea::initWithRect_options_owner_userInfo(NSTrackingArea::alloc(), rect, options, Some(owner), None) };
+    let area = unsafe {
+        NSTrackingArea::initWithRect_options_owner_userInfo(
+            NSTrackingArea::alloc(),
+            rect,
+            options,
+            Some(owner),
+            None,
+        )
+    };
     view.addTrackingArea(&area);
     window.setContentView(Some(&view));
     window.makeFirstResponder(Some(&view));
     window.center();
-    let has_link: bool = unsafe { msg_send![&*view, respondsToSelector: sel!(displayLinkWithTarget:selector:)] };
+    let has_link: bool =
+        unsafe { msg_send![&*view, respondsToSelector: sel!(displayLinkWithTarget:selector:)] };
     let link = has_link.then(|| {
         let target: &AnyObject = view.as_ref();
         let link = unsafe { view.displayLinkWithTarget_selector(target, sel!(step:)) };
@@ -363,7 +396,16 @@ pub fn create(mtm: MainThreadMarker) -> f32 {
         link
     });
     let s = window.backingScaleFactor() as f32;
-    HOST.with(|h| *h.borrow_mut() = Some(Host { window, view, link, mail_editor: None, mail_clip: None, mail_focus_pending: false }));
+    HOST.with(|h| {
+        *h.borrow_mut() = Some(Host {
+            window,
+            view,
+            link,
+            mail_editor: None,
+            mail_clip: None,
+            mail_focus_pending: false,
+        })
+    });
     s
 }
 
@@ -372,11 +414,21 @@ pub fn set_frames(on: bool) {
     HOST.with(|h| {
         let host = h.borrow();
         let Some(host) = host.as_ref() else { return };
-        let Some(link) = host.link.as_ref() else { return };
+        let Some(link) = host.link.as_ref() else {
+            return;
+        };
         if on && link.isPaused() {
             // As fast as the screen goes: 120 on ProMotion, 144 on a 144 Hz display.
-            let fps = host.window.screen().map_or(120, |s| s.maximumFramesPerSecond()).max(60) as f32;
-            link.setPreferredFrameRateRange(CAFrameRateRange { minimum: 60.0, maximum: fps, preferred: fps });
+            let fps = host
+                .window
+                .screen()
+                .map_or(120, |s| s.maximumFramesPerSecond())
+                .max(60) as f32;
+            link.setPreferredFrameRateRange(CAFrameRateRange {
+                minimum: 60.0,
+                maximum: fps,
+                preferred: fps,
+            });
         }
         link.setPaused(!on);
     });
@@ -394,7 +446,9 @@ pub fn reduce_motion() -> bool {
 
 /// Bring the window to the front, and the app with it.
 pub fn show() {
-    let Some(mtm) = MainThreadMarker::new() else { return };
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
     HOST.with(|h| {
         if let Some(host) = h.borrow().as_ref() {
             host.window.makeKeyAndOrderFront(None);
@@ -431,9 +485,12 @@ pub fn release() {
 /// 把原生账户表单挂到设置列表的裁切视图中，位置由每帧布局决定。
 pub(crate) fn mount_mail_editor(editor: Retained<crate::mail_accounts::MailAccountView>) {
     clear_mail_editor();
-    let Some(mtm) = MainThreadMarker::new() else { return };
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
     let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1.0, 1.0));
-    let clip: Retained<MailEditorClip> = unsafe { msg_send![MailEditorClip::alloc(mtm), initWithFrame: frame] };
+    let clip: Retained<MailEditorClip> =
+        unsafe { msg_send![MailEditorClip::alloc(mtm), initWithFrame: frame] };
     clip.setDrawsBackground(false);
     clip.setHidden(true);
     clip.setDocumentView(Some(&editor));
@@ -453,13 +510,19 @@ pub(crate) fn mount_mail_editor(editor: Retained<crate::mail_accounts::MailAccou
 }
 
 /// 设置列表滚动后移动表单并裁切，控件不会越过标题或盖住相邻设置。
-pub fn layout_mail_editor(rect: Option<poni_core::geom::Rect>, viewport: Option<poni_core::geom::Rect>) {
+pub fn layout_mail_editor(
+    rect: Option<poni_core::geom::Rect>,
+    viewport: Option<poni_core::geom::Rect>,
+) {
     let visible = rect.zip(viewport).and_then(|(rect, viewport)| {
         let x = rect.x.max(viewport.x);
         let y = rect.y.max(viewport.y);
         let right = rect.right().min(viewport.right());
         let bottom = rect.bottom().min(viewport.bottom());
-        (right > x && bottom > y).then_some((rect, poni_core::geom::Rect::new(x, y, right - x, bottom - y)))
+        (right > x && bottom > y).then_some((
+            rect,
+            poni_core::geom::Rect::new(x, y, right - x, bottom - y),
+        ))
     });
     let host = HOST.with(|h| {
         let mut host = h.borrow_mut();
@@ -469,18 +532,26 @@ pub fn layout_mail_editor(rect: Option<poni_core::geom::Rect>, viewport: Option<
         let focus = host.mail_focus_pending;
         Some((editor, clip, focus))
     });
-    let Some((editor, clip, focus)) = host else { return };
+    let Some((editor, clip, focus)) = host else {
+        return;
+    };
     let Some((rect, visible)) = visible else {
         if !clip.isHidden() {
             clip.setHidden(true);
         }
         return;
     };
-    let frame = NSRect::new(NSPoint::new(visible.x as f64, visible.y as f64), NSSize::new(visible.w as f64, visible.h as f64));
+    let frame = NSRect::new(
+        NSPoint::new(visible.x as f64, visible.y as f64),
+        NSSize::new(visible.w as f64, visible.h as f64),
+    );
     if clip.frame() != frame {
         clip.setFrame(frame);
     }
-    let document = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(rect.w as f64, rect.h as f64));
+    let document = NSRect::new(
+        NSPoint::new(0.0, 0.0),
+        NSSize::new(rect.w as f64, rect.h as f64),
+    );
     if editor.frame() != document {
         editor.setFrame(document);
     }
@@ -511,7 +582,9 @@ pub fn clear_mail_editor() {
         host.mail_focus_pending = false;
         Some((host.window.clone(), host.view.clone(), editor, clip))
     });
-    let Some((window, view, editor, clip)) = host else { return };
+    let Some((window, view, editor, clip)) = host else {
+        return;
+    };
     window.makeFirstResponder(Some(&view));
     editor.clear_secrets();
     if let Some(clip) = clip {
@@ -526,7 +599,10 @@ pub fn clear_mail_editor() {
 pub fn redraw_in(r: poni_core::geom::Rect) {
     HOST.with(|h| {
         if let Some(host) = h.borrow().as_ref() {
-            let nr = NSRect::new(NSPoint::new(r.x as f64, r.y as f64), NSSize::new(r.w as f64, r.h as f64));
+            let nr = NSRect::new(
+                NSPoint::new(r.x as f64, r.y as f64),
+                NSSize::new(r.w as f64, r.h as f64),
+            );
             host.view.setNeedsDisplayInRect(nr);
         }
     });
@@ -543,7 +619,12 @@ pub fn redraw() {
 
 /// The window's backing scale (2 on a Retina screen).
 pub fn scale() -> f32 {
-    HOST.with(|h| h.borrow().as_ref().map(|host| host.window.backingScaleFactor() as f32)).unwrap_or(2.0)
+    HOST.with(|h| {
+        h.borrow()
+            .as_ref()
+            .map(|host| host.window.backingScaleFactor() as f32)
+    })
+    .unwrap_or(2.0)
 }
 
 /// Light or dark, as the window shows now (the Mac's mode, or the smoke
@@ -551,9 +632,16 @@ pub fn scale() -> f32 {
 pub fn is_light() -> bool {
     HOST.with(|h| {
         let host = h.borrow();
-        let Some(host) = host.as_ref() else { return false };
-        let names = NSArray::from_slice(&[unsafe { NSAppearanceNameAqua }, unsafe { NSAppearanceNameDarkAqua }]);
-        let best = host.view.effectiveAppearance().bestMatchFromAppearancesWithNames(&names);
+        let Some(host) = host.as_ref() else {
+            return false;
+        };
+        let names = NSArray::from_slice(&[unsafe { NSAppearanceNameAqua }, unsafe {
+            NSAppearanceNameDarkAqua
+        }]);
+        let best = host
+            .view
+            .effectiveAppearance()
+            .bestMatchFromAppearancesWithNames(&names);
         best.is_none_or(|n| !n.isEqualToString(unsafe { NSAppearanceNameDarkAqua }))
     })
 }
@@ -562,8 +650,13 @@ pub fn is_light() -> bool {
 pub fn force_appearance(light: bool) {
     HOST.with(|h| {
         if let Some(host) = h.borrow().as_ref() {
-            let name = if light { unsafe { NSAppearanceNameAqua } } else { unsafe { NSAppearanceNameDarkAqua } };
-            host.window.setAppearance(NSAppearance::appearanceNamed(name).as_deref());
+            let name = if light {
+                unsafe { NSAppearanceNameAqua }
+            } else {
+                unsafe { NSAppearanceNameDarkAqua }
+            };
+            host.window
+                .setAppearance(NSAppearance::appearanceNamed(name).as_deref());
             host.view.setNeedsDisplay(true);
         }
     });
@@ -573,11 +666,19 @@ pub fn force_appearance(light: bool) {
 /// the top left of the main display, y down): the smoke test's picture of it.
 pub fn frame_top_left() -> Option<(f64, f64, f64, f64)> {
     let mtm = MainThreadMarker::new()?;
-    let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height)?;
+    let primary_h = NSScreen::screens(mtm)
+        .iter()
+        .next()
+        .map(|s| s.frame().size.height)?;
     HOST.with(|h| {
         h.borrow().as_ref().map(|host| {
             let f = host.window.frame();
-            (f.origin.x, primary_h - (f.origin.y + f.size.height), f.size.width, f.size.height)
+            (
+                f.origin.x,
+                primary_h - (f.origin.y + f.size.height),
+                f.size.width,
+                f.size.height,
+            )
         })
     })
 }
