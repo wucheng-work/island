@@ -64,6 +64,8 @@ jobs:
     runs-on: windows-2025
     env:
       PONI_VERSION: ${{ needs.prepare.outputs.version }}
+      # 手动准备正式包时尚无 tag，构建来源仍按发行包标记。
+      PONI_RELEASE_BUILD: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -128,6 +130,7 @@ jobs:
       PONI_VERSION: ${{ needs.prepare.outputs.version }}
       PUBLISH: ${{ needs.prepare.outputs.publish }}
       NOTARIZE_MAC: ${{ needs.prepare.outputs.notarize_mac }}
+      PONI_RELEASE_BUILD: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

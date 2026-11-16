@@ -204,14 +204,16 @@ fn build_info() {
         "GITHUB_REF_TYPE",
         "GITHUB_REF_NAME",
         "GITHUB_SHA",
+        "PONI_RELEASE_BUILD",
     ] {
         println!("cargo:rerun-if-env-changed={var}");
     }
     let env = |k: &str| std::env::var(k).unwrap_or_default();
     let ci = env("GITHUB_ACTIONS") == "true";
     let release = ci
-        && env("GITHUB_REF_TYPE") == "tag"
-        && env("GITHUB_REF_NAME") == format!("v{}", env("CARGO_PKG_VERSION"));
+        && (env("PONI_RELEASE_BUILD") == "true"
+            || (env("GITHUB_REF_TYPE") == "tag"
+                && env("GITHUB_REF_NAME") == format!("v{}", env("CARGO_PKG_VERSION"))));
     let kind = if release {
         "release"
     } else if ci {

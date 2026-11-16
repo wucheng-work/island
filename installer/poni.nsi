@@ -97,6 +97,7 @@ Section "Island For Windows" SecMain
   Delete "$INSTDIR\poni.exe"
   File "/oname=Island.exe" "${EXE}"
   ; The licenses of what poni.exe is built from (mecab-ipadic asks for its notice in every copy).
+  File "../LICENSE"
   File "../THIRD-PARTY-NOTICES.txt"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   ; Older shortcuts: "Poni" (0.1.0, 0.1.1) and "Oyen Poni" (0.1.2 to the last 0.1.x).
@@ -157,6 +158,7 @@ Section "Uninstall"
   !insertmacro StopPoni
   Delete "$INSTDIR\poni.exe"
   Delete "$INSTDIR\Island.exe"
+  Delete "$INSTDIR\LICENSE"
   Delete "$INSTDIR\THIRD-PARTY-NOTICES.txt"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
