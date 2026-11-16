@@ -9,6 +9,7 @@
 | 日历与待办 | `poni-core/src/todo.rs`、`datetime.rs`、`lunar.rs`；`poni/src/pages/today.rs`、`tasks.rs` | 日期选择、农历、当天任务与未完成任务展示；日期筛选和标题使用同一选中日期 |
 | 专注计时 | `poni-core/src/pomodoro.rs`、`poni/src/focus.rs`、`pages/focus.rs` | 工作/休息阶段转换、完成事件和日统计；统计依据阶段结束事件，单位见数据字典 |
 | 文件暂存区 | `poni-core/src/shelf.rs`、`poni/src/pages/shelf.rs`与两端拖放/文件适配 | 维护暂存项、重复判定和撤销；真实文件操作由平台执行，UI不伪造成功 |
+| 蓝牙设备电量 | `poni-core/src/bluetooth.rs`；`poni/src/bluetooth.rs`、`pages/bluetooth.rs`、两端`services/bluetooth_devices.rs` | 共用设备快照、页面状态和按需查询生命周期；系统适配提供已连接设备及真实可用电量，未知与读取失败分开处理 |
 | 多邮箱 | `poni-core/src/mail.rs`、`poni/src/mail.rs`、`mac/services/mail.rs`及`mail/`、`pages/mail.rs` | 账户配置、收信/预览、缓存与取消；同一收信业务供两端使用，凭据存取/系统交互按平台处理 |
 | Codex提醒与对话 | `poni/src/codex.rs`、`codex_bridge.rs`、`codex_client.rs`及子模块、`pages/codex/` | 接收本机消息、按会话合并、读取对话和附件、发送用户明确点击的回复；传输协议共用，Unix socket/Windows管道和进程适配各自实现 |
 | 天气 | `poni/src/state.rs`、`poni/src/mac/services/weather.rs`、各端定位服务 | 城市搜索/当前位置、天气请求和缓存；天气请求共用，定位权限和系统定位各自实现 |
@@ -41,6 +42,14 @@
 `页面产生SaveSettings/SaveStore → 平台App保存编排 → persistence::save → core::store原子写入`。
 
 `LoadOutcome::Unreadable`禁止本次会话覆盖原文件；损坏文件与备份恢复另有状态。UI显示保存错误，重试继续真实保存链路。不得为了合并代码删除旧字段或忽略失败。
+
+### 蓝牙设备电量
+
+`展开/切页/系统状态 → App::sync_bluetooth → BluetoothMonitor → 平台fetch_devices → AppEvent::BluetoothDevicesStarted/BluetoothDevices → BluetoothState → pages/bluetooth`；手动刷新通过`Command::RefreshBluetooth`进入相同链路。
+
+只在蓝牙页面实际可见且未锁屏、熄屏或省电时启动后台查询；完成后等待30秒再查，手动刷新可提前唤醒。关闭、切页或暂停时取消查询并停止等待，应用退出前等待已取消的工作线程回收系统资源。每次活动会话分配`generation`，旧会话结果不能覆盖重开页面后的状态。
+
+成功替换快照；部分来源失败保留可用设备并提示；读取失败保留上次成功读数并标为旧数据。Mac读取结构化系统蓝牙报告、IOKit HID电量与系统附件电源信息；Windows先读系统PnP电量缓存，再为缺少读数的已连接BLE设备查询标准电量服务。没有电量时保留设备，不将未知变成0%，不从左右耳推算整机电量。与既有耳机连接HUD分别维护，原HUD筛选与防抖不变。来源、兼容限制和参考项目见[蓝牙电量说明](bluetooth.md)。
 
 ## 维护边界
 

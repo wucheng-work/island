@@ -5,6 +5,8 @@
 pub mod applemusic;
 #[path = "services/audio.rs"]
 pub mod audio;
+#[path = "services/bluetooth_devices.rs"]
+pub mod bluetooth_devices;
 #[path = "services/cf.rs"]
 mod cf;
 #[path = "services/clipboard.rs"]

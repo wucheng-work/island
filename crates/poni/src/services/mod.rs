@@ -11,6 +11,7 @@ pub mod location;
 pub mod weather;
 pub mod backdrop;
 pub mod bluetooth;
+pub mod bluetooth_devices;
 pub mod clipboard;
 pub mod frames;
 pub mod fullscreen;

@@ -23,6 +23,7 @@
 
 use crate::events::{AppEvent, EventSink};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -31,7 +32,7 @@ use windows::Devices::Bluetooth::GenericAttributeProfile::{GattCharacteristicUui
 use windows::Devices::Bluetooth::{BluetoothCacheMode, BluetoothConnectionStatus, BluetoothDevice, BluetoothLEDevice, BluetoothMajorClass};
 use windows::Devices::Enumeration::{DeviceInformation, DeviceInformationKind, DeviceInformationUpdate, DeviceWatcher, DeviceWatcherStatus};
 use windows::Foundation::Collections::{IIterable, IMapView};
-use windows::Foundation::{AsyncOperationCompletedHandler, AsyncStatus, EventRegistrationToken, IAsyncOperation, IPropertyValue, PropertyType, TypedEventHandler};
+use windows::Foundation::{AsyncOperationCompletedHandler, EventRegistrationToken, IAsyncOperation, IPropertyValue, PropertyType, TypedEventHandler};
 use windows::Storage::Streams::DataReader;
 use windows::Win32::Foundation::E_FAIL;
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
@@ -56,10 +57,10 @@ const RESTART_DELAY: Duration = Duration::from_secs(5);
 
 /// DEVPKEY_Bluetooth_Battery (byte, 0..=100), set on the device's PnP nodes.
 const PKEY_BATTERY: &str = "{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2";
-const PKEY_CONTAINER: &str = "System.Devices.Aep.ContainerId";
-const PKEY_CONNECTED: &str = "System.Devices.Aep.IsConnected";
-const PKEY_COD_MAJOR: &str = "System.Devices.Aep.Bluetooth.Cod.Major";
-const PKEY_LE_CATEGORY: &str = "System.Devices.Aep.Bluetooth.Le.Appearance.Category";
+pub(super) const PKEY_CONTAINER: &str = "System.Devices.Aep.ContainerId";
+pub(super) const PKEY_CONNECTED: &str = "System.Devices.Aep.IsConnected";
+pub(super) const PKEY_COD_MAJOR: &str = "System.Devices.Aep.Bluetooth.Cod.Major";
+pub(super) const PKEY_LE_CATEGORY: &str = "System.Devices.Aep.Bluetooth.Le.Appearance.Category";
 
 /// Added to Windows' own "connected" filters. Something that was never paired
 /// with this PC (a phone or laptop nearby, a tracker) can turn up as a
@@ -71,7 +72,7 @@ const AQS_PAIRED: &str = "System.Devices.Aep.IsPaired:=System.StructuredQueryTyp
 /// Bluetooth LE appearance categories (appearance >> 6) that are audio gear:
 /// media player, audio sink, audio source, AV equipment, wearable audio
 /// device (earbuds / headsets / headphones), hearing aid.
-const LE_AUDIO_CATEGORIES: [u32; 6] = [0x0A, 0x21, 0x22, 0x25, 0x27, 0x29];
+pub(super) const LE_AUDIO_CATEGORIES: [u32; 6] = [0x0A, 0x21, 0x22, 0x25, 0x27, 0x29];
 
 const FALLBACK_NAME: &str = "Bluetooth device";
 
@@ -407,12 +408,12 @@ struct Worker {
 }
 
 /// COM apartment membership for the current thread.
-struct ComApartment {
-    initialized: bool,
+pub(super) struct ComApartment {
+    pub(super) initialized: bool,
 }
 
 impl ComApartment {
-    fn enter_mta() -> Self {
+    pub(super) fn enter_mta() -> Self {
         let hr = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
         if hr.is_err() {
             crate::pwarn!("bluetooth: CoInitializeEx failed ({hr:?})");
@@ -763,29 +764,51 @@ fn le_probe(id: &str, want_battery: bool, want_audio: bool, deadline: Instant) -
         out.audio = dev.Appearance().and_then(|a| a.Category()).ok().filter(|c| *c != 0).map(|c| is_audio_class(Kind::Le, u32::from(c)));
     }
     if want_battery && out.audio != Some(false) {
-        out.battery = gatt_battery(&dev, deadline);
+        out.battery = gatt_battery_result(&dev, deadline, None).ok().flatten();
     }
     let _ = dev.Close();
     out
 }
 
 /// Battery Service 0x180F / Battery Level 0x2A19.
-fn gatt_battery(dev: &BluetoothLEDevice, deadline: Instant) -> Option<u8> {
-    let service_uuid = GattServiceUuids::Battery().ok()?;
-    let level_uuid = GattCharacteristicUuids::BatteryLevel().ok()?;
+pub(super) fn gatt_battery_result(dev: &BluetoothLEDevice, deadline: Instant, cancel: Option<&AtomicBool>) -> Result<Option<u8>> {
+    let service_uuid = GattServiceUuids::Battery()?;
+    let level_uuid = GattCharacteristicUuids::BatteryLevel()?;
     let mut found = None;
+    let mut last_error = None;
     for mode in [BluetoothCacheMode::Cached, BluetoothCacheMode::Uncached] {
-        // After a timeout the next `wait` returns at once (deadline passed).
-        let Some(result) = wait(deadline, || dev.GetGattServicesForUuidWithCacheModeAsync(service_uuid, mode)) else { continue };
-        if result.Status().ok() != Some(GattCommunicationStatus::Success) {
+        // 两种缓存模式共用截止时间；超时后不再发起下一次读取。
+        let result = match wait_result(deadline, cancel, || dev.GetGattServicesForUuidWithCacheModeAsync(service_uuid, mode)) {
+            Ok(result) => result,
+            Err(error) => { last_error = Some(error); continue; }
+        };
+        let status = match result.Status() {
+            Ok(status) => status,
+            Err(error) => { last_error = Some(error); continue; }
+        };
+        if let Err(error) = check_gatt_status(status) {
+            last_error = Some(error);
             continue;
         }
-        let Ok(services) = result.Services() else { continue };
-        let n = services.Size().unwrap_or(0);
+        last_error = None;
+        let services = match result.Services() {
+            Ok(services) => services,
+            Err(error) => { last_error = Some(error); continue; }
+        };
+        let n = match services.Size() {
+            Ok(size) => size,
+            Err(error) => { last_error = Some(error); continue; }
+        };
         for i in 0..n {
-            let Ok(service) = services.GetAt(i) else { continue };
+            let service = match services.GetAt(i) {
+                Ok(service) => service,
+                Err(error) => { last_error = Some(error); continue; }
+            };
             if found.is_none() {
-                found = read_battery_level(&service, level_uuid, deadline);
+                match read_battery_level(&service, level_uuid, deadline, cancel) {
+                    Ok(level) => found = level,
+                    Err(error) => last_error = Some(error),
+                }
             }
             // Each service object holds a GATT session reference.
             let _ = service.Close();
@@ -794,29 +817,39 @@ fn gatt_battery(dev: &BluetoothLEDevice, deadline: Instant) -> Option<u8> {
             break;
         }
     }
-    found
+    if found.is_some() {
+        return Ok(found);
+    }
+    match last_error {
+        Some(error) => Err(error),
+        None => Ok(None),
+    }
 }
 
-fn read_battery_level(service: &GattDeviceService, level_uuid: GUID, deadline: Instant) -> Option<u8> {
-    let chars = wait(deadline, || service.GetCharacteristicsForUuidWithCacheModeAsync(level_uuid, BluetoothCacheMode::Cached))?;
-    if chars.Status().ok()? != GattCommunicationStatus::Success {
-        return None;
+fn read_battery_level(service: &GattDeviceService, level_uuid: GUID, deadline: Instant, cancel: Option<&AtomicBool>) -> Result<Option<u8>> {
+    let chars = wait_result(deadline, cancel, || service.GetCharacteristicsForUuidWithCacheModeAsync(level_uuid, BluetoothCacheMode::Cached))?;
+    check_gatt_status(chars.Status()?)?;
+    let list = chars.Characteristics()?;
+    if list.Size()? == 0 {
+        return Ok(None);
     }
-    let list = chars.Characteristics().ok()?;
-    if list.Size().ok()? == 0 {
-        return None;
+    let characteristic = list.GetAt(0)?;
+    let read = wait_result(deadline, cancel, || characteristic.ReadValueWithCacheModeAsync(BluetoothCacheMode::Uncached))?;
+    check_gatt_status(read.Status()?)?;
+    let value = read.Value()?;
+    if value.Length()? == 0 {
+        return Ok(None);
     }
-    let characteristic = list.GetAt(0).ok()?;
-    let read = wait(deadline, || characteristic.ReadValueWithCacheModeAsync(BluetoothCacheMode::Uncached))?;
-    if read.Status().ok()? != GattCommunicationStatus::Success {
-        return None;
+    let level = DataReader::FromBuffer(&value)?.ReadByte()?;
+    Ok((level <= 100).then_some(level))
+}
+
+fn check_gatt_status(status: GattCommunicationStatus) -> Result<()> {
+    if status == GattCommunicationStatus::Success {
+        return Ok(());
     }
-    let value = read.Value().ok()?;
-    if value.Length().ok()? == 0 {
-        return None;
-    }
-    let level = DataReader::FromBuffer(&value).ok()?.ReadByte().ok()?;
-    (level <= 100).then_some(level)
+    let code = if status == GattCommunicationStatus::AccessDenied { windows::Win32::Foundation::E_ACCESSDENIED } else { E_FAIL };
+    Err(windows::core::Error::new(code, "Bluetooth battery communication failed"))
 }
 
 /// Run a WinRT async operation and wait for it until `deadline` (cancelling
@@ -826,23 +859,48 @@ where
     T: windows::core::RuntimeType + 'static,
     F: FnOnce() -> Result<IAsyncOperation<T>>,
 {
-    let left = deadline.checked_duration_since(Instant::now()).filter(|d| !d.is_zero())?;
-    let op = start().ok()?;
+    wait_result(deadline, None, start).ok()
+}
+
+/// 列表枚举必须区分“没有设备”和读取失败；HUD仍将读取失败视为没有电量。
+pub(super) fn wait_result<T, F>(deadline: Instant, cancel: Option<&AtomicBool>, start: F) -> Result<T>
+where
+    T: windows::core::RuntimeType + 'static,
+    F: FnOnce() -> Result<IAsyncOperation<T>>,
+{
+    let timeout = || windows::core::Error::new(windows::core::HRESULT(0x800705B4u32 as i32), "Bluetooth operation timed out");
+    if cancel.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+        return Err(windows::core::Error::new(windows::Win32::Foundation::E_ABORT, "Bluetooth operation cancelled"));
+    }
+    deadline.checked_duration_since(Instant::now()).filter(|d| !d.is_zero()).ok_or_else(timeout)?;
+    let op = start()?;
     let (tx, rx) = mpsc::channel();
     let handler = AsyncOperationCompletedHandler::<T>::new(move |_, status| {
         let _ = tx.send(status);
         Ok(())
     });
-    if op.SetCompleted(&handler).is_err() {
+    if let Err(error) = op.SetCompleted(&handler) {
         let _ = op.Cancel();
-        return None;
+        return Err(error);
     }
-    match rx.recv_timeout(left) {
-        Ok(AsyncStatus::Completed) => op.GetResults().ok(),
-        Ok(_) => None,
-        Err(_) => {
+    loop {
+        if cancel.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
             let _ = op.Cancel();
-            None
+            return Err(windows::core::Error::new(windows::Win32::Foundation::E_ABORT, "Bluetooth operation cancelled"));
+        }
+        let Some(left) = deadline.checked_duration_since(Instant::now()).filter(|left| !left.is_zero()) else {
+            let _ = op.Cancel();
+            return Err(timeout());
+        };
+        // 只有页面采集需要及时响应关闭；HUD沿用原有整段等待，不增加周期唤醒。
+        let wait = if cancel.is_some() { left.min(Duration::from_millis(100)) } else { left };
+        match rx.recv_timeout(wait) {
+            Ok(_) => return op.GetResults(),
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => {
+                let _ = op.Cancel();
+                return Err(windows::core::Error::new(E_FAIL, "Bluetooth completion channel closed"));
+            }
         }
     }
 }
@@ -864,7 +922,7 @@ fn prop_value(map: &IMapView<HSTRING, IInspectable>, key: &str) -> Option<IPrope
     map.Lookup(&key).ok()?.cast::<IPropertyValue>().ok()
 }
 
-fn prop_u32(map: &IMapView<HSTRING, IInspectable>, key: &str) -> Option<u32> {
+pub(super) fn prop_u32(map: &IMapView<HSTRING, IInspectable>, key: &str) -> Option<u32> {
     let v = prop_value(map, key)?;
     match v.Type().ok()? {
         PropertyType::UInt8 => v.GetUInt8().ok().map(u32::from),
@@ -876,24 +934,24 @@ fn prop_u32(map: &IMapView<HSTRING, IInspectable>, key: &str) -> Option<u32> {
     }
 }
 
-fn prop_bool(map: &IMapView<HSTRING, IInspectable>, key: &str) -> Option<bool> {
+pub(super) fn prop_bool(map: &IMapView<HSTRING, IInspectable>, key: &str) -> Option<bool> {
     let v = prop_value(map, key)?;
     (v.Type().ok()? == PropertyType::Boolean).then(|| v.GetBoolean().ok()).flatten()
 }
 
-fn prop_guid(map: &IMapView<HSTRING, IInspectable>, key: &str) -> Option<GUID> {
+pub(super) fn prop_guid(map: &IMapView<HSTRING, IInspectable>, key: &str) -> Option<GUID> {
     let v = prop_value(map, key)?;
     (v.Type().ok()? == PropertyType::Guid).then(|| v.GetGuid().ok()).flatten()
 }
 
 /// Real device containers only (not "none" or the local machine's).
-fn usable_container(g: &GUID) -> bool {
+pub(super) fn usable_container(g: &GUID) -> bool {
     const LOCAL_MACHINE: GUID = GUID::from_u128(0x00000000_0000_0000_ffff_ffffffffffff);
     *g != GUID::zeroed() && *g != LOCAL_MACHINE
 }
 
 /// `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}`, the form AQS expects.
-fn braced(g: &GUID) -> String {
+pub(super) fn braced(g: &GUID) -> String {
     let d = g.data4;
     format!(
         "{{{:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}}}",
@@ -903,7 +961,7 @@ fn braced(g: &GUID) -> String {
 
 /// `aqs` narrowed to paired devices. It goes in brackets, so an OR inside it
 /// can't leave the new condition out.
-fn paired_only(aqs: &str) -> String {
+pub(super) fn paired_only(aqs: &str) -> String {
     format!("({aqs}) AND {AQS_PAIRED}")
 }
 

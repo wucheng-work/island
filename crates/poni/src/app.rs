@@ -477,6 +477,8 @@ pub struct App {
     /// kept (`Settings::system_history_on`: System on, its history kept),
     /// else from the first time the page opens or a game's readout needs it.
     sysmon: Option<services::sysmon::SysMon>,
+    /// 只在蓝牙页面实际可见时采集设备电量。
+    bluetooth: crate::bluetooth::BluetoothMonitor,
     /// The System page is open (its readings come each second).
     sysmon_on: bool,
     /// What the System reader was last told about nobody being there and battery saver.
@@ -717,6 +719,7 @@ impl App {
             covered_by: HashSet::new(),
             shown: false,
             sysmon: None,
+            bluetooth: crate::bluetooth::BluetoothMonitor::default(),
             sysmon_on: false,
             sysmon_rest: poni_core::sysmon::Rest::default(),
             oyenza_watch: false,
@@ -820,6 +823,7 @@ impl App {
     }
 
     fn shutdown(&mut self) -> i32 {
+        self.bluetooth.shutdown();
         self.stop_codex();
         self.mail = None;
         self.close_mail_editor();
@@ -1501,6 +1505,7 @@ impl App {
                 // Windows ends Poni without shutdown(): stop the frame count's
                 // trace session now, or it would outlive the sign-in.
                 if wp.0 != 0 {
+                    self.bluetooth.shutdown();
                     self.frames = None;
                 }
                 Some(LRESULT(0))
@@ -2494,6 +2499,10 @@ impl App {
                     self.st.show_hud(HudKind::Bluetooth { name, connected, battery, audio }, 2.6);
                 }
             }
+            AppEvent::BluetoothDevicesStarted(generation) => self.bluetooth.started(generation, &mut self.st.bluetooth),
+            AppEvent::BluetoothDevices { generation, result } => {
+                self.bluetooth.receive(generation, result, &mut self.st.bluetooth, now);
+            }
             AppEvent::Fullscreen(on) => {
                 self.fullscreen_on = on;
                 // The readout and its peeks first, then whether the island shows.
@@ -2605,6 +2614,7 @@ impl App {
         if let Some(before) = media_before {
             self.after_media_change(before, now);
         }
+        self.sync_bluetooth();
         self.request_frame();
     }
 
@@ -2686,6 +2696,7 @@ impl App {
     fn collapse(&mut self) {
         if self.expanded {
             self.expanded = false;
+            self.sync_bluetooth();
             self.cancel_weather_location(true);
             if self.text_focus {
                 self.blur_text();
@@ -2809,6 +2820,7 @@ impl App {
     /// also on battery saver (`poni_core::sysmon::reads`). What it drops, the
     /// page drops too, so a minute from before never shows as the last one.
     fn tell_sysmon_rest(&mut self) {
+        self.sync_bluetooth();
         let rest = self.rest_now();
         if rest == self.sysmon_rest || self.selftest.is_some() {
             return;
@@ -2820,6 +2832,19 @@ impl App {
         if !poni_core::sysmon::reads(self.sysmon_on, self.st.game.active, self.st.settings.system_history_on(), rest) {
             self.st.system.clear();
         }
+    }
+
+    /// 连接列表不在后台常驻，系统休眠、页面切换或隐藏后立即取消。
+    fn sync_bluetooth(&mut self) {
+        let on = self.expanded
+            && self.st.page == PageKind::Bluetooth
+            && self.mode == Mode::Expanded(PageKind::Bluetooth)
+            && !self.locked
+            && !self.display_off
+            && !self.st.power.saver
+            && !self.fullscreen_hidden
+            && self.selftest.is_none();
+        self.bluetooth.set_active(on, &mut self.st.bluetooth, &self.sink);
     }
 
     /// Over a full-screen app the island hides when the setting says Hide, and
@@ -3373,6 +3398,7 @@ impl App {
         let dt = dt.clamp(0.0, 0.05) as f32;
         // Today's tiles need the readings only while they show (signed out it has the sign-in card, signed in the day).
         self.set_sysmon(self.mode == Mode::Expanded(PageKind::System));
+        self.sync_bluetooth();
         self.set_oyenza_watch(self.mode == Mode::Expanded(PageKind::Oyenza));
         self.set_today_watch(self.mode == Mode::Expanded(PageKind::Today));
 
@@ -3900,6 +3926,7 @@ impl App {
                 self.cancel_weather_location(true);
             }
             self.st.page = p;
+            self.sync_bluetooth();
             if p == PageKind::Media {
                 if let Some(services) = &self.services {
                     services.refresh_media("music_page");
@@ -4067,6 +4094,10 @@ impl App {
                 Command::SetWeatherCity { city, coordinates } => self.set_weather_city(city, coordinates),
                 Command::LocateWeather => self.locate_weather(),
                 Command::RefreshWeather => self.refresh_weather(true),
+                Command::RefreshBluetooth => {
+                    self.sync_bluetooth();
+                    self.bluetooth.refresh(&mut self.st.bluetooth, &self.sink);
+                }
                 Command::OpenPath(p) => shell::open(&p),
                 Command::RevealPath(p) => shell::reveal(&p),
                 Command::DragOut(paths) => deferred.push(Deferred::DragOut(paths)),
