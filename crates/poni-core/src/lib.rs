@@ -10,7 +10,6 @@ pub mod agenda;
 pub mod alert_sounds;
 pub mod applemusic;
 pub mod base64;
-pub mod bluetooth;
 pub mod datetime;
 /// 跨平台共享的界面尺度。
 pub mod design;

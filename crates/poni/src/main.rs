@@ -26,8 +26,6 @@ mod activities;
 mod app;
 #[cfg(windows)]
 mod autostart;
-#[cfg(any(windows, target_os = "macos"))]
-mod bluetooth;
 #[cfg(windows)]
 mod clock;
 #[cfg(any(windows, target_os = "macos"))]

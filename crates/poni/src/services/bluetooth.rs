@@ -1103,7 +1103,7 @@ where
     wait_result(deadline, None, start).ok()
 }
 
-/// 列表枚举必须区分“没有设备”和读取失败；HUD仍将读取失败视为没有电量。
+/// 异步设备读取保留失败状态；连接提示仍将读取失败视为没有电量。
 pub(super) fn wait_result<T, F>(
     deadline: Instant,
     cancel: Option<&AtomicBool>,
@@ -1154,7 +1154,7 @@ where
             let _ = op.Cancel();
             return Err(timeout());
         };
-        // 只有页面采集需要及时响应关闭；HUD沿用原有整段等待，不增加周期唤醒。
+        // 仅可取消调用分段检查；连接提示沿用原有整段等待，不增加周期唤醒。
         let wait = if cancel.is_some() {
             left.min(Duration::from_millis(100))
         } else {

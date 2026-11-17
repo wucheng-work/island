@@ -569,8 +569,6 @@ pub struct App {
     /// kept (`Settings::system_history_on`: System on, its history kept),
     /// else from the first time the page opens.
     sysmon: Option<services::sysmon::SysMon>,
-    /// 只在蓝牙页面实际可见时采集设备电量。
-    bluetooth: crate::bluetooth::BluetoothMonitor,
     /// The System page is open (its readings come each second).
     sysmon_on: bool,
     /// Nobody can see the screen: (the displays sleep, the Mac is locked).
@@ -727,7 +725,6 @@ impl App {
             store_writable: d_out.writable(),
             first_run: s_out == LoadOutcome::Missing,
             sysmon: None,
-            bluetooth: crate::bluetooth::BluetoothMonitor::default(),
             sysmon_on: false,
             away: (false, false),
             front_full_screen: false,
@@ -854,7 +851,6 @@ impl App {
     }
 
     fn finish_quit(&mut self, code: i32) {
-        self.bluetooth.shutdown();
         self.stop_codex();
         pinfo!("Island For Mac exiting with code {code}");
         std::process::exit(code);
@@ -1618,20 +1614,6 @@ impl App {
         }
     }
 
-    /// 连接列表不在后台常驻，系统休眠、页面切换或隐藏后立即取消。
-    fn sync_bluetooth(&mut self) {
-        let on = self.expanded
-            && self.st.page == PageKind::Bluetooth
-            && self.mode == Mode::Expanded(PageKind::Bluetooth)
-            && !self.away.0
-            && !self.away.1
-            && !self.st.power.saver
-            && !self.fullscreen_hidden
-            && self.smoke.is_none();
-        self.bluetooth
-            .set_active(on, &mut self.st.bluetooth, &self.sink);
-    }
-
     /// The displays slept or woke, or the Mac locked or unlocked. While nobody
     /// can see the screen the System readings rest, and the minute they kept
     /// goes, so a minute from before never shows as the last one.
@@ -1643,7 +1625,6 @@ impl App {
             return;
         }
         self.tell_lyrics_rest();
-        self.sync_bluetooth();
         if let Some(s) = &self.sysmon {
             s.away(now);
         }
@@ -2093,13 +2074,6 @@ impl App {
                     );
                 }
             }
-            AppEvent::BluetoothDevicesStarted(generation) => {
-                self.bluetooth.started(generation, &mut self.st.bluetooth)
-            }
-            AppEvent::BluetoothDevices { generation, result } => {
-                self.bluetooth
-                    .receive(generation, result, &mut self.st.bluetooth, now);
-            }
             AppEvent::Fullscreen(on) => {
                 self.front_full_screen = on;
                 self.apply_fullscreen();
@@ -2108,7 +2082,6 @@ impl App {
         if let Some(before) = media_before {
             self.after_media_change(before, now);
         }
-        self.sync_bluetooth();
         self.request_frame();
     }
 
@@ -2816,7 +2789,6 @@ impl App {
         self.st.mail.account_filter_open = false;
         if self.expanded {
             self.expanded = false;
-            self.sync_bluetooth();
             if self.st.mail.translation_loading {
                 self.clear_mail_translation();
             }
@@ -2854,7 +2826,6 @@ impl App {
                 self.cancel_weather_location();
             }
             self.st.page = p;
-            self.sync_bluetooth();
             self.st.store.last_page = p.key().to_string();
             self.set_timer(Timer::Save, 800);
             if p == PageKind::Settings {
@@ -3220,10 +3191,6 @@ impl App {
                 }
                 Command::LocateWeather => self.locate_weather(),
                 Command::RefreshWeather => self.refresh_weather(true),
-                Command::RefreshBluetooth => {
-                    self.sync_bluetooth();
-                    self.bluetooth.refresh(&mut self.st.bluetooth, &self.sink);
-                }
                 Command::ChooseLyricsColor => {
                     self.blur_text();
                     self.pending.push(Deferred::ChooseLyricsColor {
@@ -3391,7 +3358,6 @@ impl App {
         let dt = dt.clamp(0.0, 0.05) as f32;
         // Full System readings run only while its page is visible.
         self.set_sysmon(self.mode == Mode::Expanded(PageKind::System));
-        self.sync_bluetooth();
         // The Pill theme floats the island below the top edge (below the menu
         // bar for what hangs under a notch).
         self.island.set_floating(self.gap_target(&self.mode));

@@ -186,11 +186,6 @@ pub enum AppEvent {
         battery: Option<u8>,
         audio: bool,
     },
-    BluetoothDevicesStarted(u64),
-    BluetoothDevices {
-        generation: u64,
-        result: Result<poni_core::bluetooth::BluetoothSnapshot, String>,
-    },
     /// A full-screen app took over (or left) the island's monitor. `true` is
     /// sent again when another window comes to the foreground while the
     /// monitor stays full-screen, so the island can be raised back on top.

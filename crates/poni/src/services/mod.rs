@@ -6,7 +6,6 @@ pub mod applemusic_ui;
 pub mod audio;
 pub mod backdrop;
 pub mod bluetooth;
-pub mod bluetooth_devices;
 pub mod clipboard;
 pub mod color;
 pub mod font;

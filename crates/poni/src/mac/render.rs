@@ -1,4 +1,4 @@
-//! `poni --render <dir> [--theme classic|oyen|glass|pill|diorama] [--notch] [--codex|--bluetooth]`: draw the island's
+//! `poni --render <dir> [--theme classic|oyen|glass|pill|diorama] [--notch] [--codex]`: draw the island's
 //! states with sample data into PNGs, offscreen, through the Mac renderer.
 //! CI runs it on a Mac with no notch and no person at the screen, so this is
 //! how the Mac drawing gets looked at: every page and activity, each theme,
@@ -21,7 +21,6 @@
 //! music once the media slice is built. The System page's scenes show a
 //! made-up minute of a MacBook too, with real app icons from Finder.
 //! `--codex` 只绘制 Codex 页的离线示例，不启动消息监听或连接 Codex。
-//! `--bluetooth` 只绘制蓝牙页的虚构设备与状态，不读取系统设备或启动查询。
 
 use crate::activities::{self, Mode};
 use crate::gfx::{Bitmap, Gfx, ImageData};
@@ -35,7 +34,6 @@ use crate::state::{
     OyenzaLink, OyenzaState, PowerState, VolumeState,
 };
 use crate::ui::{Hit, Input};
-use poni_core::bluetooth::{BatteryComponent, BluetoothDevice, DeviceKind};
 use poni_core::datetime::LocalDateTime;
 use poni_core::geom::{palette, Color, Point, Rect};
 use poni_core::lrc::parse_lrc;
@@ -135,50 +133,7 @@ enum Scene {
     CodexMessages,
     CodexWaiting,
     CodexExpired,
-    Bluetooth(BluetoothScene),
     Diorama(Rest),
-}
-
-/// 蓝牙页的离线展示数据；只核对实际共享 Canvas，不代表真实设备读数。
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum BluetoothScene {
-    Devices,
-    Unknown,
-    Loading,
-    Refreshing,
-    Empty,
-    Failed,
-    FailedStale,
-    Warning,
-    Paused,
-    PausedEmpty,
-    Saver,
-    StaleEmpty,
-    Scrolled,
-    Navigation,
-    NavigationCodex,
-}
-
-impl BluetoothScene {
-    fn name(self) -> &'static str {
-        match self {
-            Self::Devices => "devices",
-            Self::Unknown => "unknown",
-            Self::Loading => "loading",
-            Self::Refreshing => "refreshing",
-            Self::Empty => "empty",
-            Self::Failed => "failed",
-            Self::FailedStale => "failed-stale",
-            Self::Warning => "warning",
-            Self::Paused => "paused",
-            Self::PausedEmpty => "paused-empty",
-            Self::Saver => "saver",
-            Self::StaleEmpty => "stale-empty",
-            Self::Scrolled => "scrolled",
-            Self::Navigation => "navigation",
-            Self::NavigationCodex => "navigation-codex",
-        }
-    }
 }
 
 /// What a picture of the Diorama theme's resting pill shows: dawn (06:10),
@@ -274,24 +229,6 @@ const CODEX_SCENES: [Scene; 4] = [
     Scene::CodexWaiting,
     Scene::CodexExpired,
 ];
-const BLUETOOTH_SCENES: [BluetoothScene; 15] = [
-    BluetoothScene::Devices,
-    BluetoothScene::Unknown,
-    BluetoothScene::Loading,
-    BluetoothScene::Refreshing,
-    BluetoothScene::Empty,
-    BluetoothScene::Failed,
-    BluetoothScene::FailedStale,
-    BluetoothScene::Warning,
-    BluetoothScene::Paused,
-    BluetoothScene::PausedEmpty,
-    BluetoothScene::Saver,
-    BluetoothScene::StaleEmpty,
-    BluetoothScene::Scrolled,
-    BluetoothScene::Navigation,
-    BluetoothScene::NavigationCodex,
-];
-
 /// The Diorama theme's resting pill, in that theme only, after the peek
 /// strip's number (which a run without a notch leaves free), so every other
 /// picture keeps its number.
@@ -349,7 +286,6 @@ impl Scene {
             Scene::CodexMessages => "codex-messages".into(),
             Scene::CodexWaiting => "codex-waiting".into(),
             Scene::CodexExpired => "codex-expired-draft".into(),
-            Scene::Bluetooth(scene) => format!("bluetooth-{}", scene.name()),
             Scene::Diorama(r) => r.name().into(),
         }
     }
@@ -439,21 +375,6 @@ pub fn run(dir: &str, args: &[String]) -> i32 {
                 Ok(()) => println!("render: {}", path.display()),
                 Err(e) => {
                     eprintln!("render: {}: {e}", path.display());
-                    failed += 1;
-                }
-            }
-        }
-        let _ = std::fs::remove_dir_all(&home);
-        return if failed > 0 { 1 } else { 0 };
-    }
-    if args.iter().any(|arg| arg == "--bluetooth") {
-        for scene in BLUETOOTH_SCENES {
-            let scene = Scene::Bluetooth(scene);
-            let path = out.join(format!("{}{suffix}.png", scene.name()));
-            match render_scene(&mut gfx, scene, theme, notch, width, &path) {
-                Ok(()) => println!("render: {}", path.display()),
-                Err(error) => {
-                    eprintln!("render: {}: {error}", path.display());
                     failed += 1;
                 }
             }
@@ -1053,118 +974,6 @@ fn set_clock(st: &mut AppState, hour: u8, minute: u8) {
     st.local.hour = hour;
     st.local.minute = minute;
     st.unix += hour as i64 * 3600 + minute as i64 * 60 - was;
-}
-
-fn sample_bluetooth(st: &mut AppState, scene: BluetoothScene) {
-    st.bluetooth.active = true;
-    st.bluetooth.updated_at = Some(NOW_MONO - 30.0);
-    st.bluetooth.devices = vec![
-        BluetoothDevice {
-            id: "render-audio".into(),
-            name: "吴程的 AirPods Pro（第二代）".into(),
-            kind: DeviceKind::Audio,
-            battery: None,
-            components: vec![
-                BatteryComponent {
-                    label: "左耳".into(),
-                    percent: 82,
-                },
-                BatteryComponent {
-                    label: "右耳".into(),
-                    percent: 9,
-                },
-                BatteryComponent {
-                    label: "充电盒".into(),
-                    percent: 66,
-                },
-            ],
-        },
-        BluetoothDevice {
-            id: "render-mouse".into(),
-            name: "Logitech MX Master 3S 无线鼠标与办公设备".into(),
-            kind: DeviceKind::Mouse,
-            battery: Some(0),
-            components: Vec::new(),
-        },
-        BluetoothDevice {
-            id: "render-keyboard".into(),
-            name: "Magic Keyboard with Touch ID — Extended Workstation".into(),
-            kind: DeviceKind::Keyboard,
-            battery: Some(100),
-            components: Vec::new(),
-        },
-    ];
-    match scene {
-        BluetoothScene::Devices => {}
-        BluetoothScene::Unknown => {
-            st.bluetooth.devices[0].components.clear();
-            st.bluetooth.devices[1].battery = Some(20);
-            st.bluetooth.devices[2].battery = None;
-        }
-        BluetoothScene::Loading => {
-            st.bluetooth.devices.clear();
-            st.bluetooth.updated_at = None;
-            st.bluetooth.loading = true;
-        }
-        BluetoothScene::Refreshing => {
-            st.bluetooth.loading = true;
-            st.bluetooth.stale = true;
-        }
-        BluetoothScene::Empty => st.bluetooth.devices.clear(),
-        BluetoothScene::Failed | BluetoothScene::FailedStale => {
-            st.bluetooth.error = Some("暂时无法读取蓝牙设备，请检查系统蓝牙状态后重试。".into());
-            if scene == BluetoothScene::Failed {
-                st.bluetooth.devices.clear();
-                st.bluetooth.updated_at = None;
-            } else {
-                st.bluetooth.stale = true;
-            }
-        }
-        BluetoothScene::Warning => {
-            st.bluetooth.warning = Some("部分设备的电量暂时无法读取，请稍后刷新。".into());
-            st.bluetooth.devices[1].battery = None;
-        }
-        BluetoothScene::Paused | BluetoothScene::PausedEmpty | BluetoothScene::Saver => {
-            st.bluetooth.active = false;
-            st.bluetooth.stale = true;
-            if scene == BluetoothScene::PausedEmpty {
-                st.bluetooth.devices.clear();
-                st.bluetooth.updated_at = None;
-                st.bluetooth.stale = false;
-            }
-            st.power.saver = scene == BluetoothScene::Saver;
-        }
-        BluetoothScene::StaleEmpty => {
-            st.bluetooth.devices.clear();
-            st.bluetooth.loading = true;
-            st.bluetooth.stale = true;
-        }
-        BluetoothScene::Scrolled => {
-            st.bluetooth.devices.extend([
-                BluetoothDevice {
-                    id: "render-gamepad".into(),
-                    name: "无线游戏手柄 · 客厅".into(),
-                    kind: DeviceKind::Gamepad,
-                    battery: None,
-                    components: Vec::new(),
-                },
-                BluetoothDevice {
-                    id: "render-other".into(),
-                    name: "会议室 Bluetooth 输入设备（长名称展示）".into(),
-                    kind: DeviceKind::Other,
-                    battery: Some(4),
-                    components: Vec::new(),
-                },
-            ]);
-            st.bluetooth.scroll = 2.0 * 56.0;
-        }
-        BluetoothScene::Navigation | BluetoothScene::NavigationCodex => {
-            st.settings.set_system(true);
-            st.notify_can = true;
-            st.settings.use_24h = false;
-            set_clock(st, 11, 59);
-        }
-    }
 }
 
 /// A later version than this build, with its DMG, for the Update sheet.
@@ -1792,16 +1601,6 @@ fn render_scene(
             st.page = PageKind::Codex;
             Mode::Expanded(PageKind::Codex)
         }
-        Scene::Bluetooth(scene) => {
-            sample_bluetooth(&mut st, scene);
-            let page = if scene == BluetoothScene::NavigationCodex {
-                PageKind::Codex
-            } else {
-                PageKind::Bluetooth
-            };
-            st.page = page;
-            Mode::Expanded(page)
-        }
         Scene::SaveFailed | Scene::QuitSaveFailed | Scene::SaveProtected => {
             st.save_errors.settings = Some(if scene == Scene::SaveProtected {
                 crate::persistence::SaveError::Protected
@@ -1999,19 +1798,6 @@ fn render_scene(
         crate::app::draw_content(
             &mut c, &mut input, &mut hits, &mut st, mode, body, body, None, NOW_MONO, notch,
         );
-        if matches!(scene, Scene::Bluetooth(_)) {
-            // 展示同时记录实际命中矩形，便于核对窄导航及禁用按钮；不执行系统操作。
-            let row = pages::tabs(&st);
-            let last_tab_id = crate::ui::wid_n("tab", (row.len() - 1) as u64);
-            let rect = |id| hits.iter().find(|hit| hit.id == id).map(|hit| hit.rect);
-            let layout = format!(
-                "page={} width={} tabs={} devices={} active={} loading={} stale={} scroll={}\nlast_tab={:?}\ngear={:?}\nrefresh={:?}\nbluetooth_settings={:?}\n",
-                st.page.key(), st.settings.expanded_width, row.len(), st.bluetooth.devices.len(), st.bluetooth.active, st.bluetooth.loading, st.bluetooth.stale, st.bluetooth.scroll,
-                rect(last_tab_id), rect(crate::ui::wid(pages::GEAR_ID)), rect(crate::ui::wid("bluetooth.refresh")), rect(crate::ui::wid("bluetooth.settings")),
-            );
-            std::fs::write(path.with_extension("layout.txt"), layout)
-                .map_err(|error| error.to_string())?;
-        }
     }
 
     // The camera notch hides its part of the island on a real MacBook.

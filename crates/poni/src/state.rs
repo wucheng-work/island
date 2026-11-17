@@ -495,8 +495,6 @@ pub struct AppState {
     pub pomodoro: Pomodoro,
     pub volume: VolumeState,
     pub power: PowerState,
-    /// 蓝牙页面最近一次设备快照；不写入用户配置。
-    pub bluetooth: crate::bluetooth::BluetoothState,
     pub hud: Option<Hud>,
     pub notice: Option<Notice>,
     /// The System page's readings and their last minute (empty while it's closed).
@@ -581,7 +579,6 @@ impl AppState {
             pomodoro,
             volume: VolumeState::default(),
             power: PowerState::default(),
-            bluetooth: crate::bluetooth::BluetoothState::default(),
             hud: None,
             notice: None,
             system: poni_core::sysmon::Monitor::default(),

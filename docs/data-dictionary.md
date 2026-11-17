@@ -336,30 +336,11 @@ QQ 音乐、网易云音乐、Apple Music 的匹配按对应服务处理；请�
 
 附件解析只接受符合规则的本地绝对路径，不执行附件。预览由系统适配器处理：Mac 使用原生预览，Windows 使用对应文件操作入口；不能把两端界面能力视为完全相同。
 
-## 9. 蓝牙设备电量
+## 9. 已下线的蓝牙电量页面
 
-共享模型见[core蓝牙快照](../crates/poni-core/src/bluetooth.rs)，查询生命周期与界面状态见[bluetooth.rs](../crates/poni/src/bluetooth.rs)。这些字段只保存在当前进程内存，不写入设置、Store或缓存文件。
+蓝牙设备电量页面及其运行态模型从1.0.2移除。原设备快照、电量、部件和采集代次只存在进程内存，没有需要迁移或删除的持久化电量数据。
 
-| 字段 | 类型 | 含义、来源及口径 |
-| --- | --- | --- |
-| `BluetoothDevice.id` | `String` | 平台提供或归一化的设备身份，仅用于本次运行的合并与排序；不显示、不持久化、不记录到日志 |
-| `BluetoothDevice.name` | `String` | 系统报告的设备显示名称 |
-| `BluetoothDevice.kind` | `DeviceKind` | `Audio/Keyboard/Mouse/Gamepad/Other`；平台从设备属性识别，无法识别时为Other |
-| `BluetoothDevice.battery` | `Option<u8>` | 系统实际提供的整机电量，单位百分比，范围0–100；0有效，None为未知，不用部件最小值替代 |
-| `BluetoothDevice.components` | `Vec<BatteryComponent>` | 系统可提供的独立部件电量；没有数据时为空，不生成缺失部件 |
-| `BatteryComponent.label/percent` | `String/u8` | 部件显示名及0–100百分比；左右耳和充电盒独立显示 |
-| `BluetoothSnapshot.devices` | `Vec<BluetoothDevice>` | 本次采集得到的已连接设备；成功空列表表示未发现连接设备，不能用于表达读取失败 |
-| `BluetoothSnapshot.warning` | `Option<String>` | 部分数据源失败，但仍能形成可用连接列表时的提示 |
-| `BluetoothState.devices` | `Vec<BluetoothDevice>` | 最近一次成功快照；刷新中、失败或暂停时保留 |
-| `BluetoothState.loading` | `bool` | 当前活动会话正在查询或等待已发出的刷新；active为false时必须为false |
-| `BluetoothState.error/warning` | `Option<String>` | error为本次采集失败；warning为成功快照中的部分来源提示，两者不混用 |
-| `BluetoothState.updated_at` | `Option<f64>` | 上次成功**采集**的进程单调秒数；不是设备实际更新电量的时间，不跨重启保留 |
-| `BluetoothState.active` | `bool` | 页面实际可见且未锁屏、熄屏、省电或隐藏时为true；离屏展示和自测不启动真实查询 |
-| `BluetoothState.stale` | `bool` | 有旧快照，且页面暂停、重开待刷新或本次采集失败；成功采集后清除 |
-| `BluetoothState.scroll` | `f32` | 当前设备列表滚动距离，单位DIP；按列表实际高度限幅 |
-| `BluetoothMonitor.generation` | `u64` | 活动会话代次；页面关闭/重开改变代次，结果仅在当前会话仍活动且代次相同时接收 |
-
-平台边界拒绝超过100的电量值，不把缺失或无效值转换成0。按名称及内部ID稳定排序；未识别设备仍可显示。采集成功不保证系统缓存已经更新，具体来源和平台限制见[蓝牙电量说明](bluetooth.md)。
+设置中的`start_page`或Store中的`last_page`若仍为`bluetooth`，按未知页面键回退到可用页面。`hidden_tabs`中遗留的同名字符串不对应任何现有页面，不改变其他标签的显示，也无需清空配置。原有`hud_bluetooth`仍控制耳机连接、断开提示，与已下线的电量页面无关。
 
 ## 10. 修改字段时同步检查
 

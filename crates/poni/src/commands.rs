@@ -194,8 +194,6 @@ pub enum Command {
     LocateWeather,
     /// 用户手动重试已保存城市的天气，不请求系统定位。
     RefreshWeather,
-    /// 仅蓝牙页面可见时重新读取已连接设备的电量。
-    RefreshBluetooth,
     /// Open the Settings window, or bring it forward (the gear, Windows).
     OpenSettings,
     SetPage(PageKind),

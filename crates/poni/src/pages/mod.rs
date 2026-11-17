@@ -9,7 +9,6 @@
 //! [`crate::commands::Command`]s for side effects (media control, opening
 //! files, saving, …).
 
-pub mod bluetooth;
 pub mod card;
 #[cfg(any(windows, target_os = "macos"))]
 pub mod codex;
@@ -73,7 +72,6 @@ pub enum PageKind {
     /// 保留给内部账户事件，不作为顶部标签。
     Oyenza,
     System,
-    Bluetooth,
     Notifications,
     #[cfg(any(windows, target_os = "macos"))]
     Codex,
@@ -82,7 +80,7 @@ pub enum PageKind {
 }
 
 impl PageKind {
-    pub const ALL: [PageKind; 8 + 2 * cfg!(any(windows, target_os = "macos")) as usize] = [
+    pub const ALL: [PageKind; 7 + 2 * cfg!(any(windows, target_os = "macos")) as usize] = [
         PageKind::Media,
         PageKind::Today,
         PageKind::Shelf,
@@ -90,7 +88,6 @@ impl PageKind {
         #[cfg(any(windows, target_os = "macos"))]
         PageKind::Mail,
         PageKind::System,
-        PageKind::Bluetooth,
         PageKind::Notifications,
         #[cfg(any(windows, target_os = "macos"))]
         PageKind::Codex,
@@ -106,7 +103,6 @@ impl PageKind {
             PageKind::Shelf => "shelf",
             PageKind::Today => "today",
             PageKind::System => "system",
-            PageKind::Bluetooth => "bluetooth",
             PageKind::Oyenza => "oyenza",
             PageKind::Notifications => "notifications",
             #[cfg(any(windows, target_os = "macos"))]
@@ -135,7 +131,6 @@ impl PageKind {
             PageKind::Shelf => "Shelf",
             PageKind::Today => "Today",
             PageKind::System => "System",
-            PageKind::Bluetooth => "Bluetooth",
             PageKind::Oyenza => "Oyenza",
             PageKind::Notifications => "Notifications",
             #[cfg(any(windows, target_os = "macos"))]
@@ -153,7 +148,6 @@ impl PageKind {
             PageKind::Shelf => Icon::Tray,
             PageKind::Today => Icon::Calendar,
             PageKind::System => Icon::Gauge,
-            PageKind::Bluetooth => Icon::Bluetooth,
             PageKind::Oyenza => Icon::Wallet,
             PageKind::Notifications => Icon::Bell,
             #[cfg(any(windows, target_os = "macos"))]
@@ -179,13 +173,12 @@ impl PageKind {
     }
 
     /// 设置中可隐藏的基础标签。
-    pub const HIDEABLE: [PageKind; 7 + 2 * cfg!(any(windows, target_os = "macos")) as usize] = [
+    pub const HIDEABLE: [PageKind; 6 + 2 * cfg!(any(windows, target_os = "macos")) as usize] = [
         PageKind::Media,
         PageKind::Today,
         PageKind::Shelf,
         PageKind::Focus,
         PageKind::System,
-        PageKind::Bluetooth,
         #[cfg(any(windows, target_os = "macos"))]
         PageKind::Mail,
         #[cfg(any(windows, target_os = "macos"))]
@@ -261,7 +254,6 @@ pub fn content_height(p: PageKind, st: &AppState) -> f32 {
             PageKind::Shelf => shelf::height(st),
             PageKind::Today => today::height(st),
             PageKind::System => system::height(st),
-            PageKind::Bluetooth => bluetooth::height(st),
             PageKind::Oyenza => oyenza::height(st),
             PageKind::Notifications => notifications::height(st),
             #[cfg(any(windows, target_os = "macos"))]
@@ -432,7 +424,6 @@ pub(crate) fn draw_page(ui: &mut Ui, st: &mut AppState, area: Rect, page: PageKi
         PageKind::Shelf => shelf::draw(ui, st, area),
         PageKind::Today => today::draw(ui, st, area),
         PageKind::System => system::draw(ui, st, area),
-        PageKind::Bluetooth => bluetooth::draw(ui, st, area),
         PageKind::Oyenza => oyenza::draw(ui, st, area),
         PageKind::Notifications => notifications::draw(ui, st, area),
         #[cfg(any(windows, target_os = "macos"))]
@@ -615,7 +606,6 @@ pub(crate) fn draw_header(
             #[cfg(any(windows, target_os = "macos"))]
             PageKind::Mail => (16.0, 12.0, 12.0),
             PageKind::System => (18.0, 12.0, 12.65),
-            PageKind::Bluetooth => (17.0, 12.0, 12.0),
             PageKind::Notifications => (18.0, 12.0, 12.25),
             #[cfg(any(windows, target_os = "macos"))]
             PageKind::Codex => (14.0, 12.0, 11.9),
@@ -843,7 +833,6 @@ mod tests {
                 Focus,
                 #[cfg(any(windows, target_os = "macos"))]
                 Mail,
-                Bluetooth,
                 #[cfg(any(windows, target_os = "macos"))]
                 Codex
             ]
@@ -873,7 +862,6 @@ mod tests {
                 Focus,
                 #[cfg(any(windows, target_os = "macos"))]
                 Mail,
-                Bluetooth,
                 #[cfg(any(windows, target_os = "macos"))]
                 Codex
             ]
@@ -891,7 +879,6 @@ mod tests {
                 Focus,
                 #[cfg(any(windows, target_os = "macos"))]
                 Mail,
-                Bluetooth,
                 #[cfg(any(windows, target_os = "macos"))]
                 Codex
             ]
