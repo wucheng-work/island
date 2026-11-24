@@ -68,11 +68,11 @@ python3 tools/make_update_feed.py dist/latest.json --assets dist
 
 `ci.yml` 只执行源码检查、现有测试和示例页面预览，不写发布、网页、商店或统计分支。原上游 `mac.yml`、`pages.yml`、`store.yml`、`metrics.yml` 已改为仅手动提示，不会因 push 或定时任务访问上游发布流程。
 
-在自己的 Actions 中手动运行 `Island release`，保持 `publish=false`，可试构建当前分支的两端产物。仍要求当前版本、锁文件、仓库配置和发行说明一致。默认 `notarize_mac=false`，Mac 试构建产物明确带 `-unsigned.dmg` 名称且未经公证；选择公证则须完成下述全部凭据与公证步骤。试构建不生成签名更新清单、不建立 Release，也不会成为 latest。需要的 Pillow、dmgbuild 和 NSIS 沿用现有构建流程，没有新增客户端依赖。
+在自己的 Actions 中手动运行 `Island release`，保持 `publish=false`，可试构建当前分支的两端产物。仍要求当前版本、锁文件、仓库配置和发行说明一致。默认 `notarize_mac=false`，Mac 试构建产物明确带 `-unsigned.dmg` 名称且未经公证；选择公证则须完成下述全部凭据与公证步骤。试构建只上传 Actions 产物。需要的 Pillow、dmgbuild 和 NSIS 沿用现有构建流程，没有新增客户端依赖。
 
 ## 正式发布
 
-只有明确授权发布后才创建并推送 `v<版本>` tag，或在 `Island release` 手动选择已存在的该 tag 并启用 `publish`。普通 push 不发布。工作流不自动升版或创建 tag；tag 必须与项目版本一致，必须有该版本完成的发行说明。
+经明确授权后创建并推送 `v<版本>` tag。推送分支和标签都不会启动发布工作流。需要由 Actions 正式发布时，手动运行 `Island release`，选择该 tag 并启用 `publish`。tag 必须与项目版本一致，同时提供该版本的发行说明。若该 tag 已有公开 Release，准备阶段会跳过构建和部署。
 
 发布更新清单必须在 `release` environment 配置 `UPDATE_FEED_KEY`。Mac 默认使用未公证发行策略，不需要购买 Apple Developer ID；如果选择公证，还须配置表中其余 Apple 凭据：
 
@@ -85,12 +85,12 @@ python3 tools/make_update_feed.py dist/latest.json --assets dist
 | `APP_STORE_CONNECT_KEY_ID` | 公证 API key ID |
 | `APP_STORE_CONNECT_ISSUER_ID` | 公证 issuer ID |
 
-限制该 environment 仅允许维护者批准的分支/tag访问，可配置人工审核。没有受信生产公钥或对应 `UPDATE_FEED_KEY` 时，任何策略的公开发行都明确失败。
+限制该 environment 仅允许维护者批准的分支和 tag 访问，可配置人工审核。Mac 构建依然可访问 `release` 环境的签名配置，环境的部署记录只由最终发布任务创建。Mac 构建使用 `deployment: false`，此选项兼容必需审核者和等待计时器，环境附加了基于 GitHub App 的自定义部署保护规则时无法使用。没有受信生产公钥或对应 `UPDATE_FEED_KEY` 时，Actions 的公开发行会失败。
 
 Mac 签名策略在准备阶段只计算一次，并同时用于构建与发布说明：
 
 - 默认 `notarize_mac=false`：使用构建机测试签名的完整 DMG，以标准名称 `Island-For-Mac-<版本>.dmg` 公开发行。无需 Apple Developer ID，仍必须通过版本、完整资源、代码完整性、双平台产物和更新清单签名检查。Release 正文和工作流摘要明确说明“未经过 Apple 公证”，首次打开可能需在“系统设置 → 隐私与安全性”中允许；这是预先选择的发行策略，并非签名失败后的降级。
-- 手动运行时选中 `notarize_mac=true`，或仓库变量 `ISLAND_MAC_NOTARIZE` 为字符串 `true` 时，必须使用 Developer ID 重签、完成 Apple 公证并装订票据。任一步失败就终止，不回退未公证包。两项按 OR 计算；仓库变量未设时默认为 false，适用于 tag 自动触发；设置为 true 后，手动任务也统一要求公证。
+- 手动运行时选中 `notarize_mac=true`，或仓库变量 `ISLAND_MAC_NOTARIZE` 为字符串 `true` 时，必须使用 Developer ID 重签、完成 Apple 公证并装订票据。任一步失败就终止，不回退未公证包。两项按 OR 计算，仓库变量未设置时按 false 处理。
 
 从同一个提交构建两端并运行现有检查，Windows 生成 NSIS 与便携包，Mac 生成 universal 应用并携带 MediaRemote 框架及全部提示音。根据上述策略选定包后，两端任务全通过才在发布任务中签 `latest.json` 并计算 `SHA256SUMS.txt`。Mac 在线更新会将用户引导到该 DMG，由用户确认后手动安装，不进行未确认替换。
 

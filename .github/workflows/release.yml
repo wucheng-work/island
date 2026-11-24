@@ -1,8 +1,6 @@
 name: Island release
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       publish:
@@ -26,6 +24,7 @@ jobs:
     name: Validate version, notes and repository
     runs-on: ubuntu-latest
     outputs:
+      build: ${{ steps.release.outputs.build }}
       version: ${{ steps.release.outputs.version }}
       publish: ${{ steps.release.outputs.publish }}
       notarize_mac: ${{ steps.release.outputs.notarize_mac }}
@@ -38,14 +37,22 @@ jobs:
           REQUEST_PUBLISH: ${{ inputs.publish }}
           REQUEST_NOTARIZE_MAC: ${{ inputs.notarize_mac }}
           REPOSITORY_NOTARIZE_MAC: ${{ vars.ISLAND_MAC_NOTARIZE }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           version=$(python3 tools/release.py version)
           python3 tools/release.py check --require-notes --require-update-source --repository "$GITHUB_REPOSITORY"
           publish=false
-          if [ "$GITHUB_EVENT_NAME" = push ] || [ "$REQUEST_PUBLISH" = true ]; then
+          if [ "$REQUEST_PUBLISH" = true ]; then
             test "$GITHUB_REF_TYPE" = tag || { echo "Publishing requires selecting the existing v$version tag" >&2; exit 1; }
             python3 tools/release.py check --tag "$GITHUB_REF_NAME" --require-notes --require-update-source --repository "$GITHUB_REPOSITORY"
+            if release=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" 2>&1); then
+              echo "Release $GITHUB_REF_NAME is already published. No build or deployment needed." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            elif [[ "$release" != *"HTTP 404"* ]]; then
+              printf '%s\n' "$release" >&2
+              exit 1
+            fi
             python3 -c 'import sys; sys.path.insert(0, "tools"); from make_update_feed import trusted_keys; trusted_keys()'
             publish=true
           fi
@@ -53,6 +60,7 @@ jobs:
           if [ "$REQUEST_NOTARIZE_MAC" = true ] || [ "$REPOSITORY_NOTARIZE_MAC" = true ]; then
             notarize_mac=true
           fi
+          echo "build=true" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
           echo "notarize_mac=$notarize_mac" >> "$GITHUB_OUTPUT"
@@ -61,6 +69,7 @@ jobs:
   windows:
     name: Windows build and portable package
     needs: prepare
+    if: needs.prepare.outputs.build == 'true'
     runs-on: windows-2025
     env:
       PONI_VERSION: ${{ needs.prepare.outputs.version }}
@@ -122,8 +131,11 @@ jobs:
   mac:
     name: Universal Mac app with explicit signing policy
     needs: prepare
+    if: needs.prepare.outputs.build == 'true'
     runs-on: macos-15
-    environment: release
+    environment:
+      name: release
+      deployment: false
     env:
       # 与 CI 使用相同 SDK，避免 runner 默认旧 Xcode 缺少翻译接口。
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer

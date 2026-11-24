@@ -31,7 +31,7 @@ Never create a repository named `lucacadalora/poni`: GitHub forwards that old na
 
 根`Cargo.toml`是唯一版本源。每次新的打包任务patch+1，同任务双平台共用版本、失败重试不额外递增。合并初始版本为1.0.0，日常修改不自动加号。用`python3 tools/release.py version/check/bump-patch`读取、校验或分配版本；锁文件由Cargo生成，不能手工修改，不得改变第三方依赖锁来伪造通过。
 
-发布需完成`docs/release-notes/v<版本>.md`，tag为`v<版本>`，程序版本、安装器资源、包名、更新清单必须一致，不可覆盖已公开版本。普通push/PR仅运行`ci.yml`；`release.yml`只在明确授权的tag或手动请求下发行。正式发布等两端包、生产签名清单和校验表齐备，草稿重新下载验证后最后公开为latest。完整规则见`docs/releases.md`。
+发布需完成`docs/release-notes/v<版本>.md`，tag为`v<版本>`，程序版本、安装器资源、包名、更新清单必须一致，不可覆盖已公开版本。普通push/PR仅运行`ci.yml`；`release.yml`须手动运行并选择版本tag及启用`publish`才能发行。推送tag只登记版本。正式发布等两端包、生产签名清单和校验表齐备，草稿重新下载验证后最后公开为latest。完整规则见`docs/releases.md`。
 
 更新仓库固定读取`release/update-source.json`，生产公钥只在`release/update-keys.txt`，私钥留在仓库外或GitHub Secrets。没有受信公钥时不联网、不宣称更新可用；不得使用上游样本公钥作为生产信任。Mac发行可明确选择未公证包，发布说明必须标清；选择公证时Developer ID和Apple公证任一步失败即中止，不降级。本机固定证书只用于本机更新。客户端由用户手动检查、确认下载和安装，不静默替换应用，不改用户数据目录或凭据标识。
 
