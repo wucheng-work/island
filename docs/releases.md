@@ -74,6 +74,8 @@ python3 tools/make_update_feed.py dist/latest.json --assets dist
 
 经明确授权后创建并推送 `v<版本>` tag。推送分支和标签都不会启动发布工作流。需要由 Actions 正式发布时，手动运行 `Island release`，选择该 tag 并启用 `publish`。tag 必须与项目版本一致，同时提供该版本的发行说明。若该 tag 已有公开 Release，准备阶段会跳过构建和部署。
 
+使用本机生产密钥发布时，先对同一提交运行试构建，下载并核对两端产物和 Mac 签名策略，再在本机生成签名清单及校验表。将三份安装包、清单和校验表上传到该 tag 的 Release 草稿，重新下载核验后设为 latest。每个版本只选择一次正式发布入口。
+
 发布更新清单必须在 `release` environment 配置 `UPDATE_FEED_KEY`。Mac 默认使用未公证发行策略，不需要购买 Apple Developer ID；如果选择公证，还须配置表中其余 Apple 凭据：
 
 | Secret | 用途 |
