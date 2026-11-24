@@ -35,6 +35,7 @@ impl App {
             bridge.stop();
         }
         self.codex_notices.clear();
+        self.codex_desktop_open = None;
         self.st.codex = crate::codex::Inbox::default();
         if self.codex_notice_shown() {
             self.st.notice = None;
@@ -204,6 +205,42 @@ impl App {
                 }
             }
         }
+    }
+
+    pub(super) fn open_codex_desktop(&mut self, url: String) -> bool {
+        let request_id = crate::codex::request_id();
+        let sink = self.sink.clone();
+        if !shell::open_codex_thread(url, move |opened| {
+            sink.send(AppEvent::CodexDesktopOpen { request_id, opened });
+        }) {
+            return false;
+        }
+        self.codex_desktop_open = Some(request_id);
+        true
+    }
+
+    pub(super) fn on_codex_desktop_open(&mut self, request_id: u64, opened: bool) {
+        if self.codex_desktop_open != Some(request_id) {
+            return;
+        }
+        self.codex_desktop_open = None;
+        // 系统结果可能晚到，只在当前桌面仍可显示提醒时报告失败。
+        if opened || self.locked || self.display_off || self.fullscreen_hidden {
+            return;
+        }
+        self.show_codex_open_error("请检查 Codex 桌面应用是否已安装并支持会话链接");
+    }
+
+    pub(super) fn show_codex_open_error(&mut self, detail: &str) {
+        self.st.notify(
+            Icon::Codex,
+            palette::ORANGE,
+            "无法打开 Codex 会话",
+            detail,
+            5.0,
+            None,
+        );
+        self.request_frame();
     }
 
     pub(super) fn select_codex(&mut self, id: &str, compact: bool) {

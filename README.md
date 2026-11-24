@@ -27,6 +27,8 @@ Windows 从 0.0.7 起统一使用 `Island.exe`。旧快捷方式及外部 Codex 
 
 Windows 详情见 [使用说明](docs/Windows使用说明.md) 与 [Codex 接入说明](docs/codex-integration-windows.md)。Mac 邮件授权见 [手动授权说明](docs/mac-credentials.md)，歌词排查见 [诊断说明](docs/lyrics-diagnostics.md)。
 
+点击收起时的普通 Codex 提醒或审批提醒，可跳到桌面端的对应本机会话。岛内提问可直接展开回答。配置方法见 [Mac Codex 接入说明](docs/codex-integration.md)和 [Windows Codex 接入说明](docs/codex-integration-windows.md)。
+
 从1.0.2起，蓝牙设备电量页面及其采集功能已下线，原有耳机连接、断开提示保留。旧设置记住的蓝牙页面会回退到可用页面，不需要删除用户配置。详见[蓝牙功能下线说明](docs/bluetooth.md)。
 
 ## 数据兼容

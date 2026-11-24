@@ -723,7 +723,7 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "poni"
-version = "1.0.2"
+version = "1.0.4"
 dependencies = [
  "base64 0.22.1",
  "block2",
@@ -751,7 +751,7 @@ dependencies = [
 
 [[package]]
 name = "poni-core"
-version = "1.0.2"
+version = "1.0.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -977,7 +977,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "studio-diorama"
-version = "1.0.2"
+version = "1.0.4"
 
 [[package]]
 name = "syn"

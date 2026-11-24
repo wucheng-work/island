@@ -136,6 +136,10 @@ pub enum OyenzaEvent {
 
 pub enum AppEvent {
     Codex(crate::codex_bridge::BridgeEvent),
+    CodexDesktopOpen {
+        request_id: u64,
+        opened: bool,
+    },
     Mail(crate::mail::MailEvent),
     MailAction(crate::mail::MailAction),
     MailEditorError(String),

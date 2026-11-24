@@ -11,6 +11,11 @@ pub fn request_id() -> u64 {
     NEXT_REQUEST.fetch_add(1, Ordering::Relaxed)
 }
 
+/// Codex 桌面端只接受由有效本机会话 ID 生成的链接。
+pub fn thread_url(thread_id: &str) -> Option<String> {
+    crate::codex_client::valid_thread_id(thread_id).then(|| format!("codex://threads/{thread_id}"))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Kind {
@@ -115,6 +120,18 @@ pub struct MessageGroup {
 }
 
 impl Inbox {
+    /// 普通提醒和审批指向各自的会话，岛内提问仍绑定原请求。
+    pub fn notice_thread_id(&self, notice_id: &str) -> Option<&str> {
+        let entry = self
+            .entries
+            .iter()
+            .find(|entry| entry.message.id == notice_id)?;
+        if entry.message.kind == Kind::Question {
+            return None;
+        }
+        Some(&entry.message.thread_id)
+    }
+
     pub fn groups(&self) -> Vec<MessageGroup> {
         let mut groups: Vec<MessageGroup> = Vec::new();
         for (index, entry) in self.entries.iter().enumerate() {

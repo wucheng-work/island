@@ -141,6 +141,7 @@ enum Deferred {
     },
     CloseSoundPicker,
     SoundPreviewFailed,
+    OpenCodexThread(String),
     PreviewCodexAttachment(String),
     CloseAttachmentPreview,
     UpdateMessage {
@@ -206,6 +207,7 @@ fn enter<R>(f: impl FnOnce(&mut App) -> R) -> Option<R> {
             Deferred::SoundPreviewFailed => {
                 crate::sound_picker::show_error("无法播放此提示音，请重新选择或恢复默认")
             }
+            Deferred::OpenCodexThread(thread_id) => open_codex_thread(&thread_id),
             Deferred::PreviewCodexAttachment(path) => preview_codex_attachment(&path),
             Deferred::CloseAttachmentPreview => services::close_attachment_preview(),
             Deferred::UpdateMessage { title, detail } => services::update::message(&title, &detail),
@@ -224,6 +226,27 @@ fn enter<R>(f: impl FnOnce(&mut App) -> R) -> Option<R> {
         }
     }
     r
+}
+
+/// 打开桌面应用可能触发 AppKit 回调，先交给系统，再更新 Island 的提示。
+fn open_codex_thread(thread_id: &str) {
+    let detail = match crate::codex::thread_url(thread_id) {
+        Some(url) if services::open_url(&url) => return,
+        Some(_) => "请检查 Codex 桌面应用是否已安装并支持会话链接",
+        None => "这条消息缺少有效的会话 ID",
+    };
+    enter(|app| {
+        app.refresh_time();
+        app.st.notify(
+            Icon::Codex,
+            palette::ORANGE,
+            "无法打开 Codex 会话",
+            detail,
+            5.0,
+            None,
+        );
+        app.request_frame();
+    });
 }
 
 /// 原生窗口可能回调应用；先打开窗口，再进入应用状态更新预览结果。
@@ -938,10 +961,10 @@ impl App {
                 if !self.hovering || self.expanded {
                     self.hover_arm = None;
                 } else if self.mode == Mode::Notice
-                    && self.st.notice.as_ref().is_some_and(|n| n.inline.is_some())
+                    && (self.codex_notice_shown()
+                        || self.st.notice.as_ref().is_some_and(|n| n.inline.is_some()))
                 {
-                    // A notice with an inline pill stays put under a resting
-                    // pointer so the pill can be clicked.
+                    // Keep the notice visible while the person aims for it.
                 } else {
                     self.expand();
                 }
@@ -2657,14 +2680,23 @@ impl App {
     }
 
     /// A click on the closed island (pressed and let go, or on a notch's
-    /// island, pressed): a notice jumps to its page, and the island opens.
+    /// island, pressed): a notice opens its page or desktop app.
     fn open_from_press(&mut self) {
         // Clicking a notice jumps to its page (a new version's
         // may be waiting under a volume change or a game's readout).
         let shown = self.mode == Mode::Notice;
         if let Some(n) = self.st.notice.take_if(|_| shown) {
             match n.action {
-                Some(NoticeAction::OpenCodex(id)) => self.select_codex(&id, false),
+                Some(NoticeAction::OpenCodex(id)) => {
+                    if let Some(thread_id) = self.st.codex.notice_thread_id(&id) {
+                        self.st.cmd(Command::CodexOpen(thread_id.to_owned()));
+                        self.st.hud = None;
+                        self.cancel_hover();
+                        self.request_frame();
+                        return;
+                    }
+                    self.select_codex(&id, false);
+                }
                 // Oyenza's account page is no longer exposed. Older notices
                 // can still carry that action, so send them to a normal tab.
                 Some(NoticeAction::OpenSaveErrors) => self.set_page(PageKind::Settings),
@@ -3035,21 +3067,9 @@ impl App {
                         ),
                     }
                 }
-                Command::CodexOpen(_) => {
-                    // 未经验证的会话 URL 不可使用，先打开 Codex 供用户选择原会话。
-                    let result = std::process::Command::new("/usr/bin/open")
-                        .args(["-b", "com.openai.codex"])
-                        .output();
-                    if !result.is_ok_and(|output| output.status.success()) {
-                        self.st.notify(
-                            Icon::Bell,
-                            palette::ORANGE,
-                            "无法打开 Codex",
-                            "请先安装并打开 Codex 桌面应用",
-                            4.0,
-                            None,
-                        );
-                    }
+                Command::CodexOpen(thread_id) => {
+                    self.collapse();
+                    self.pending.push(Deferred::OpenCodexThread(thread_id));
                 }
                 Command::CodexReply { id, text } => self.reply_codex(&id, Some(text)),
                 Command::CodexSelect { id, compact } => self.select_codex(&id, compact),

@@ -166,23 +166,24 @@ pub fn close_attachment_preview() {
     unsafe { poni_close_attachment_preview() };
 }
 
+/// Open a URL with its registered app, reporting whether macOS accepted it.
+pub(crate) fn open_url(target: &str) -> bool {
+    NSURL::URLWithString(&NSString::from_str(target))
+        .is_some_and(|url| NSWorkspace::sharedWorkspace().openURL(&url))
+}
+
 /// Open a URL (or a file path) with its default app. System Settings'
 /// panes have URLs without "//" (`x-apple.systempreferences:…`).
 pub fn open(target: &str) {
-    let s = NSString::from_str(target);
     let is_url = target.contains("://") || target.starts_with("x-apple.systempreferences:");
-    let url = if is_url {
-        NSURL::URLWithString(&s)
+    let opened = if is_url {
+        open_url(target)
     } else {
-        Some(NSURL::fileURLWithPath(&s))
+        let url = NSURL::fileURLWithPath(&NSString::from_str(target));
+        NSWorkspace::sharedWorkspace().openURL(&url)
     };
-    match url {
-        Some(u) => {
-            if !NSWorkspace::sharedWorkspace().openURL(&u) {
-                pwarn!("could not open {target}");
-            }
-        }
-        None => pwarn!("not a URL: {target}"),
+    if !opened {
+        pwarn!("could not open {target}");
     }
 }
 

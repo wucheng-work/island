@@ -11,15 +11,18 @@
 //! `javascript:`, `shell:`, relative names that would be searched on `PATH`)
 //! is logged and refused. Fixed exceptions: Settings > Apps > Startup
 //! ([`open_startup_settings`]) and Settings > Privacy > Notifications
-//! ([`open_notification_settings`]), constant URIs; and an app by its
-//! AppUserModelID in the Apps folder ([`open_app`]), the characters of an id only.
+//! ([`open_notification_settings`]), constant URIs; an app by its AppUserModelID
+//! in the Apps folder ([`open_app`]); and a Codex session link built
+//! from a validated thread ID ([`open_codex_thread`]).
 
 use std::sync::atomic::{AtomicUsize, Ordering};
-use windows::core::{w, HSTRING};
+use windows::core::{w, HSTRING, PCWSTR};
 use windows::Win32::System::Com::{
     CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
 };
-use windows::Win32::UI::Shell::ShellExecuteW;
+use windows::Win32::UI::Shell::{
+    ShellExecuteExW, ShellExecuteW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SHELLEXECUTEINFOW,
+};
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
 /// Shell calls allowed to be in progress at once. Calls stuck on an
@@ -54,6 +57,27 @@ pub fn open(target: &str) {
             crate::pwarn!("open failed ({}): {}", r.0 as isize, for_log(&target));
         }
     });
+}
+
+/// Dispatch a validated Codex link. Return whether the shell job
+/// started and report the system's dispatch result from that job.
+pub(crate) fn open_codex_thread(url: String, done: impl FnOnce(bool) + Send + 'static) -> bool {
+    run("open Codex", move || {
+        let url = HSTRING::from(url.as_str());
+        let mut info = SHELLEXECUTEINFOW {
+            cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+            fMask: SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC,
+            lpVerb: w!("open"),
+            lpFile: PCWSTR(url.as_ptr()),
+            nShow: SW_SHOWNORMAL.0,
+            ..Default::default()
+        };
+        let result = unsafe { ShellExecuteExW(&mut info) };
+        if let Err(error) = &result {
+            crate::pwarn!("open Codex failed ({:?})", error.code());
+        }
+        done(result.is_ok());
+    })
 }
 
 /// Open Settings > Apps > Startup (asynchronously). The Store build sends
@@ -187,11 +211,11 @@ pub fn reveal(path: &str) {
 }
 
 /// Run `job` on a new "poni-shell" thread inside a single-threaded apartment.
-fn run(what: &'static str, job: impl FnOnce() + Send + 'static) {
+fn run(what: &'static str, job: impl FnOnce() + Send + 'static) -> bool {
     if IN_FLIGHT.fetch_add(1, Ordering::SeqCst) >= MAX_IN_FLIGHT {
         IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
         crate::pwarn!("{what} refused: {MAX_IN_FLIGHT} shell requests are still pending");
-        return;
+        return false;
     }
     let spawned = std::thread::Builder::new()
         .name("poni-shell".into())
@@ -212,7 +236,9 @@ fn run(what: &'static str, job: impl FnOnce() + Send + 'static) {
         // The closure (and its slot) never ran.
         IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
         crate::pwarn!("{what} failed: shell thread did not start ({e})");
+        return false;
     }
+    true
 }
 
 /// One in-flight shell call; released when its thread ends (or unwinds).

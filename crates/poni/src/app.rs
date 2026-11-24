@@ -531,6 +531,8 @@ pub struct App {
     codex_bridge: Option<crate::codex_bridge::Bridge>,
     codex_pending: std::collections::HashMap<String, mpsc::Sender<crate::codex_bridge::Reply>>,
     codex_notices: std::collections::VecDeque<String>,
+    /// Tracks the latest desktop launch so a stale failure cannot open the island.
+    codex_desktop_open: Option<u64>,
     /// The Glass theme's screen copy, light/dark choice and glass.
     glass: crate::glass::Glass,
 
@@ -800,6 +802,7 @@ impl App {
             codex_bridge: None,
             codex_pending: std::collections::HashMap::new(),
             codex_notices: std::collections::VecDeque::new(),
+            codex_desktop_open: None,
             glass: crate::glass::Glass::new(services::apps_use_light_theme()),
             glass_moving: false,
             last_frame_t: 0.0,
@@ -1257,11 +1260,20 @@ impl App {
         let shown = self.mode == Mode::Notice;
         // Another app's notification opens that app instead.
         let mut opened = false;
+        self.codex_desktop_open = None;
         if let Some(n) = self.st.notice.take_if(|_| shown) {
             match n.action {
+                Some(NoticeAction::OpenCodex(id)) => {
+                    if let Some(thread_id) = self.st.codex.notice_thread_id(&id) {
+                        self.st.cmd(Command::CodexOpen(thread_id.to_owned()));
+                        self.request_frame();
+                        opened = true;
+                    } else {
+                        self.select_codex(&id, false);
+                    }
+                }
                 // Oyenza's account page is no longer exposed. Older notices
                 // can still carry that action, so send them to a normal tab.
-                Some(NoticeAction::OpenCodex(id)) => self.select_codex(&id, false),
                 Some(NoticeAction::OpenSaveErrors) => self.set_page(PageKind::Settings),
                 Some(NoticeAction::OpenPage(p)) => {
                     let page = if p == PageKind::Oyenza {
@@ -1996,12 +2008,10 @@ impl App {
                 if !self.hovering || self.expanded || self.grab.is_some() {
                     self.hover_arm = None;
                 } else if self.mode == Mode::Notice
-                    && self.st.notice.as_ref().is_some_and(|n| n.inline.is_some())
+                    && (self.codex_notice_shown()
+                        || self.st.notice.as_ref().is_some_and(|n| n.inline.is_some()))
                 {
-                    // A notice with an inline pill stays put under a resting
-                    // pointer so the pill can be clicked (a click on the rest
-                    // of the notice still opens its page). The dwell stays
-                    // armed: the next movement restarts it.
+                    // Keep the notice visible while the person aims for it.
                 } else {
                     self.expand();
                 }
@@ -2718,6 +2728,9 @@ impl App {
         }
         match ev {
             AppEvent::Codex(event) => self.on_codex(event),
+            AppEvent::CodexDesktopOpen { request_id, opened } => {
+                self.on_codex_desktop_open(request_id, opened)
+            }
             AppEvent::Mail(event) => self.on_mail(event),
             AppEvent::MailAction(action) => self.st.cmd(Command::Mail(action)),
             AppEvent::MailEditorError(error) => {
@@ -3119,6 +3132,7 @@ impl App {
     // ------------------------------------------------------------ island state
 
     fn expand(&mut self) {
+        self.codex_desktop_open = None;
         if !self.expanded {
             self.expanded = true;
             if self.st.page == PageKind::Media {
@@ -4558,6 +4572,7 @@ impl App {
     /// Run a notice's inline action in place (the island stays collapsed),
     /// then show a check mark in the pill briefly before the notice leaves.
     fn run_inline_action(&mut self, a: InlineAction) {
+        self.codex_desktop_open = None;
         self.refresh_time();
         if a == InlineAction::CodexConfirm {
             let id = self
@@ -4751,18 +4766,16 @@ impl App {
                         ),
                     }
                 }
-                Command::CodexOpen(_) => {
-                    if let Some(path) = crate::codex_client::desktop_path() {
-                        shell::open(&path.to_string_lossy());
-                    } else {
-                        self.st.notify(
-                            Icon::Codex,
-                            self.st.accent,
-                            "请打开 Codex",
-                            "请从开始菜单打开 Codex 并选择原会话",
-                            5.0,
-                            None,
-                        );
+                Command::CodexOpen(thread_id) => {
+                    self.collapse();
+                    self.codex_desktop_open = None;
+                    match crate::codex::thread_url(&thread_id) {
+                        Some(url) => {
+                            if !self.open_codex_desktop(url) {
+                                self.show_codex_open_error("暂时无法打开，请稍后重试");
+                            }
+                        }
+                        None => self.show_codex_open_error("这条消息缺少有效的会话 ID"),
                     }
                 }
                 Command::CodexPreviewAttachment(path) => {
